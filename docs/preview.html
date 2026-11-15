@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>معاينة التصميم الجديد — مجمّع أخبار مصر (Inspired Visual Direction)</title>
+  <style>
+    /* Reset & Base */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #0E1714;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(20, 80, 50, 0.25) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(16, 50, 40, 0.3) 0px, transparent 50%);
+      font-family: -apple-system, BlinkMacSystemFont, "Cairo", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #0F172A;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px 16px;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* Page Header */
+    .showcase-header {
+      max-width: 840px;
+      text-align: center;
+      color: #F8FAFC;
+      margin-bottom: 48px;
+    }
+
+    .showcase-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      color: #4ADE80;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .showcase-title {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 12px;
+      color: #FFFFFF;
+    }
+
+    .showcase-desc {
+      font-size: 16px;
+      color: #94A3B8;
+      max-width: 620px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* Screen Container Stack */
+    .screens-container {
+      display: flex;
+      flex-direction: column;
+      gap: 64px;
+      width: 100%;
+      max-width: 440px;
+      align-items: center;
+    }
+
+    .screen-block {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .screen-tag {
+      align-self: flex-start;
+      margin-right: 12px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .screen-tag-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #22C55E;
+      color: #064E3B;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .screen-tag-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #F1F5F9;
+    }
+
+    .screen-tag-subtitle {
+      font-size: 13px;
+      color: #64748B;
+      font-weight: 500;
+    }
+
+    /* Phone Device Frame */
+    .phone-frame {
+      width: 390px;
+      height: 844px;
+      border-radius: 50px;
+      background: #FFFFFF;
+      box-shadow: 
+        0 0 0 12px #1E2924,
+        0 0 0 14px #2D3D37,
+        0 25px 60px rgba(0, 0, 0, 0.45);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      /* Ambient sage green background matching inspiration */
+      background: linear-gradient(180deg, #E6F0EB 0%, #F5F9F6 45%, #E3EFE8 100%);
+    }
+
+    /* Ambient Glow Overlay in frame */
+    .phone-ambient-top {
+      position: absolute;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 320px;
+      height: 240px;
+      background: radial-gradient(circle, rgba(167, 243, 208, 0.6) 0%, rgba(230, 240, 235, 0) 70%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Dynamic Island / Notch */
+    .phone-notch {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 124px;
+      height: 30px;
+      background: #000000;
+      border-radius: 20px;
+      z-index: 50;
+    }
+
+    /* Status Bar */
+    .status-bar {
+      height: 48px;
+      padding: 12px 28px 0 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: #0F172A;
+      z-index: 40;
+    }
+
+    .status-icons {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Scrollable App Body */
+    .phone-content {
+      flex: 1;
+      overflow-y: hidden; /* static preview layout */
+      padding: 8px 16px 100px 16px;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+      position: relative;
+    }
+
+    /* Top App Bar */
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 0 4px;
+    }
+
+    .app-header-titles {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .app-header-date {
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748B;
+      letter-spacing: -0.2px;
+    }
+
+    .app-header-title {
+      font-size: 26px;
+      font-weight: 900;
+      color: #0F172A;
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+    }
+
+    .app-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .circle-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      position: relative;
+    }
+
+    .circle-btn-badge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      width: 8px;
+      height: 8px;
+      background: #EF4444;
+      border-radius: 50%;
+      border: 1.5px solid #FFFFFF;
+    }
+
+    /* Category Pill Carousel */
+    .category-pills {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      margin-bottom: 22px;
+    }
+
+    .cat-pill {
+      padding: 10px 20px;
+      border-radius: 9999px;
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    }
+
+    .cat-pill.active {
+      background: #0F172A;
+      color: #FFFFFF;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+    }
+
+    .cat-pill.inactive {
+      background: rgba(255, 255, 255, 0.85);
+      color: #475569;
+      border: 1px solid rgba(255, 255, 255, 0.6);
+    }
+
+    /* Section Header */
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      padding: 0 4px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+
+    .section-link {
+      font-size: 13px;
+      font-weight: 600;
+      color: #64748B;
+    }
+
+    /* Card Stack Deck (Tinder / Deck Style) */
+    .card-deck {
+      position: relative;
+      width: 100%;
+      height: 480px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .deck-card-layer {
+      position: absolute;
+      border-radius: 28px;
+      background: #FFFFFF;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+    }
+
+    .layer-3 {
+      top: 0px;
+      width: 84%;
+      height: 70px;
+      opacity: 0.6;
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      gap: 12px;
+      filter: blur(0.5px);
+    }
+
+    .layer-2 {
+      top: 20px;
+      width: 92%;
+      height: 70px;
+      opacity: 0.85;
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      gap: 12px;
+    }
+
+    .layer-mock-source {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .layer-mock-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 800;
+      color: #FFFFFF;
+    }
+
+    .layer-mock-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #334155;
+    }
+
+    /* Primary Foreground Hero Card */
+    .hero-card {
+      position: absolute;
+      top: 42px;
+      width: 100%;
+      background: #FFFFFF;
+      border-radius: 28px;
+      padding: 18px 18px 16px 18px;
+      box-shadow: 0 16px 36px rgba(16, 45, 30, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      z-index: 10;
+    }
+
+    /* Card Publisher Header */
+    .card-pub-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .pub-profile {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pub-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #B91C1C;
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 900;
+      box-shadow: 0 3px 8px rgba(185, 28, 28, 0.25);
+    }
+
+    .pub-avatar.al-ahram { background: #1E3A8A; }
+    .pub-avatar.al-masry { background: #047857; }
+    .pub-avatar.mada { background: #D97706; }
+    .pub-avatar.asharq { background: #4338CA; }
+
+    .pub-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .pub-name-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .pub-name {
+      font-size: 15px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+
+    .pub-time {
+      font-size: 12px;
+      color: #64748B;
+      font-weight: 500;
+    }
+
+    .icon-more {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748B;
+    }
+
+    /* Card Headline */
+    .card-headline {
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1.5;
+      color: #0F172A;
+      letter-spacing: -0.3px;
+    }
+
+    /* Card Media */
+    .card-media {
+      width: 100%;
+      height: 200px;
+      border-radius: 20px;
+      overflow: hidden;
+      background: #E2E8F0;
+      position: relative;
+    }
+
+    .card-media svg {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Card Reactions Footer */
+    .card-reactions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 4px;
+    }
+
+    .reaction-metrics {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .metric-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #475569;
+    }
+
+    .metric-icon {
+      width: 17px;
+      height: 17px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748B;
+    }
+
+    .share-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #F1F5F9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #334155;
+    }
+
+    /* Floating Capsule Bottom Dock (Signature Inspiration Feature) */
+    .floating-dock-wrapper {
+      position: absolute;
+      bottom: 22px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      z-index: 50;
+      padding: 0 28px;
+    }
+
+    .floating-dock {
+      width: 100%;
+      max-width: 320px;
+      height: 64px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 0 14px;
+      box-shadow: 
+        0 14px 32px rgba(14, 45, 30, 0.12),
+        0 2px 6px rgba(0, 0, 0, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+    }
+
+    .dock-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      position: relative;
+      color: #64748B;
+    }
+
+    /* Active Tab with Soft Glowing Green Capsule Ring */
+    .dock-tab.active .dock-indicator {
+      position: absolute;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #E1F8EB 30%, #C4F3D6 70%, #22C55E 100%);
+      box-shadow: 
+        inset 0 2px 4px rgba(255, 255, 255, 0.9),
+        0 3px 10px rgba(34, 197, 94, 0.35);
+      border: 2px solid #FFFFFF;
+      z-index: 1;
+    }
+
+    .dock-tab.active svg {
+      position: relative;
+      z-index: 2;
+      color: #065F46;
+    }
+
+    .dock-tab svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    /* Home Indicator bar on modern iPhone */
+    .home-indicator {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 136px;
+      height: 4px;
+      background: #0F172A;
+      border-radius: 4px;
+      z-index: 60;
+    }
+
+    /* Screen 2: Feed / Trending Specific Styles */
+    .feed-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding-bottom: 20px;
+    }
+
+    .feed-card {
+      background: #FFFFFF;
+      border-radius: 26px;
+      padding: 16px;
+      box-shadow: 0 10px 24px rgba(16, 45, 30, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .trending-badge-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .trend-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: #FEF2F2;
+      color: #DC2626;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid #FEE2E2;
+    }
+
+    .trend-pill.secondary {
+      background: #EFF6FF;
+      color: #2563EB;
+      border-color: #DBEAFE;
+    }
+
+    /* Screen 3: Source Page Specific Styles */
+    .source-hero-card {
+      background: #FFFFFF;
+      border-radius: 28px;
+      padding: 22px 18px;
+      box-shadow: 0 14px 30px rgba(16, 45, 30, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      margin-bottom: 18px;
+      position: relative;
+    }
+
+    .source-large-avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: #D97706;
+      color: #FFFFFF;
+      font-size: 24px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 18px rgba(217, 119, 6, 0.25);
+      margin-bottom: 12px;
+      border: 3px solid #FFFFFF;
+    }
+
+    .source-name-title {
+      font-size: 22px;
+      font-weight: 900;
+      color: #0F172A;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .source-bio {
+      font-size: 13px;
+      color: #64748B;
+      font-weight: 500;
+      margin-bottom: 14px;
+    }
+
+    .source-stats-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 8px 18px;
+      border-radius: 16px;
+      background: #F8FAFC;
+      margin-bottom: 18px;
+    }
+
+    .source-stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .source-stat-val {
+      font-size: 15px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+
+    .source-stat-lbl {
+      font-size: 11px;
+      color: #64748B;
+    }
+
+    .follow-btn-group {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .btn-follow {
+      flex: 1;
+      height: 44px;
+      border-radius: 9999px;
+      background: #0F172A;
+      color: #FFFFFF;
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.2);
+    }
+
+    .btn-follow.followed {
+      background: #E8F7EE;
+      color: #059669;
+      border: 1px solid #A7F3D0;
+      box-shadow: none;
+    }
+
+    /* Comparison / Note block */
+    .design-notes {
+      max-width: 840px;
+      background: #15221D;
+      border: 1px solid #23372F;
+      border-radius: 20px;
+      padding: 24px;
+      margin-top: 48px;
+      color: #CBD5E1;
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .design-notes h3 {
+      color: #34D399;
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .design-notes ul {
+      padding-right: 20px;
+    }
+
+    .design-notes li {
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Showcase Header -->
+  <header class="showcase-header">
+    <div class="showcase-badge">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      معاينة الاتجاه البصري الملهم (Inspired by Reference)
+    </div>
+    <h1 class="showcase-title">مجمّع أخبار مصر — التجربة البصرية المقترحة</h1>
+    <p class="showcase-desc">
+      تصميم مستوحى من المراجع المرفقة: بطاقات فائقة الاستدارة (28px)، خلفية خضراء مهدئة بتدرج ناعم (Sage Mist)، رصيد بصري عائم مع شريط ملاحة كبسولي طافٍ بأيقونة متوهجة، ومحتوى إخباري مصري حيوي كامل بالعربية RTL.
+    </p>
+  </header>
+
+  <!-- Screens Container Stack -->
+  <main class="screens-container">
+
+    <!-- ==============================================
+         SCREEN 1: HOME FEED (شاشة مركز الأخبار)
+         ============================================== -->
+    <section class="screen-block">
+      <div class="screen-tag">
+        <span class="screen-tag-num">١</span>
+        <div>
+          <div class="screen-tag-title">الشاشة الرئيسية — مركز الأخبار (Home Feed)</div>
+          <div class="screen-tag-subtitle">مجموعة الكروت المتراكبة (Card Deck) + تصنيفات الكبسولة + شريط الملاحة العائم</div>
+        </div>
+      </div>
+
+      <div class="phone-frame">
+        <div class="phone-ambient-top"></div>
+        <div class="phone-notch"></div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+          <span>9:40</span>
+          <div class="status-icons">
+            <!-- Signal -->
+            <svg width="15" height="11" viewBox="0 0 18 12" fill="currentColor">
+              <rect x="0" y="8" width="3" height="4" rx="1"/>
+              <rect x="5" y="5" width="3" height="7" rx="1"/>
+              <rect x="10" y="2" width="3" height="10" rx="1"/>
+              <rect x="15" y="0" width="3" height="12" rx="1"/>
+            </svg>
+            <!-- Wifi -->
+            <svg width="14" height="11" viewBox="0 0 16 12" fill="currentColor">
+              <path d="M8 9.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM3.5 6.5a6.5 6.5 0 019 0l-1 1a5 5 0 00-7 0l-1-1zM1 4a10 10 0 0114 0l-1 1a8.5 8.5 0 00-12 0L1 4z"/>
+            </svg>
+            <!-- Battery -->
+            <svg width="22" height="11" viewBox="0 0 24 12" fill="currentColor">
+              <rect x="0" y="0" width="20" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+              <rect x="2" y="2" width="14" height="8" rx="1.5"/>
+              <path d="M22 4v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Screen Content -->
+        <div class="phone-content">
+          <!-- App Header -->
+          <div class="app-header">
+            <div class="app-header-titles">
+              <span class="app-header-date">الأحد، ١٥ نوفمبر ٢٠٢٦</span>
+              <span class="app-header-title">مركز الأخبار</span>
+            </div>
+            <div class="app-header-actions">
+              <!-- Search Circle -->
+              <div class="circle-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              </div>
+              <!-- Bell Circle -->
+              <div class="circle-btn">
+                <span class="circle-btn-badge"></span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category Pills -->
+          <div class="category-pills">
+            <div class="cat-pill active">كل الأخبار</div>
+            <div class="cat-pill inactive">مصر</div>
+            <div class="cat-pill inactive">اقتصاد</div>
+            <div class="cat-pill inactive">رياضة</div>
+            <div class="cat-pill inactive">تكنولوجيا</div>
+          </div>
+
+          <!-- Section Head -->
+          <div class="section-head">
+            <span class="section-title">الأكثر قراءة الآن</span>
+            <span class="section-link">عرض الكل</span>
+          </div>
+
+          <!-- Card Deck with Layered Peeking Cards -->
+          <div class="card-deck">
+            <!-- Background Layer 3 (CNN) -->
+            <div class="deck-card-layer layer-3">
+              <div class="layer-mock-source">
+                <div class="layer-mock-avatar" style="background: #CC0000;">C</div>
+                <span class="layer-mock-name">CNN بالعربية</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#3B82F6"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+              </div>
+            </div>
+
+            <!-- Background Layer 2 (الشرق بلومبرغ) -->
+            <div class="deck-card-layer layer-2">
+              <div class="layer-mock-source">
+                <div class="layer-mock-avatar" style="background: #1E3A8A;">ش</div>
+                <span class="layer-mock-name">الشرق مع بلومبرغ</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#3B82F6"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+              </div>
+            </div>
+
+            <!-- Foreground Hero Card -->
+            <div class="hero-card">
+              <!-- Publisher Header -->
+              <div class="card-pub-header">
+                <div class="pub-profile">
+                  <div class="pub-avatar">اليوم</div>
+                  <div class="pub-info">
+                    <div class="pub-name-row">
+                      <span class="pub-name">اليوم السابع</span>
+                      <!-- Verified Badge -->
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="#2563EB"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                    </div>
+                    <span class="pub-time">منذ ٢٥ دقيقة</span>
+                  </div>
+                </div>
+                <div class="icon-more">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                </div>
+              </div>
+
+              <!-- Card Headline -->
+              <h2 class="card-headline">
+                قمة مصرية أوروبية بالقاهرة لتوقيع حزمة شراكات استثمارية بـ ٧٫٤ مليار يورو 🔥
+              </h2>
+
+              <!-- Card Media (Rich Cairo Nile Illustration) -->
+              <div class="card-media">
+                <svg viewBox="0 0 350 200" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#0F2438"/>
+                      <stop offset="60%" stop-color="#28506E"/>
+                      <stop offset="100%" stop-color="#D97706"/>
+                    </linearGradient>
+                    <linearGradient id="nileGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#1E3A8A"/>
+                      <stop offset="100%" stop-color="#0F172A"/>
+                    </linearGradient>
+                  </defs>
+                  <!-- Sky -->
+                  <rect width="350" height="140" fill="url(#skyGrad)"/>
+                  <!-- Sun Glow -->
+                  <circle cx="175" cy="115" r="45" fill="#FDE68A" opacity="0.6"/>
+                  <!-- Cairo Skyline Silhouette -->
+                  <!-- Cairo Tower -->
+                  <path d="M172 135 L173 35 L177 35 L178 135 Z" fill="#0B131E"/>
+                  <ellipse cx="175" cy="40" rx="6" ry="3" fill="#D97706"/>
+                  <!-- Bridges & Buildings -->
+                  <rect x="30" y="85" width="40" height="55" fill="#0E1B2B"/>
+                  <rect x="80" y="70" width="35" height="70" fill="#0B1726"/>
+                  <rect x="125" y="90" width="30" height="50" fill="#0E1B2B"/>
+                  <rect x="195" y="75" width="45" height="65" fill="#0A1624"/>
+                  <rect x="250" y="65" width="35" height="75" fill="#0E1B2B"/>
+                  <rect x="295" y="95" width="35" height="45" fill="#0B1726"/>
+                  <!-- Bridge -->
+                  <rect x="0" y="133" width="350" height="7" fill="#080F18"/>
+                  <line x1="20" y1="133" x2="330" y2="133" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="4,4"/>
+                  <!-- Nile Water -->
+                  <rect y="140" width="350" height="60" fill="url(#nileGrad)"/>
+                  <!-- Water Ripples -->
+                  <path d="M 20 155 Q 70 152 120 155 T 220 155 T 320 155" stroke="#38BDF8" stroke-width="1" opacity="0.3"/>
+                  <path d="M 50 175 Q 110 172 170 175 T 290 175" stroke="#F59E0B" stroke-width="1" opacity="0.4"/>
+                  <!-- Summit Tag Overlay -->
+                  <rect x="14" y="14" width="94" height="26" rx="13" fill="rgba(15, 23, 42, 0.75)" backdrop-filter="blur(4px)"/>
+                  <text x="61" y="31" fill="#FFFFFF" font-size="11" font-weight="700" text-anchor="middle" font-family="sans-serif">🇪🇬 مصر والاتحاد الأوروبي</text>
+                </svg>
+              </div>
+
+              <!-- Reactions Footer -->
+              <div class="card-reactions">
+                <div class="reaction-metrics">
+                  <!-- Heart -->
+                  <div class="metric-item">
+                    <span class="metric-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    </span>
+                    <span>١٬٤٢٠</span>
+                  </div>
+                  <!-- Comments -->
+                  <div class="metric-item">
+                    <span class="metric-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    </span>
+                    <span>٣١٠</span>
+                  </div>
+                  <!-- Views -->
+                  <div class="metric-item">
+                    <span class="metric-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </span>
+                    <span>١٨٫٥ ألف</span>
+                  </div>
+                </div>
+
+                <!-- Share Button -->
+                <div class="share-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating Bottom Dock Capsule -->
+        <div class="floating-dock-wrapper">
+          <nav class="floating-dock">
+            <!-- Tab 1: Home (Active with Green Orb) -->
+            <div class="dock-tab active">
+              <div class="dock-indicator"></div>
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+            </div>
+            <!-- Tab 2: Trending -->
+            <div class="dock-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+            </div>
+            <!-- Tab 3: Saved -->
+            <div class="dock-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+            </div>
+            <!-- Tab 4: Sources / Profile -->
+            <div class="dock-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
+            </div>
+          </nav>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </section>
+
+
+    <!-- ==============================================
+         SCREEN 2: TRENDING FEED (شاشة الأكثر تداولاً)
+         ============================================== -->
+    <section class="screen-block">
+      <div class="screen-tag">
+        <span class="screen-tag-num">٢</span>
+        <div>
+          <div class="screen-tag-title">شاشة الأكثر تداولاً — ترند الأخبار (Trending Feed)</div>
+          <div class="screen-tag-subtitle">شارات الترتيب النارية + كروت الأخبار البيضاء المنفصلة + شريط الملاحة النشط</div>
+        </div>
+      </div>
+
+      <div class="phone-frame">
+        <div class="phone-ambient-top"></div>
+        <div class="phone-notch"></div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+          <span>9:40</span>
+          <div class="status-icons">
+            <svg width="15" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+            <svg width="14" height="11" viewBox="0 0 16 12" fill="currentColor"><path d="M8 9.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM3.5 6.5a6.5 6.5 0 019 0l-1 1a5 5 0 00-7 0l-1-1zM1 4a10 10 0 0114 0l-1 1a8.5 8.5 0 00-12 0L1 4z"/></svg>
+            <svg width="22" height="11" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="0" width="20" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><rect x="2" y="2" width="14" height="8" rx="1.5"/><path d="M22 4v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+
+        <!-- Screen Content -->
+        <div class="phone-content">
+          <!-- Sub-screen Navigation Header -->
+          <div class="app-header" style="margin-bottom: 14px;">
+            <div class="circle-btn">
+              <!-- Back arrow RTL -->
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            </div>
+            <span style="font-size: 20px; font-weight: 800; color: #0F172A;">الأكثر تداولاً</span>
+            <div class="circle-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            </div>
+          </div>
+
+          <!-- Feed List Cards -->
+          <div class="feed-list">
+
+            <!-- Card 1 (Trending #1) -->
+            <div class="feed-card">
+              <div class="card-pub-header">
+                <div class="pub-profile">
+                  <div class="pub-avatar al-masry">المصري</div>
+                  <div class="pub-info">
+                    <div class="pub-name-row">
+                      <span class="pub-name">المصري اليوم</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563EB"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                    </div>
+                    <span class="pub-time">منذ ٤٠ دقيقة</span>
+                  </div>
+                </div>
+                <div class="trend-pill">
+                  <span>🔥</span>
+                  <span>#١ في مصر</span>
+                </div>
+              </div>
+
+              <h3 class="card-headline" style="font-size: 16px;">
+                البنك المركزي يطلق حزمة تسهيلات جديدة لدعم المصنعين وتوسيع الإنتاج المحلي 🔥
+              </h3>
+
+              <!-- Card Media Graphic -->
+              <div class="card-media" style="height: 160px;">
+                <svg viewBox="0 0 350 160" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="bankGrad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stop-color="#0F2438"/>
+                      <stop offset="100%" stop-color="#1E3A8A"/>
+                    </linearGradient>
+                  </defs>
+                  <rect width="350" height="160" fill="url(#bankGrad)"/>
+                  <!-- Abstract Financial Graph Lines -->
+                  <path d="M 0 130 Q 80 110 140 70 T 260 50 T 350 20" fill="none" stroke="#22C55E" stroke-width="4"/>
+                  <path d="M 0 130 Q 80 110 140 70 T 260 50 T 350 20 L 350 160 L 0 160 Z" fill="rgba(34, 197, 94, 0.15)"/>
+                  <!-- Financial Pillars -->
+                  <rect x="40" y="80" width="24" height="70" rx="4" fill="rgba(255,255,255,0.1)"/>
+                  <rect x="80" y="60" width="24" height="90" rx="4" fill="rgba(255,255,255,0.15)"/>
+                  <rect x="120" y="45" width="24" height="105" rx="4" fill="rgba(255,255,255,0.2)"/>
+                  <rect x="160" y="35" width="24" height="115" rx="4" fill="rgba(34, 197, 94, 0.4)"/>
+                  <!-- Central Bank Tag -->
+                  <rect x="14" y="14" width="85" height="24" rx="12" fill="rgba(0,0,0,0.5)"/>
+                  <text x="56" y="30" fill="#E2E8F0" font-size="11" font-weight="700" text-anchor="middle" font-family="sans-serif">🏛️ اقتصاد وتمويل</text>
+                </svg>
+              </div>
+
+              <!-- Reactions Footer -->
+              <div class="card-reactions">
+                <div class="reaction-metrics">
+                  <div class="metric-item">
+                    <span class="metric-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
+                    <span>٢٬١٤٠</span>
+                  </div>
+                  <div class="metric-item">
+                    <span class="metric-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+                    <span>٤٢٠</span>
+                  </div>
+                </div>
+                <div class="share-btn">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 2 (Trending #2) -->
+            <div class="feed-card">
+              <div class="card-pub-header">
+                <div class="pub-profile">
+                  <div class="pub-avatar" style="background: #E11D48;">يلا</div>
+                  <div class="pub-info">
+                    <div class="pub-name-row">
+                      <span class="pub-name">يلا كورة</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563EB"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                    </div>
+                    <span class="pub-time">منذ ساعتين</span>
+                  </div>
+                </div>
+                <div class="trend-pill secondary">
+                  <span>⚽</span>
+                  <span>#٢ رياضة</span>
+                </div>
+              </div>
+
+              <h3 class="card-headline" style="font-size: 16px;">
+                استعدادات نهائي إفريقيا: جاهزية التشكيل الأساسي واستقرار الخطة التكتيكية قبل اللقاء المرتقب
+              </h3>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Floating Bottom Dock Capsule -->
+        <div class="floating-dock-wrapper">
+          <nav class="floating-dock">
+            <!-- Tab 1: Home -->
+            <div class="dock-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+            </div>
+            <!-- Tab 2: Trending (Active with Green Orb) -->
+            <div class="dock-tab active">
+              <div class="dock-indicator"></div>
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+            </div>
+            <!-- Tab 3: Saved -->
+            <div class="dock-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+            </div>
+            <!-- Tab 4: Sources -->
+            <div class="dock-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
+            </div>
+          </nav>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </section>
+
+
+    <!-- ==============================================
+         SCREEN 3: SOURCE PAGE (شاشة صفحة المصدر)
+         ============================================== -->
+    <section class="screen-block">
+      <div class="screen-tag">
+        <span class="screen-tag-num">٣</span>
+        <div>
+          <div class="screen-tag-title">صفحة المصدر — ملف الصحيفة والمتابعة (Source Page)</div>
+          <div class="screen-tag-subtitle">هيدر المصدر العائم + حالة المتابعة التفاعلية (+ متابعة / مُتابَع ✓) + فييد المصدر</div>
+        </div>
+      </div>
+
+      <div class="phone-frame">
+        <div class="phone-ambient-top"></div>
+        <div class="phone-notch"></div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+          <span>9:40</span>
+          <div class="status-icons">
+            <svg width="15" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+            <svg width="14" height="11" viewBox="0 0 16 12" fill="currentColor"><path d="M8 9.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3zM3.5 6.5a6.5 6.5 0 019 0l-1 1a5 5 0 00-7 0l-1-1zM1 4a10 10 0 0114 0l-1 1a8.5 8.5 0 00-12 0L1 4z"/></svg>
+            <svg width="22" height="11" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="0" width="20" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><rect x="2" y="2" width="14" height="8" rx="1.5"/><path d="M22 4v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+
+        <!-- Screen Content -->
+        <div class="phone-content">
+          <!-- Sub-screen Navigation Header -->
+          <div class="app-header" style="margin-bottom: 14px;">
+            <div class="circle-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            </div>
+            <span style="font-size: 18px; font-weight: 800; color: #0F172A;">ملف المصدر</span>
+            <div class="circle-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E293B" stroke-width="2.5"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            </div>
+          </div>
+
+          <!-- Source Hero Profile Card -->
+          <div class="source-hero-card">
+            <!-- Large Source Avatar -->
+            <div class="source-large-avatar">مدى</div>
+
+            <!-- Source Name & Verification -->
+            <h2 class="source-name-title">
+              <span>مدى مصر</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#2563EB"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            </h2>
+
+            <p class="source-bio">صحافة رقمية مستقلة • تغطيات معمقة وتحقيقات استقصائية • القاهرة</p>
+
+            <!-- Stats -->
+            <div class="source-stats-row">
+              <div class="source-stat-item">
+                <span class="source-stat-val">٢٤٨ ألف</span>
+                <span class="source-stat-lbl">متابع في التطبيق</span>
+              </div>
+              <div style="width: 1px; height: 24px; background: #E2E8F0;"></div>
+              <div class="source-stat-item">
+                <span class="source-stat-val">١٢٬٤٠٠</span>
+                <span class="source-stat-lbl">مقال وخبر منشور</span>
+              </div>
+            </div>
+
+            <!-- Follow Buttons Showcase (Both states shown) -->
+            <div class="follow-btn-group">
+              <!-- Follow State Active (Default Action) -->
+              <div class="btn-follow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>متابعة المصدر</span>
+              </div>
+              <!-- Already Followed (Visual Preview of toggled state) -->
+              <div class="btn-follow followed">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>مُتابَع ✓</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Latest from this source -->
+          <div class="section-head" style="margin-bottom: 10px;">
+            <span class="section-title">أحدث تغطيات مدى مصر</span>
+          </div>
+
+          <!-- Feed Card from Source -->
+          <div class="feed-card">
+            <div class="card-pub-header">
+              <span class="pub-time">منذ ساعتين • اقتصاد كلي</span>
+              <div class="icon-more">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+              </div>
+            </div>
+
+            <h3 class="card-headline" style="font-size: 15px;">
+              قراءة في موازنة العام المالي الجديد: أولويات الإنفاق الاجتماعي وتحفيز الصادرات
+            </h3>
+
+            <div class="card-reactions">
+              <div class="reaction-metrics">
+                <div class="metric-item">
+                  <span class="metric-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
+                  <span>٨٩٠</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+                  <span>١٧٥</span>
+                </div>
+              </div>
+              <div class="share-btn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Floating Bottom Dock Capsule -->
+        <div class="floating-dock-wrapper">
+          <nav class="floating-dock">
+            <!-- Tab 1: Home -->
+            <div class="dock-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+            </div>
+            <!-- Tab 2: Trending -->
+            <div class="dock-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+            </div>
+            <!-- Tab 3: Saved -->
+            <div class="dock-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+            </div>
+            <!-- Tab 4: Sources (Active with Green Orb) -->
+            <div class="dock-tab active">
+              <div class="dock-indicator"></div>
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
+            </div>
+          </nav>
+        </div>
+
+        <div class="home-indicator"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Design Notes & Summary for Review -->
+  <footer class="design-notes">
+    <h3>ملاحظات التوجيه البصري المستوحى (Design Decisions Summary):</h3>
+    <ul>
+      <li><strong>الخلفية والأجواء (Atmosphere)</strong>: تم التحول من الأبيض المكتبي المسطح إلى خلفية مهدئة بتدرج ناعم يجمع بين المريمية والأخضر النعناعي الفاتح (Sage Mist: <code>#E6F0EB</code> إلى <code>#F5F9F6</code>)، مما يمنح التطبيق طابعاً عضوياً فاخراً ومريحاً للقراءة الطويلة.</li>
+      <li><strong>الكروت فائقة الاستدارة (Pill & Deck Geometry)</strong>: اعتماد استدارة زوايا كبيرة (<code>borderRadius: 26px - 28px</code>) مع تظليل خفيف ناعم بدلاً من الحدود الرمادية القاسية، مع تطبيق نمط الكروت المتراكبة (Card Stack) للأخبار الأكثر تداولاً.</li>
+      <li><strong>شريط الملاحة العائم (Floating Capsule Dock)</strong>: شريط سفلي بيضاوي عائم فوق المحتوى، يتميز بتأثير زجاجي (blur) وزر نشط محاط بوهج أخضر ناعم مستوحى مباشرة من المرجع.</li>
+      <li><strong>التحكم والأزرار الدائرية</strong>: أزرار دائرية بيضاء عائمة بحجم <code>44×44px</code> للهيدر والرجوع والبحث والمشاركة.</li>
+      <li><strong>التطبيق الكامل في Expo / React Native</strong>: جميع هذه العناصر قابلة للبرمجة مباشرة في React Native دون الحاجة لصور خارجية أو مكتبات ثقيلة، باستخدام خصائص الظل والاستدارة و LinearGradient المتاحة في حزم Expo القياسية.</li>
+    </ul>
+  </footer>
+
+</body>
+</html>

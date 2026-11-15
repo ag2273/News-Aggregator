@@ -1,0 +1,12 @@
+{
+  "name": "news-aggregator",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "server": "pnpm --filter @news/server dev",
+    "build": "pnpm --filter @news/server build"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3"]
+  }
+}
