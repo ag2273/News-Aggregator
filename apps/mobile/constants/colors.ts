@@ -1,0 +1,36 @@
+export const palette = {
+  light: {
+    background: '#F5F9F6',
+    surface: '#FFFFFF',
+    surfaceSubtle: 'rgba(255,255,255,0.85)',
+    dockBg: 'rgba(255,255,255,0.95)',
+    dockActiveGlow: '#22C55E',
+    textPrimary: '#0F172A',
+    textSecondary: '#475569',
+    textMuted: '#64748B',
+    pillActiveBg: '#0F172A',
+    pillActiveText: '#FFFFFF',
+    breaking: '#DC2626',
+    breakingBg: '#FEF2F2',
+    accent: '#2563EB',
+    border: '#E2E8F0',
+  },
+  dark: {
+    background: '#13201B',
+    surface: '#1A2822',
+    surfaceSubtle: 'rgba(30,41,50,0.8)',
+    dockBg: 'rgba(26,40,34,0.92)',
+    dockActiveGlow: '#22C55E',
+    textPrimary: '#F8FAFC',
+    textSecondary: '#CBD5E1',
+    textMuted: '#94A3B8',
+    pillActiveBg: '#F1F5F9',
+    pillActiveText: '#0F172A',
+    breaking: '#EF4444',
+    breakingBg: '#3B1215',
+    accent: '#60A5FA',
+    border: '#26354A',
+  },
+};
+
+export type Theme = (typeof palette)['light'];
