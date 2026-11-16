@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Article } from './types.js';
+import { categorize } from './categorize.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.resolve(__dirname, '../../data/news.json');
@@ -12,6 +13,19 @@ export interface StoredArticle extends Article {
 
 let cache: StoredArticle[] | null = null;
 
+/** Lazy migration: re-classify legacy 'general' categories using the keyword classifier. */
+function migrate(rows: StoredArticle[]): { rows: StoredArticle[]; changed: boolean } {
+  let changed = false;
+  const out = rows.map((r) => {
+    if (!r.category || r.category === 'general') {
+      changed = true;
+      return { ...r, category: categorize(r.title, r.summary) };
+    }
+    return r;
+  });
+  return { rows: out, changed };
+}
+
 function load(): StoredArticle[] {
   if (cache) return cache;
   try {
@@ -20,6 +34,11 @@ function load(): StoredArticle[] {
     cache = Array.isArray(parsed) ? (parsed as StoredArticle[]) : [];
   } catch {
     cache = [];
+  }
+  const { rows, changed } = migrate(cache);
+  if (changed) {
+    cache = rows;
+    save();
   }
   return cache;
 }

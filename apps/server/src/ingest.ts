@@ -8,6 +8,7 @@ import type { StoredArticle } from './db.js';
 import { fetchSource } from './fetcher.js';
 import { SOURCES } from './types.js';
 import type { Article } from './types.js';
+import { CATEGORIES, normalizeCategory } from './categorize.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 let lastFetchTime = 0;
@@ -62,6 +63,35 @@ export function getSources(): Array<{ id: string; name: string; country: string 
     }
   }
   return rows;
+}
+
+/** Distinct categories present in stored articles, in fixed display order. */
+export function getCategories(): Array<{ id: string; name: string }> {
+  const present = new Set(getAllArticles().map((a) => normalizeCategory(a.category)));
+  return CATEGORIES.filter((c) => present.has(c.id)).map((c) => ({ id: c.id, name: c.nameAr }));
+}
+
+/** Recent articles (last 48h) ordered newest-first. */
+export function getTrending(limit = 20): Article[] {
+  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+  return getAllArticles()
+    .filter((a) => a.publishedAt >= cutoff)
+    .slice(0, limit)
+    .map(toArticle);
+}
+
+/** Articles for one source, newest-first, with limit/offset. */
+export function getArticlesBySource(sourceId: string, limit = 50, offset = 0): Article[] {
+  return getAllArticles()
+    .filter((a) => a.sourceId === sourceId)
+    .slice(offset, offset + limit)
+    .map(toArticle);
+}
+
+/** Source metadata (Arabic name) for a source id, or null. */
+export function getSourceMeta(sourceId: string): { id: string; name: string } | null {
+  const s = SOURCES.find((x) => x.id === sourceId);
+  return s ? { id: s.id, name: s.nameAr } : null;
 }
 
 function toArticle(row: StoredArticle): Article {

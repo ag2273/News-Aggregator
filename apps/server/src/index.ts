@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { refreshAll, getArticles, getArticleById, getSources } from './ingest.js';
+import { refreshAll, getArticles, getArticleById, getSources, getCategories, getTrending, getArticlesBySource, getSourceMeta } from './ingest.js';
 
 const app = new Hono();
 
@@ -22,6 +22,26 @@ app.get('/api/feed', async (c) => {
 
 app.get('/api/sources', (c) => {
   return c.json({ data: getSources() });
+});
+
+app.get('/api/categories', (c) => {
+  return c.json({ data: getCategories() });
+});
+
+app.get('/api/trending', (c) => {
+  const limit = Math.min(Number(c.req.query('limit') ?? 20), 50);
+  const articles = getTrending(limit);
+  return c.json({ data: articles, total: articles.length });
+});
+
+app.get('/api/sources/:id/articles', (c) => {
+  const id = c.req.param('id');
+  const source = getSourceMeta(id);
+  if (!source) return c.json({ error: 'not found' }, 404);
+  const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
+  const offset = Number(c.req.query('offset') ?? 0);
+  const articles = getArticlesBySource(id, limit, offset);
+  return c.json({ data: articles, source });
 });
 
 app.get('/api/articles/:id', (c) => {

@@ -19,11 +19,18 @@ import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 
 const PAGE_SIZE = 30;
-const CATEGORIES = ['كل الأخبار', 'مصر', 'اقتصاد', 'رياضة', 'تكنولوجيا'];
+const CATEGORY_PILLS: Array<{ id: string | null; label: string }> = [
+  { id: null, label: 'كل الأخبار' },
+  { id: 'egypt', label: 'مصر' },
+  { id: 'economy', label: 'اقتصاد' },
+  { id: 'sports', label: 'رياضة' },
+  { id: 'tech', label: 'تكنولوجيا' },
+];
 
 export default function FeedScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
   const [articles, setArticles] = useState<Article[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,31 +140,41 @@ export default function FeedScreen() {
 
       {/* Category pills */}
       <View style={styles.pills}>
-        {CATEGORIES.map((c, i) => (
-          <View
-            key={c}
-            style={[
-              styles.pill,
-              i === 0
-                ? { backgroundColor: t.pillActiveBg }
-                : { backgroundColor: t.surfaceSubtle, borderColor: t.border, borderWidth: 1 },
-            ]}
-          >
-            <Text style={[styles.pillText, { color: i === 0 ? t.pillActiveText : t.textSecondary }]}>
-              {c}
-            </Text>
-          </View>
-        ))}
+        {CATEGORY_PILLS.map((c) => {
+          const active = c.id === activeCategory;
+          return (
+            <TouchableOpacity
+              key={c.id ?? 'all'}
+              onPress={() => setActiveCategory(c.id)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              style={[
+                styles.pill,
+                active
+                  ? { backgroundColor: t.pillActiveBg }
+                  : { backgroundColor: t.surfaceSubtle, borderColor: t.border, borderWidth: 1 },
+              ]}
+            >
+              <Text style={[styles.pillText, { color: active ? t.pillActiveText : t.textSecondary }]}>
+                {c.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>الأكثر قراءة الآن</Text>
 
       {/* Feed */}
       <FlatList
-        data={articles}
+        data={activeCategory === null ? articles : articles.filter((a) => a.category === activeCategory)}
         keyExtractor={(a) => a.id}
         renderItem={renderItem}
         contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <Text style={[styles.empty, { color: t.textMuted }]}>لا توجد أخبار في هذا التصنيف</Text>
+        }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.dockActiveGlow} />
         }
@@ -173,9 +190,14 @@ export default function FeedScreen() {
         <View style={[styles.dockItem, styles.dockActive, { backgroundColor: t.dockActiveGlow }]}>
           <Ionicons name="home" size={20} color="#064E3B" />
         </View>
-        <View style={styles.dockItem}>
+        <TouchableOpacity
+          style={styles.dockItem}
+          onPress={() => router.push('/trending')}
+          accessibilityRole="button"
+          accessibilityLabel="الأكثر تداولاً"
+        >
           <Ionicons name="flame-outline" size={20} color={t.textMuted} />
-        </View>
+        </TouchableOpacity>
         <View style={styles.dockItem}>
           <Ionicons name="bookmark-outline" size={20} color={t.textMuted} />
         </View>
@@ -267,6 +289,7 @@ const styles = StyleSheet.create({
   dockItem: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   dockActive: {},
   errorText: { fontSize: 16, textAlign: 'center', marginBottom: 16 },
+  empty: { textAlign: 'center', marginTop: 32, fontFamily: 'Cairo_400Regular', fontSize: 14 },
   retryBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 999 },
   retryText: { fontFamily: 'Cairo_600SemiBold' },
 });
