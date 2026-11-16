@@ -11,10 +11,6 @@ import {
   getPreloadCoverUrls,
   prefetchWindowCovers,
   _resetPrefetchCache,
-  getOffscreenCoverStyle,
-  getDeckAdjacentCards,
-  getActiveDeckCards,
-  DEFAULT_COVER_DIMENSIONS,
   PRELOAD_RADIUS,
 } from '../lib/preload.ts';
 
@@ -136,114 +132,24 @@ check('repeated prefetch for same window fetches 0 new', fetchedSame, []);
 const fetchedAdvance = await prefetchWindowCovers(sampleArticles, 1, PRELOAD_RADIUS, mockPrefetch);
 check('advancing index fetches newly revealed cover', fetchedAdvance, ['https://img.test/4.jpg']);
 
-console.log('— off-screen cover dimensions for native decode warming —');
-// Unmeasured / null dimensions: must return real non-1px fallback dimensions
-const fallbackStyle = getOffscreenCoverStyle(null);
-check('unmeasured dimensions return real non-1px width (>1)', fallbackStyle.width > 1, true);
-check('unmeasured dimensions return real non-1px height (>1)', fallbackStyle.height > 1, true);
-check('fallback width matches DEFAULT_COVER_DIMENSIONS', fallbackStyle.width, DEFAULT_COVER_DIMENSIONS.width);
-check('fallback height matches DEFAULT_COVER_DIMENSIONS', fallbackStyle.height, DEFAULT_COVER_DIMENSIONS.height);
-
-// Window width fallback (e.g. iPhone width 390 -> 390 - 64 = 326)
-const windowFallbackStyle = getOffscreenCoverStyle(null, 390);
-check('window width fallback calculates real width (390 - 64 = 326)', windowFallbackStyle.width, 326);
-check('window width fallback has real height (>1)', windowFallbackStyle.height > 1, true);
-
-// Measured dimensions from onLayout
-const measuredStyle = getOffscreenCoverStyle({ width: 358, height: 215 });
-check('measured dimensions apply exact real width', measuredStyle.width, 358);
-check('measured dimensions apply exact real height', measuredStyle.height, 215);
-
-// Degenerate 1x1 dimensions must be rejected in favor of real dimensions
-const degenerateStyle = getOffscreenCoverStyle({ width: 1, height: 1 });
-check('degenerate 1x1 width is rejected for real dimension (>1)', degenerateStyle.width > 1, true);
-check('degenerate 1x1 height is rejected for real dimension (>1)', degenerateStyle.height > 1, true);
-
-console.log('— deck adjacent cards: full content for index+1 & index-1 (no blank strips) —');
-// Test adjacent cards partitioning at index 0
-const adj0 = getDeckAdjacentCards(sampleArticles, 0);
-check('adj0 prevArticle is null at start of feed', adj0.prevArticle, null);
-check('adj0 nextArticle has id art-1', adj0.nextArticle?.id, 'art-1');
-check('adj0 nextArticle has full non-empty title', Boolean(adj0.nextArticle?.title), true);
-check('adj0 nextArticle has full cover imageUrl', Boolean(adj0.nextArticle?.imageUrl), true);
-check('adj0 nextArticle has publisher sourceName', Boolean(adj0.nextArticle?.sourceName), true);
-check('adj0 farStrips contains index+2 and index+3', adj0.farStrips.map((a) => a.id), ['art-2', 'art-3']);
-check('adj0 farStrips does NOT include nextArticle art-1', adj0.farStrips.some((a) => a.id === 'art-1'), false);
-
-// Test adjacent cards partitioning at index 5
-const adj5 = getDeckAdjacentCards(sampleArticles, 5);
-check('adj5 prevArticle has id art-4', adj5.prevArticle?.id, 'art-4');
-check('adj5 prevArticle has full non-empty title', Boolean(adj5.prevArticle?.title), true);
-check('adj5 prevArticle has full cover imageUrl', Boolean(adj5.prevArticle?.imageUrl), true);
-check('adj5 nextArticle has id art-6', adj5.nextArticle?.id, 'art-6');
-check('adj5 nextArticle has full non-empty title', Boolean(adj5.nextArticle?.title), true);
-check('adj5 nextArticle has full cover imageUrl', Boolean(adj5.nextArticle?.imageUrl), true);
-check('adj5 farStrips contains far hint cards only (art-7, art-8)', adj5.farStrips.map((a) => a.id), ['art-7', 'art-8']);
-
-// Test adjacent cards partitioning at last index (9)
-const adj9 = getDeckAdjacentCards(sampleArticles, 9);
-check('adj9 nextArticle is null at end of feed', adj9.nextArticle, null);
-check('adj9 prevArticle has id art-8', adj9.prevArticle?.id, 'art-8');
-check('adj9 farStrips is empty at end of feed', adj9.farStrips, []);
-
-console.log('— active deck cards & key stability across role changes —');
-// At index 0: [next: art-1, front: art-0]
-const active0 = getActiveDeckCards(sampleArticles, 0);
-check('active0 returns exactly 2 cards [next, front]', active0.length, 2);
-check('active0 roles are [next, front]', active0.map((c) => c.role), ['next', 'front']);
-check('active0 keys are strictly article.id', active0.map((c) => c.key), ['art-1', 'art-0']);
-
-// At index 1: [prev: art-0, next: art-2, front: art-1]
-const active1 = getActiveDeckCards(sampleArticles, 1);
-check('active1 returns 3 cards [prev, next, front]', active1.length, 3);
-check('active1 roles are [prev, next, front]', active1.map((c) => c.role), ['prev', 'next', 'front']);
-check('active1 keys are strictly article.id', active1.map((c) => c.key), ['art-0', 'art-2', 'art-1']);
-
-// Key stability across advance 0 -> 1:
-// art-1 was in active0 (role: next) with key 'art-1'.
-// art-1 is in active1 (role: front) with key 'art-1'.
-const nextCardAt0 = active0.find((c) => c.article.id === 'art-1');
-const frontCardAt1 = active1.find((c) => c.article.id === 'art-1');
-check('art-1 key at index 0 (as next) is strictly art-1', nextCardAt0?.key, 'art-1');
-check('art-1 key at index 1 (as front) is strictly art-1', frontCardAt1?.key, 'art-1');
-check('art-1 key matches identically across next -> front advance (stable fiber reuse)', nextCardAt0?.key === frontCardAt1?.key, true);
-
-// Key stability across reverse 1 -> 0:
-// art-0 was in active1 (role: prev) with key 'art-0'.
-// art-0 is in active0 (role: front) with key 'art-0'.
-const prevCardAt1 = active1.find((c) => c.article.id === 'art-0');
-const frontCardAt0 = active0.find((c) => c.article.id === 'art-0');
-check('art-0 key matches identically across prev -> front reverse', prevCardAt1?.key === frontCardAt0?.key, true);
-
-// Boundary checks:
-const activeEnd = getActiveDeckCards(sampleArticles, 9);
-check('activeEnd has 2 cards [prev, front]', activeEnd.map((c) => c.role), ['prev', 'front']);
-check('activeEnd keys are strictly article.id', activeEnd.map((c) => c.key), ['art-8', 'art-9']);
-check('empty articles returns empty active cards', getActiveDeckCards([], 0), []);
-
-console.log('— HeroDeck component structural verification —');
+console.log('— HeroDeck simple deck structural verification —');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const heroDeckSource = fs.readFileSync(path.resolve(__dirname, '../components/HeroDeck.tsx'), 'utf-8');
-const deckCardSource = heroDeckSource.slice(heroDeckSource.indexOf('export function DeckCard'));
 
-check('HeroDeck imports getActiveDeckCards', heroDeckSource.includes('getActiveDeckCards'), true);
-check('HeroDeck renders DeckCard component', heroDeckSource.includes('<DeckCard'), true);
-check('HeroDeck maps activeCards keyed strictly by article.id', heroDeckSource.includes('key={card.article.id}'), true);
-check('HeroDeck rejects role-prefixed keys (next-, prev-)', !heroDeckSource.includes('key={`next-') && !heroDeckSource.includes('key={`prev-'), true);
-check('DeckCard renders publisher avatar and meta', heroDeckSource.includes('PublisherAvatar') && heroDeckSource.includes('PublisherMeta'), true);
-check('DeckCard renders title', heroDeckSource.includes('article.title'), true);
-check('DeckCard renders cover image', heroDeckSource.includes('article.imageUrl'), true);
-check('DeckCard cover Image has no opacity toggle (never hides a loaded image)', !deckCardSource.includes('opacity: loaded'), true);
-check('DeckCard cover Image has no loaded state at all', !deckCardSource.includes('setLoaded') && !deckCardSource.includes('useState(() => isCoverLoaded'), true);
-check('DeckCard placeholder icon layer is gone', !deckCardSource.includes('newspaper-outline'), true);
-check('DeckCard imageContainer keeps a solid background color', deckCardSource.includes('backgroundColor: t.pillInactiveBg'), true);
-check('DeckCard root uses cardBox styling with absolute positioning', heroDeckSource.includes('cardBox:') && heroDeckSource.includes("position: 'absolute'"), true);
-check('styles.layer is restricted to farStrips (not adjacent cards)', heroDeckSource.includes('farStrips') && heroDeckSource.includes('styles.layer'), true);
-check('Shared imageOpacity shared value is deleted', !heroDeckSource.includes('imageOpacity =') && !heroDeckSource.includes('imageOpacity.value'), true);
-check('Shared imageFadeStyle is deleted', !heroDeckSource.includes('imageFadeStyle'), true);
-check('Component-level lastLoadedUrlRef is deleted', !heroDeckSource.includes('lastLoadedUrlRef'), true);
-check('StaticDeckCard is exported for backwards compatibility', heroDeckSource.includes('export const StaticDeckCard = DeckCard'), true);
+check('full-card neighbor component is gone', heroDeckSource.includes('DeckCard'), false);
+check('HeroDeck renders publisher avatar and meta', heroDeckSource.includes('PublisherAvatar') && heroDeckSource.includes('PublisherMeta'), true);
+check('HeroDeck renders the front title', heroDeckSource.includes('front.title'), true);
+check('HeroDeck renders the cover Image', heroDeckSource.includes('coverSource') && heroDeckSource.includes('<Image'), true);
+check('cover Image has no opacity toggle', heroDeckSource.includes('opacity: loaded'), false);
+check('cover container keeps a solid background color', heroDeckSource.includes('backgroundColor: t.pillInactiveBg'), true);
+check('cards behind the front one are decorative strips', heroDeckSource.includes('pointerEvents="none"') && heroDeckSource.includes('styles.layer'), true);
+check('strip offsets use (DEPTH - 1 - i) * PEEK', heroDeckSource.includes('(DEPTH - 1 - i) * PEEK'), true);
+check('strip widths use 94 - i * 6 percent', heroDeckSource.includes('${94 - i * 6}%'), true);
+check('no off-screen pre-render block', heroDeckSource.includes('offscreenPreload') || heroDeckSource.includes('preloadNeighbors'), false);
+check('no coverDimensions state or onCoverLayout plumbing', heroDeckSource.includes('coverDimensions') || heroDeckSource.includes('onCoverLayout'), false);
+check('prefetch window still runs through Image.prefetch', heroDeckSource.includes('prefetchWindowCovers(articles, index, PRELOAD_RADIUS, Image.prefetch)'), true);
+check('hint text has no explicit direction words', heroDeckSource.includes('اسحب للتالي') && !heroDeckSource.includes('اسحب شمال'), true);
 
 console.log('— gesture stability & animation safety (no back-swipe freeze) —');
 check('HeroDeck synchronizes indexSV and totalSV shared values', heroDeckSource.includes('indexSV = useSharedValue') && heroDeckSource.includes('totalSV = useSharedValue'), true);
@@ -252,23 +158,18 @@ const panHasIndexDep = /useMemo\s*\(\s*\(\)\s*=>\s*Gesture\.Pan\(\)[\s\S]*?,\s*\
 check('pan gesture avoids index in useMemo deps (stable gesture instance)', panHasIndexDep, false);
 check('pan onEnd worklet reads indexSV.value snapshot', heroDeckSource.includes('deckStep(indexSV.value, dir, totalSV.value)'), true);
 check('withTiming interruption safely cancels and resets tx to 0', heroDeckSource.includes('cancelAnimation(tx)') && heroDeckSource.includes('tx.value = 0'), true);
-check('DeckCard memoizes cover Image source to prevent re-sourcing flicker', heroDeckSource.includes('imageSource = useMemo') && heroDeckSource.includes('source={imageSource}'), true);
+check('front cover source is memoized so a re-render does not re-source it', heroDeckSource.includes('coverSource = useMemo') && heroDeckSource.includes('source={coverSource}'), true);
 
 console.log('— single deck-root GestureDetector (no handlerTag mutation / freeze) —');
 const gestureDetectorMatches = heroDeckSource.match(/<GestureDetector\b/g) || [];
 check('HeroDeck has exactly ONE GestureDetector at container root', gestureDetectorMatches.length, 1);
-check('DeckCard has zero GestureDetector instances', deckCardSource.includes('<GestureDetector'), false);
-check('DeckCard uses Pressable for publisher row source tap', deckCardSource.includes('<Pressable') && deckCardSource.includes('onPressSource'), true);
+check('publisher row source tap uses a Pressable', heroDeckSource.includes('<Pressable') && heroDeckSource.includes('onPress={handleSourcePress}'), true);
 check('HeroDeck wraps root in GestureDetector with composed gesture', heroDeckSource.includes('<GestureDetector gesture={composed}>'), true);
 check('HeroDeck includes isAnimating safety timeout', heroDeckSource.includes('animTimeoutRef') && heroDeckSource.includes('clearAnimTimeout') && heroDeckSource.includes('startAnimTimeout'), true);
 
 console.log('— no opacity-toggling image patterns anywhere in the deck —');
 check('no "opacity: loaded" toggle in HeroDeck', heroDeckSource.includes('opacity: loaded'), false);
 check('no loaded-cover cache helpers remain in HeroDeck', !heroDeckSource.includes('markCoverLoaded') && !heroDeckSource.includes('markCoverError') && !heroDeckSource.includes('isCoverLoaded'), true);
-const offscreenPreloadIdx = heroDeckSource.indexOf('<View\n          style={styles.offscreenPreload}');
-const offscreenBlock = offscreenPreloadIdx === -1 ? '' : heroDeckSource.slice(offscreenPreloadIdx, offscreenPreloadIdx + 900);
-check('offscreen preload block still renders neighbor Images', offscreenBlock.includes('<Image') && offscreenBlock.includes('preloadNeighbors.map'), true);
-check('offscreen preload block carries no load-state callbacks', offscreenBlock.includes('markCover'), false);
 check('no index-keyed opacity reset effect', /useEffect\(\s*\(\)\s*=>\s*\{\s*imageOpacity\.value\s*=\s*0;\s*\}\s*,\s*\[\s*index/.test(heroDeckSource), false);
 check('buggy shared imageOpacity value is gone', !heroDeckSource.includes('imageOpacity =') && !heroDeckSource.includes('imageOpacity.value'), true);
 

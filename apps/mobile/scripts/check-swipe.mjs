@@ -59,37 +59,31 @@ check('fast flick left with short travel = -1', swipeOutcome(-30, -(SWIPE_VELOCI
 check('a far drag wins over opposite velocity', swipeOutcome(120, -2000), 1);
 check('no movement snaps back', swipeOutcome(0, 0), 0);
 
-console.log('— index step (deckStep): RTL feed, left = next, right = previous —');
-check('left swipe advances one', deckStep(3, -1, 20), 4);
-check('left swipe from the first card advances one', deckStep(0, -1, 20), 1);
-check('right swipe goes back one', deckStep(3, 1, 20), 2);
-check('right swipe at the first card does nothing', deckStep(0, 1, 20), null);
-check('left swipe at the last card does nothing', deckStep(19, -1, 20), null);
-check('right swipe from the last card works', deckStep(19, 1, 20), 18);
-check('left swipe from the second-to-last works', deckStep(18, -1, 20), 19);
+console.log('— index step (deckStep): right = next, left = previous —');
+check('right swipe advances one', deckStep(0, 1, 20), 1);
+check('left swipe goes back one', deckStep(3, -1, 20), 2);
+check('left swipe at the first card does nothing', deckStep(0, -1, 20), null);
+check('right swipe at the last card does nothing', deckStep(19, 1, 20), null);
+check('right swipe from the second-to-last works', deckStep(18, 1, 20), 19);
+check('left swipe from the last card works', deckStep(19, -1, 20), 18);
 check('snap-back never moves the index', deckStep(7, 0, 20), null);
 check('empty feed never moves', deckStep(0, 1, 0), null);
 check('empty feed never moves (left)', deckStep(0, -1, 0), null);
 
-// Regression guard for the RTL deck wiring: the reveal styles must follow the
-// same rule as deckStep, and a slightly diagonal drag must still activate the pan.
-console.log('— HeroDeck RTL reveal wiring —');
+// Regression guard for the freeze fix + the simple deck: one root detector,
+// no per-card detector, and a slightly diagonal drag must still activate.
+console.log('— HeroDeck simple-deck wiring —');
 const heroDeckSource = fs.readFileSync(
   path.join(__dirname, '..', 'components', 'HeroDeck.tsx'),
   'utf-8',
 );
-const nextStyleSrc = heroDeckSource.slice(
-  heroDeckSource.indexOf('const nextCardStyle'),
-  heroDeckSource.indexOf('const prevCardStyle'),
-);
-const prevStyleSrc = heroDeckSource.slice(
-  heroDeckSource.indexOf('const prevCardStyle'),
-  heroDeckSource.indexOf('const stripStyles'),
-);
-check('next card is revealed by a left drag (tx < 0)', nextStyleSrc.includes('Math.min(-tx.value / width'), true);
-check('prev card is revealed by a right drag (tx > 0)', prevStyleSrc.includes('Math.min(tx.value / width'), true);
+check('HeroDeck has exactly ONE GestureDetector', (heroDeckSource.match(/<GestureDetector\b/g) || []).length, 1);
+check('deck cards behind the front one are decorative strips', heroDeckSource.includes('styles.layer') && heroDeckSource.includes('pointerEvents="none"'), true);
+check('full-card neighbor component is gone', heroDeckSource.includes('DeckCard'), false);
+check('per-role reveal styles are gone', heroDeckSource.includes('nextCardStyle') || heroDeckSource.includes('prevCardStyle'), false);
 check('pan no longer fails on a slightly diagonal drag', heroDeckSource.includes('failOffsetY'), false);
 check('pan keeps activeOffsetX for horizontal activation', heroDeckSource.includes('activeOffsetX([-10, 10])'), true);
+check('hint text stays direction-neutral', heroDeckSource.includes('اسحب للتالي') && !heroDeckSource.includes('اسحب شمال'), true);
 
 // Regression guard for the 5158c1b crash: a worklet must not reference module
 // constants from its parameter defaults — babel emits those as bare identifiers

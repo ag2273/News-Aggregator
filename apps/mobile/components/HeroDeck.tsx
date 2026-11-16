@@ -1,14 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -22,15 +13,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { relativeTime } from '../lib/api';
 import { deckStep, swipeOutcome } from '../lib/swipe';
-import {
-  PRELOAD_RADIUS,
-  getPreloadNeighbors,
-  prefetchWindowCovers,
-  getOffscreenCoverStyle,
-  getDeckAdjacentCards,
-  getActiveDeckCards,
-  type CoverDimensions,
-} from '../lib/preload';
+import { PRELOAD_RADIUS, prefetchWindowCovers } from '../lib/preload';
 import type { Article } from '../lib/api';
 import type { Theme } from '../constants/colors';
 import { PublisherAvatar, PublisherMeta } from './Publisher';
@@ -45,7 +28,8 @@ const DEPTH = 3;
 /**
  * Full-screen swipe deck (Tinder-style). The front card fills the space it is
  * given; three card edges peek above it so the pile is obvious. Horizontal pan
- * advances; taps open the article sheet.
+ * advances; taps open the article sheet. The cards behind the front one are
+ * decorative strips only.
  */
 export function HeroDeck({
   articles,
@@ -75,6 +59,16 @@ export function HeroDeck({
   const frontRef = useRef(front);
   frontRef.current = front;
 
+  const coverSource = useMemo(
+    () => (front?.imageUrl ? { uri: front.imageUrl } : undefined),
+    [front?.imageUrl],
+  );
+
+  // Decorative strips for the cards that would sit behind the front one.
+  const back = [1, 2, 3].map((n) => articles[index + n]);
+  const canNext = index + 1 < articles.length;
+  const canPrev = index > 0;
+
   // Track timestamp of publisher row tap to prevent triggering card body tap
   const lastSourcePressTimeRef = useRef(0);
 
@@ -102,17 +96,6 @@ export function HeroDeck({
   useEffect(() => {
     return () => clearAnimTimeout();
   }, [clearAnimTimeout]);
-
-  const { farStrips } = useMemo(
-    () => getDeckAdjacentCards(articles, index),
-    [articles, index],
-  );
-  const activeCards = useMemo(
-    () => getActiveDeckCards(articles, index),
-    [articles, index],
-  );
-  const canNext = index + 1 < articles.length;
-  const canPrev = index > 0;
 
   // Synchronize shared value snapshots for worklets without recreating gesture handlers
   useEffect(() => {
@@ -146,18 +129,6 @@ export function HeroDeck({
     prefetchWindowCovers(articles, index, PRELOAD_RADIUS, Image.prefetch);
   }, [articles, index]);
 
-  const preloadNeighbors = useMemo(
-    () => getPreloadNeighbors(articles, index, PRELOAD_RADIUS),
-    [articles, index],
-  );
-
-  const [coverDimensions, setCoverDimensions] = useState<CoverDimensions | null>(null);
-
-  const offscreenCoverStyle = useMemo(
-    () => getOffscreenCoverStyle(coverDimensions, width),
-    [coverDimensions, width],
-  );
-
   // Pan gesture is created ONCE with stable deps; worklet reads indexSV and totalSV snapshots
   const pan = useMemo(
     () =>
@@ -173,7 +144,7 @@ export function HeroDeck({
           'worklet';
           const dir = swipeOutcome(e.translationX, e.velocityX);
           if (isAnimating.value) return;
-          // RTL feed: finger left = next article, finger right = previous.
+          // Physical direction: finger right = next article, finger left = previous.
           const next = deckStep(indexSV.value, dir, totalSV.value);
           if (next === null) {
             tx.value = withSpring(0, SPRING);
@@ -211,15 +182,12 @@ export function HeroDeck({
     }
   }, [isAnimating, onPress]);
 
-  const handleSourcePress = useCallback(
-    (a: Article) => {
-      lastSourcePressTimeRef.current = Date.now();
-      if (!isAnimating.value && onPressSource) {
-        onPressSource(a);
-      }
-    },
-    [isAnimating, onPressSource],
-  );
+  const handleSourcePress = useCallback(() => {
+    lastSourcePressTimeRef.current = Date.now();
+    if (!isAnimating.value && onPressSource && frontRef.current) {
+      onPressSource(frontRef.current);
+    }
+  }, [isAnimating, onPressSource]);
 
   const tapCard = useMemo(
     () =>
@@ -241,43 +209,11 @@ export function HeroDeck({
     ],
   }));
 
-  const nextCardStyle = useAnimatedStyle(() => {
-    if (tx.value > 0) {
-      // Swiping right towards prev card -> fade next card out so prev card is cleanly revealed
-      const opacity = interpolate(tx.value, [0, 50], [1, 0], 'clamp');
-      return {
-        opacity,
-        transform: [{ scale: 0.97 }, { translateY: -PEEK }],
-      };
-    }
-    const p = Math.min(-tx.value / width, 1);
-    return {
-      opacity: 1,
-      transform: [
-        { scale: interpolate(p, [0, 1], [0.97, 1]) },
-        { translateY: interpolate(p, [0, 1], [-PEEK, 0]) },
-      ],
-    };
-  });
-
-  const prevCardStyle = useAnimatedStyle(() => {
-    if (tx.value <= 0) {
-      return {
-        opacity: 0,
-        transform: [{ scale: 0.97 }, { translateY: -PEEK }],
-      };
-    }
-    const p = Math.min(tx.value / width, 1);
-    return {
-      opacity: interpolate(tx.value, [0, 50], [0, 1], 'clamp'),
-      transform: [
-        { scale: interpolate(p, [0, 1], [0.97, 1]) },
-        { translateY: interpolate(p, [0, 1], [-PEEK, 0]) },
-      ],
-    };
-  });
-
   const stripStyles = [
+    useAnimatedStyle(() => {
+      const p = Math.min(Math.abs(tx.value) / 220, 1);
+      return { transform: [{ translateY: -PEEK * p }] };
+    }),
     useAnimatedStyle(() => {
       const p = Math.min(Math.abs(tx.value) / 220, 1);
       return { transform: [{ translateY: -PEEK * p }] };
@@ -293,266 +229,91 @@ export function HeroDeck({
   return (
     <GestureDetector gesture={composed}>
       <View style={styles.deck}>
-        {/* Decorative far strips for index+3 and index+2 (pile hint only) */}
-        {farStrips
-          .map((a, idx) => ({ a, idx, stripIndex: idx + 1 }))
+        {/* Decorative strips for the cards behind the front one (pile hint only) */}
+        {back
+          .map((a, i) => ({ a, i }))
           .reverse()
-          .map(({ a, idx, stripIndex }) => (
-            <Animated.View
-              key={`strip-${a.id}-${stripIndex}`}
-              pointerEvents="none"
-              style={[
-                styles.layer,
-                {
-                  top: (DEPTH - 1 - stripIndex) * PEEK,
-                  width: `${94 - stripIndex * 6}%`,
-                  backgroundColor: stripIndex === 1 ? t.surfaceStackMid : t.surfaceStackBack,
-                  borderColor: t.stackEdge,
-                  opacity: stripIndex === 1 ? 0.95 : 0.85,
-                },
-                stripStyles[idx] ?? null,
-              ]}
-            />
-          ))}
+          .map(({ a, i }) =>
+            a ? (
+              <Animated.View
+                key={`${a.id}-${i}`}
+                pointerEvents="none"
+                style={[
+                  styles.layer,
+                  {
+                    top: (DEPTH - 1 - i) * PEEK,
+                    width: `${94 - i * 6}%`,
+                    backgroundColor: i === 0 ? t.surfaceStackMid : t.surfaceStackBack,
+                    borderColor: t.stackEdge,
+                    opacity: i === 0 ? 1 : 0.95 - i * 0.1,
+                  },
+                  stripStyles[i] ?? null,
+                ]}
+              />
+            ) : null,
+          )}
 
-        {/* Unified active cards [prev, next, front] keyed strictly by article.id ONLY */}
-        {activeCards.map((card) => {
-          const isFront = card.role === 'front';
-          const cardStyle =
-            card.role === 'front'
-              ? frontStyle
-              : card.role === 'next'
-                ? nextCardStyle
-                : prevCardStyle;
-          const hintText =
-            card.role === 'front'
-              ? canNext
-                ? 'اسحب شمال للتالي'
-                : canPrev
-                  ? 'اسحب يمين للسابق'
-                  : null
-              : card.role === 'next'
-                ? 'اسحب شمال للتالي'
-                : 'اسحب يمين للسابق';
-
-          return (
-            <DeckCard
-              key={card.article.id}
-              article={card.article}
-              t={t}
-              hintText={hintText}
-              style={cardStyle}
-              interactive={isFront}
-              onPress={onPress}
-              onPressSource={handleSourcePress}
-              onCoverLayout={
-                isFront
-                  ? (layout) => {
-                      setCoverDimensions((prev) => {
-                        if (
-                          prev?.width === layout.width &&
-                          prev?.height === layout.height
-                        ) {
-                          return prev;
-                        }
-                        return layout;
-                      });
-                    }
-                  : undefined
-              }
-            />
-          );
-        })}
-
-        {/* Off-screen neighbor pre-render: warms 3 ahead and 3 behind at real display dimensions */}
-        <View
-          style={styles.offscreenPreload}
-          pointerEvents="none"
-          accessible={false}
-          aria-hidden={true}
+        <Animated.View
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={front.title}
+          onAccessibilityTap={() => onPress(front)}
+          style={[styles.frontCard, { backgroundColor: t.surface }, frontStyle]}
         >
-          {preloadNeighbors.map((a) => (
-            <View key={`preload-${a.id}`} style={[styles.preloadItem, offscreenCoverStyle]}>
-              <Text style={styles.preloadText}>{a.title}</Text>
-              <Text style={styles.preloadText}>{a.sourceName}</Text>
-              {a.imageUrl ? (
-                <Image
-                  source={{ uri: a.imageUrl }}
-                  style={offscreenCoverStyle}
-                  resizeMode="cover"
-                />
-              ) : null}
+          <View style={styles.cardHeader}>
+            <Pressable
+              onPress={handleSourcePress}
+              style={styles.publisherRow}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={front.sourceName}
+            >
+              <PublisherAvatar name={front.sourceName} size={40} t={t} />
+              <PublisherMeta
+                name={front.sourceName}
+                relative={relativeTime(front.publishedAt)}
+                t={t}
+              />
+            </Pressable>
+            <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
+              <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
             </View>
-          ))}
-        </View>
+          </View>
+
+          <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={4}>
+            {front.title} 🔥
+          </Text>
+
+          <View style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}>
+            {coverSource ? (
+              <Image
+                source={coverSource}
+                style={[StyleSheet.absoluteFill, styles.image]}
+                resizeMode="cover"
+              />
+            ) : null}
+          </View>
+
+          <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
+            <Text style={[styles.meta, { color: t.textMuted }]}>
+              {relativeTime(front.publishedAt)}
+            </Text>
+            <View style={styles.hintRow}>
+              {canNext ? (
+                <Text style={[styles.hint, { color: t.textMuted }]}>اسحب للتالي</Text>
+              ) : canPrev ? (
+                <Text style={[styles.hint, { color: t.textMuted }]}>اسحب للسابق</Text>
+              ) : null}
+              <Ionicons name="share-outline" size={17} color={t.textMuted} />
+            </View>
+          </View>
+        </Animated.View>
       </View>
     </GestureDetector>
   );
 }
 
-export interface DeckCardProps {
-  article: Article;
-  t: Theme;
-  hintText?: string | null;
-  style?: StyleProp<ViewStyle> | ReturnType<typeof useAnimatedStyle>;
-  interactive?: boolean;
-  gesture?: any;
-  sourceGesture?: any;
-  onPress?: (a: Article) => void;
-  onPressSource?: (a: Article) => void;
-  onCoverLayout?: (layout: { width: number; height: number }) => void;
-}
-
-/**
- * Unified full-content deck card used for front, next, and prev roles.
- * Keyed strictly by article.id so advancing index preserves the React fiber instance
- * across next -> front transition without unmounting or re-sourcing the cover Image.
- */
-export function DeckCard({
-  article,
-  t,
-  hintText,
-  style,
-  interactive = false,
-  onPress,
-  onPressSource,
-  onCoverLayout,
-}: DeckCardProps) {
-  const imageSource = useMemo(
-    () => (article.imageUrl ? { uri: article.imageUrl } : undefined),
-    [article.imageUrl],
-  );
-
-  return (
-    <Animated.View
-      pointerEvents={interactive ? 'auto' : 'none'}
-      accessible={interactive}
-      accessibilityRole={interactive ? 'button' : undefined}
-      accessibilityLabel={interactive ? article.title : undefined}
-      onAccessibilityTap={interactive && onPress ? () => onPress(article) : undefined}
-      aria-hidden={!interactive}
-      style={[styles.cardBox, { backgroundColor: t.surface }, style]}
-    >
-      <View style={styles.cardHeader}>
-        <Pressable
-          onPress={interactive && onPressSource ? () => onPressSource(article) : undefined}
-          style={styles.publisherRow}
-          accessible={interactive}
-          accessibilityRole={interactive ? 'button' : undefined}
-          accessibilityLabel={interactive ? article.sourceName : undefined}
-        >
-          <PublisherAvatar name={article.sourceName} size={40} t={t} />
-          <PublisherMeta
-            name={article.sourceName}
-            relative={relativeTime(article.publishedAt)}
-            t={t}
-          />
-        </Pressable>
-        <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
-          <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
-        </View>
-      </View>
-
-      <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={4}>
-        {article.title} 🔥
-      </Text>
-
-      <View
-        style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}
-        onLayout={
-          onCoverLayout
-            ? (e) => {
-                const { width: w, height: h } = e.nativeEvent.layout;
-                if (w > 1 && h > 1) {
-                  onCoverLayout({ width: w, height: h });
-                }
-              }
-            : undefined
-        }
-      >
-        {/* Solid container color shows through until the cover decodes: no opacity
-            toggle, so an already-loaded image is never hidden or re-faded. */}
-        {article.imageUrl ? (
-          <Image
-            source={imageSource}
-            style={[StyleSheet.absoluteFill, styles.image]}
-            resizeMode="cover"
-          />
-        ) : null}
-      </View>
-
-      <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
-        <Text style={[styles.meta, { color: t.textMuted }]}>
-          {relativeTime(article.publishedAt)}
-        </Text>
-        <View style={styles.hintRow}>
-          {hintText ? (
-            <Text style={[styles.hint, { color: t.textMuted }]}>{hintText}</Text>
-          ) : null}
-          <Ionicons name="share-outline" size={17} color={t.textMuted} />
-        </View>
-      </View>
-    </Animated.View>
-  );
-}
-
-export const StaticDeckCard = DeckCard;
-
 const styles = StyleSheet.create({
-  cardBox: {
-    position: 'absolute',
-    top: DEPTH * PEEK,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderRadius: 28,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
-    shadowRadius: 26,
-    elevation: 6,
-  },
-  adjacentCard: {
-    position: 'absolute',
-    top: DEPTH * PEEK,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderRadius: 28,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
-    shadowRadius: 26,
-    elevation: 6,
-  },
-  frontCard: {
-    position: 'absolute',
-    top: DEPTH * PEEK,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderRadius: 28,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
-    shadowRadius: 26,
-    elevation: 6,
-  },
-  offscreenPreload: {
-    position: 'absolute',
-    opacity: 0,
-    overflow: 'hidden',
-    left: -9999,
-    top: -9999,
-  },
-  preloadItem: {
-    position: 'absolute',
-    opacity: 0,
-  },
-  preloadText: { fontSize: 1 },
   deck: {
     flex: 1,
     marginHorizontal: 16,
@@ -573,6 +334,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 1,
+  },
+  frontCard: {
+    flex: 1,
+    width: '100%',
+    borderRadius: 28,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 26,
+    elevation: 6,
   },
   cardHeader: {
     flexDirection: 'row',
