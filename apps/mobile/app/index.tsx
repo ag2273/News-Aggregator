@@ -48,6 +48,7 @@ export default function FeedScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
   const [articles, setArticles] = useState<Article[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [deckIndex, setDeckIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +77,11 @@ export default function FeedScreen() {
     load(true).finally(() => setLoading(false));
   }, [load]);
 
+  // A new category starts a fresh deck.
+  useEffect(() => {
+    setDeckIndex(0);
+  }, [activeCategory]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load(true);
@@ -91,8 +97,8 @@ export default function FeedScreen() {
   }, []);
 
   const shown = activeCategory === null ? articles : articles.filter((a) => a.category === activeCategory);
-  const deckArticles = shown.slice(0, 3);
-  const listArticles = shown.slice(3);
+  const deckArticles = shown.slice(deckIndex, deckIndex + 3);
+  const listArticles = shown.slice(deckIndex + 3);
 
   if (loading) {
     return (
@@ -180,9 +186,13 @@ export default function FeedScreen() {
                 onAction={() => setActiveCategory(null)}
               />
 
-              {/* Hero deck */}
+              {/* Hero deck (swipeable) */}
               <HeroDeck
                 articles={deckArticles}
+                index={0}
+                onIndexChange={() =>
+                  setDeckIndex((i) => Math.min(i + 1, Math.max(shown.length - 1, 0)))
+                }
                 t={t}
                 onPress={openArticle}
                 onPressSource={openSource}
