@@ -275,8 +275,15 @@ export function HeroDeck({
                 t={t}
               />
             </Pressable>
-            <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
-              <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
+            <View style={styles.headerTrailing}>
+              {front.isBreaking ? (
+                <View style={[styles.breakingBadge, { backgroundColor: t.breaking }]}>
+                  <Text style={styles.breakingText}>عاجل</Text>
+                </View>
+              ) : null}
+              <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
+                <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
+              </View>
             </View>
           </View>
 
@@ -351,6 +358,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  headerTrailing: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  breakingBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  breakingText: {
+    color: '#FFFFFF',
+    fontFamily: 'Cairo_700Bold',
+    fontSize: 11,
+    lineHeight: 16,
   },
   publisherRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
   moreBtn: {

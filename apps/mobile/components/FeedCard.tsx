@@ -45,6 +45,11 @@ export function FeedCard({
           <PublisherMeta name={article.sourceName} relative={relativeTime(article.publishedAt)} t={t} />
         </TouchableOpacity>
         <View style={styles.headerTrailing}>
+          {article.isBreaking ? (
+            <View style={[styles.breakingBadge, { backgroundColor: t.breaking }]}>
+              <Text style={styles.breakingText}>عاجل</Text>
+            </View>
+          ) : null}
           {typeof rank === 'number' ? (
             <Text style={[styles.rank, { color: t.breaking }]}>{`#${rank}`}</Text>
           ) : null}
@@ -95,6 +100,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   headerTrailing: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  breakingBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  breakingText: {
+    color: '#FFFFFF',
+    fontFamily: 'Cairo_700Bold',
+    fontSize: 11,
+    lineHeight: 16,
+  },
   rank: { fontFamily: 'Cairo_700Bold', fontSize: 15 },
   publisherRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
   moreBtn: {
