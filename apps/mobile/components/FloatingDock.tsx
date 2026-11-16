@@ -21,21 +21,21 @@ export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
       <DockButton
         t={t}
         active={active === 'video'}
-        icon="videocam-outline"
+        icon="trending-up-outline"
         label="الأكثر تداولاً"
         onPress={() => router.push('/trending')}
       />
       <DockButton
         t={t}
         active={active === 'saved'}
-        icon="bookmark-outline"
+        icon="bookmarks-outline"
         label="المحفوظات"
         onPress={() => router.push('/saved')}
       />
       <DockButton
         t={t}
         active={active === 'profile'}
-        icon="person-outline"
+        icon="newspaper-outline"
         label="مصادري"
         onPress={() => router.push('/sources')}
       />
