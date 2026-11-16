@@ -255,6 +255,15 @@ check('pan onEnd worklet reads indexSV.value snapshot', heroDeckSource.includes(
 check('withTiming interruption safely cancels and resets tx to 0', heroDeckSource.includes('cancelAnimation(tx)') && heroDeckSource.includes('tx.value = 0'), true);
 check('DeckCard memoizes cover Image source to prevent re-sourcing flicker', heroDeckSource.includes('imageSource = useMemo') && heroDeckSource.includes('source={imageSource}'), true);
 
+console.log('— single deck-root GestureDetector (no handlerTag mutation / freeze) —');
+const gestureDetectorMatches = heroDeckSource.match(/<GestureDetector\b/g) || [];
+check('HeroDeck has exactly ONE GestureDetector at container root', gestureDetectorMatches.length, 1);
+const deckCardSource = heroDeckSource.slice(heroDeckSource.indexOf('export function DeckCard'));
+check('DeckCard has zero GestureDetector instances', deckCardSource.includes('<GestureDetector'), false);
+check('DeckCard uses Pressable for publisher row source tap', deckCardSource.includes('<Pressable') && deckCardSource.includes('onPressSource'), true);
+check('HeroDeck wraps root in GestureDetector with composed gesture', heroDeckSource.includes('<GestureDetector gesture={composed}>'), true);
+check('HeroDeck includes isAnimating safety timeout', heroDeckSource.includes('animTimeoutRef') && heroDeckSource.includes('clearAnimTimeout') && heroDeckSource.includes('startAnimTimeout'), true);
+
 console.log('— post-swipe opacity persistence (no reload flicker) —');
 _resetLoadedCovers();
 const url0 = 'https://img.test/0.jpg';

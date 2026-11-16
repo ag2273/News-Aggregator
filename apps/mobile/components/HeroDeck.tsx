@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -83,6 +84,35 @@ export function HeroDeck({
   const frontRef = useRef(front);
   frontRef.current = front;
 
+  // Track timestamp of publisher row tap to prevent triggering card body tap
+  const lastSourcePressTimeRef = useRef(0);
+
+  // Safety timeout ref to guarantee isAnimating never remains stuck if animation completion is dropped
+  const animTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAnimTimeout = useCallback(() => {
+    if (animTimeoutRef.current) {
+      clearTimeout(animTimeoutRef.current);
+      animTimeoutRef.current = null;
+    }
+  }, []);
+
+  const startAnimTimeout = useCallback(() => {
+    clearAnimTimeout();
+    animTimeoutRef.current = setTimeout(() => {
+      if (isAnimating.value) {
+        console.warn('[deck] isAnimating safety timeout triggered - resetting animation lock');
+        cancelAnimation(tx);
+        tx.value = 0;
+        isAnimating.value = false;
+      }
+    }, FLY_OUT_MS + 250);
+  }, [clearAnimTimeout, isAnimating, tx]);
+
+  useEffect(() => {
+    return () => clearAnimTimeout();
+  }, [clearAnimTimeout]);
+
   const { farStrips } = useMemo(
     () => getDeckAdjacentCards(articles, index),
     [articles, index],
@@ -115,11 +145,12 @@ export function HeroDeck({
 
   // Safety fallback: ensure tx is cleanly at 0 when index changes while not animating
   useEffect(() => {
+    clearAnimTimeout();
     if (!isAnimating.value && tx.value !== 0) {
       cancelAnimation(tx);
       tx.value = 0;
     }
-  }, [index, tx, isAnimating]);
+  }, [index, tx, isAnimating, clearAnimTimeout]);
 
   // Preload cover images for the active window (current + 3 ahead + 3 behind)
   useEffect(() => {
@@ -178,11 +209,13 @@ export function HeroDeck({
             return;
           }
           isAnimating.value = true;
+          runOnJS(startAnimTimeout)();
           tx.value = withTiming(dir * width * 1.4, { duration: FLY_OUT_MS }, (finished) => {
             'worklet';
             console.warn(
               '[deck] withTiming completion finished=' + finished + ' anim=' + isAnimating.value,
             );
+            runOnJS(clearAnimTimeout)();
             if (finished) {
               tx.value = 0;
               isAnimating.value = false;
@@ -200,20 +233,25 @@ export function HeroDeck({
             tx.value = withSpring(0, SPRING);
           }
         }),
-    [advanceTo, isAnimating, indexSV, totalSV, tx, width],
+    [advanceTo, clearAnimTimeout, indexSV, isAnimating, startAnimTimeout, totalSV, tx, width],
   );
 
   const handleTap = useCallback(() => {
+    if (Date.now() - lastSourcePressTimeRef.current < 400) return;
     if (!isAnimating.value && frontRef.current) {
       onPress(frontRef.current);
     }
   }, [isAnimating, onPress]);
 
-  const handleSourceTap = useCallback(() => {
-    if (!isAnimating.value && onPressSource && frontRef.current) {
-      onPressSource(frontRef.current);
-    }
-  }, [isAnimating, onPressSource]);
+  const handleSourcePress = useCallback(
+    (a: Article) => {
+      lastSourcePressTimeRef.current = Date.now();
+      if (!isAnimating.value && onPressSource) {
+        onPressSource(a);
+      }
+    },
+    [isAnimating, onPressSource],
+  );
 
   const tapCard = useMemo(
     () =>
@@ -224,17 +262,6 @@ export function HeroDeck({
           if (success) runOnJS(handleTap)();
         }),
     [handleTap],
-  );
-
-  const sourceTap = useMemo(
-    () =>
-      Gesture.Tap()
-        .maxDuration(280)
-        .onEnd((_e, success) => {
-          'worklet';
-          if (success) runOnJS(handleSourceTap)();
-        }),
-    [handleSourceTap],
   );
 
   const composed = useMemo(() => Gesture.Race(pan, tapCard), [pan, tapCard]);
@@ -296,102 +323,102 @@ export function HeroDeck({
   if (!front) return null;
 
   return (
-    <View style={styles.deck}>
-      {/* Decorative far strips for index+3 and index+2 (pile hint only) */}
-      {farStrips
-        .map((a, idx) => ({ a, idx, stripIndex: idx + 1 }))
-        .reverse()
-        .map(({ a, idx, stripIndex }) => (
-          <Animated.View
-            key={`strip-${a.id}-${stripIndex}`}
-            pointerEvents="none"
-            style={[
-              styles.layer,
-              {
-                top: (DEPTH - 1 - stripIndex) * PEEK,
-                width: `${94 - stripIndex * 6}%`,
-                backgroundColor: stripIndex === 1 ? t.surfaceStackMid : t.surfaceStackBack,
-                borderColor: t.stackEdge,
-                opacity: stripIndex === 1 ? 0.95 : 0.85,
-              },
-              stripStyles[idx] ?? null,
-            ]}
-          />
-        ))}
+    <GestureDetector gesture={composed}>
+      <View style={styles.deck}>
+        {/* Decorative far strips for index+3 and index+2 (pile hint only) */}
+        {farStrips
+          .map((a, idx) => ({ a, idx, stripIndex: idx + 1 }))
+          .reverse()
+          .map(({ a, idx, stripIndex }) => (
+            <Animated.View
+              key={`strip-${a.id}-${stripIndex}`}
+              pointerEvents="none"
+              style={[
+                styles.layer,
+                {
+                  top: (DEPTH - 1 - stripIndex) * PEEK,
+                  width: `${94 - stripIndex * 6}%`,
+                  backgroundColor: stripIndex === 1 ? t.surfaceStackMid : t.surfaceStackBack,
+                  borderColor: t.stackEdge,
+                  opacity: stripIndex === 1 ? 0.95 : 0.85,
+                },
+                stripStyles[idx] ?? null,
+              ]}
+            />
+          ))}
 
-      {/* Unified active cards [prev, next, front] keyed strictly by article.id ONLY */}
-      {activeCards.map((card) => {
-        const isFront = card.role === 'front';
-        const cardStyle =
-          card.role === 'front'
-            ? frontStyle
-            : card.role === 'next'
-              ? nextCardStyle
-              : prevCardStyle;
-        const hintText =
-          card.role === 'front'
-            ? canNext
-              ? 'اسحب للتالي'
-              : canPrev
-                ? 'اسحب للسابق'
-                : null
-            : card.role === 'next'
-              ? 'اسحب للتالي'
-              : 'اسحب للسابق';
+        {/* Unified active cards [prev, next, front] keyed strictly by article.id ONLY */}
+        {activeCards.map((card) => {
+          const isFront = card.role === 'front';
+          const cardStyle =
+            card.role === 'front'
+              ? frontStyle
+              : card.role === 'next'
+                ? nextCardStyle
+                : prevCardStyle;
+          const hintText =
+            card.role === 'front'
+              ? canNext
+                ? 'اسحب للتالي'
+                : canPrev
+                  ? 'اسحب للسابق'
+                  : null
+              : card.role === 'next'
+                ? 'اسحب للتالي'
+                : 'اسحب للسابق';
 
-        return (
-          <DeckCard
-            key={card.article.id}
-            article={card.article}
-            t={t}
-            hintText={hintText}
-            style={cardStyle}
-            interactive={isFront}
-            gesture={canNext || canPrev ? composed : tapCard}
-            sourceGesture={sourceTap}
-            onPress={onPress}
-            onPressSource={onPressSource}
-            onCoverLayout={
-              isFront
-                ? (layout) => {
-                    setCoverDimensions((prev) => {
-                      if (
-                        prev?.width === layout.width &&
-                        prev?.height === layout.height
-                      ) {
-                        return prev;
-                      }
-                      return layout;
-                    });
-                  }
-                : undefined
-            }
-          />
-        );
-      })}
+          return (
+            <DeckCard
+              key={card.article.id}
+              article={card.article}
+              t={t}
+              hintText={hintText}
+              style={cardStyle}
+              interactive={isFront}
+              onPress={onPress}
+              onPressSource={handleSourcePress}
+              onCoverLayout={
+                isFront
+                  ? (layout) => {
+                      setCoverDimensions((prev) => {
+                        if (
+                          prev?.width === layout.width &&
+                          prev?.height === layout.height
+                        ) {
+                          return prev;
+                        }
+                        return layout;
+                      });
+                    }
+                  : undefined
+              }
+            />
+          );
+        })}
 
-      {/* Off-screen neighbor pre-render: warms 3 ahead and 3 behind at real display dimensions */}
-      <View
-        style={styles.offscreenPreload}
-        pointerEvents="none"
-        accessible={false}
-        aria-hidden={true}
-      >
-        {preloadNeighbors.map((a) => (
-          <View key={`preload-${a.id}`} style={[styles.preloadItem, offscreenCoverStyle]}>
-            <Text style={styles.preloadText}>{a.title}</Text>
-            <Text style={styles.preloadText}>{a.sourceName}</Text>
-            {a.imageUrl ? (
-              <Image
-                source={{ uri: a.imageUrl }}
-                style={offscreenCoverStyle}
-                resizeMode="cover"
-              />
-            ) : null}
-          </View>
-        ))}
+        {/* Off-screen neighbor pre-render: warms 3 ahead and 3 behind at real display dimensions */}
+        <View
+          style={styles.offscreenPreload}
+          pointerEvents="none"
+          accessible={false}
+          aria-hidden={true}
+        >
+          {preloadNeighbors.map((a) => (
+            <View key={`preload-${a.id}`} style={[styles.preloadItem, offscreenCoverStyle]}>
+              <Text style={styles.preloadText}>{a.title}</Text>
+              <Text style={styles.preloadText}>{a.sourceName}</Text>
+              {a.imageUrl ? (
+                <Image
+                  source={{ uri: a.imageUrl }}
+                  style={offscreenCoverStyle}
+                  resizeMode="cover"
+                />
+              ) : null}
+            </View>
+          ))}
+        </View>
       </View>
-    </View>
+    </GestureDetector>
   );
 }
 
@@ -419,8 +446,6 @@ export function DeckCard({
   hintText,
   style,
   interactive = false,
-  gesture,
-  sourceGesture,
   onPress,
   onPressSource,
   onCoverLayout,
@@ -438,93 +463,91 @@ export function DeckCard({
     [article.imageUrl],
   );
 
-  const disabledGesture = useMemo(() => Gesture.Tap().enabled(false), []);
-  const activeGesture = interactive && gesture ? gesture : disabledGesture;
-  const activeSourceGesture = interactive && sourceGesture ? sourceGesture : disabledGesture;
-
   return (
-    <GestureDetector gesture={activeGesture as any}>
-      <Animated.View
-        pointerEvents={interactive ? 'auto' : 'none'}
-        accessible={interactive}
-        accessibilityRole={interactive ? 'button' : undefined}
-        accessibilityLabel={interactive ? article.title : undefined}
-        onAccessibilityTap={interactive && onPress ? () => onPress(article) : undefined}
-        aria-hidden={!interactive}
-        style={[styles.cardBox, { backgroundColor: t.surface }, style]}
-      >
-        <View style={styles.cardHeader}>
-          <GestureDetector gesture={activeSourceGesture as any}>
-            <View style={styles.publisherRow}>
-              <PublisherAvatar name={article.sourceName} size={40} t={t} />
-              <PublisherMeta
-                name={article.sourceName}
-                relative={relativeTime(article.publishedAt)}
-                t={t}
-              />
-            </View>
-          </GestureDetector>
-          <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
-            <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
-          </View>
-        </View>
-
-        <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={4}>
-          {article.title} 🔥
-        </Text>
-
-        <View
-          style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}
-          onLayout={
-            onCoverLayout
-              ? (e) => {
-                  const { width: w, height: h } = e.nativeEvent.layout;
-                  if (w > 1 && h > 1) {
-                    onCoverLayout({ width: w, height: h });
-                  }
-                }
-              : undefined
-          }
+    <Animated.View
+      pointerEvents={interactive ? 'auto' : 'none'}
+      accessible={interactive}
+      accessibilityRole={interactive ? 'button' : undefined}
+      accessibilityLabel={interactive ? article.title : undefined}
+      onAccessibilityTap={interactive && onPress ? () => onPress(article) : undefined}
+      aria-hidden={!interactive}
+      style={[styles.cardBox, { backgroundColor: t.surface }, style]}
+    >
+      <View style={styles.cardHeader}>
+        <Pressable
+          onPress={interactive && onPressSource ? () => onPressSource(article) : undefined}
+          style={styles.publisherRow}
+          accessible={interactive}
+          accessibilityRole={interactive ? 'button' : undefined}
+          accessibilityLabel={interactive ? article.sourceName : undefined}
         >
-          {/* Base placeholder: always underneath so residual native decode never flashes empty/white */}
-          <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
-            <Ionicons name="newspaper-outline" size={44} color={t.textMuted} />
-          </View>
+          <PublisherAvatar name={article.sourceName} size={40} t={t} />
+          <PublisherMeta
+            name={article.sourceName}
+            relative={relativeTime(article.publishedAt)}
+            t={t}
+          />
+        </Pressable>
+        <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
+          <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
+        </View>
+      </View>
 
-          {article.imageUrl ? (
-            <Image
-              source={imageSource}
-              style={[
-                StyleSheet.absoluteFill,
-                styles.image,
-                { opacity: loaded ? 1 : 0 },
-              ]}
-              resizeMode="cover"
-              onLoad={() => {
-                markCoverLoaded(article.imageUrl);
-                setLoaded(true);
-              }}
-              onError={() => {
-                markCoverError(article.imageUrl);
-                setLoaded(false);
-              }}
-            />
+      <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={4}>
+        {article.title} 🔥
+      </Text>
+
+      <View
+        style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}
+        onLayout={
+          onCoverLayout
+            ? (e) => {
+                const { width: w, height: h } = e.nativeEvent.layout;
+                if (w > 1 && h > 1) {
+                  onCoverLayout({ width: w, height: h });
+                }
+              }
+            : undefined
+        }
+      >
+        {/* Base placeholder: always underneath so residual native decode never flashes empty/white */}
+        <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
+          <Ionicons name="newspaper-outline" size={44} color={t.textMuted} />
+        </View>
+
+        {article.imageUrl ? (
+          <Image
+            source={imageSource}
+            style={[
+              StyleSheet.absoluteFill,
+              styles.image,
+              { opacity: loaded ? 1 : 0 },
+            ]}
+            resizeMode="cover"
+            onLoad={() => {
+              markCoverLoaded(article.imageUrl);
+              setLoaded(true);
+            }}
+            onError={() => {
+              markCoverError(article.imageUrl);
+              setLoaded(false);
+            }}
+          />
+        ) : null}
+      </View>
+
+      <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
+        <Text style={[styles.meta, { color: t.textMuted }]}>
+          {relativeTime(article.publishedAt)}
+        </Text>
+        <View style={styles.hintRow}>
+          {hintText ? (
+            <Text style={[styles.hint, { color: t.textMuted }]}>{hintText}</Text>
           ) : null}
+          <Ionicons name="share-outline" size={17} color={t.textMuted} />
         </View>
-
-        <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
-          <Text style={[styles.meta, { color: t.textMuted }]}>
-            {relativeTime(article.publishedAt)}
-          </Text>
-          <View style={styles.hintRow}>
-            {hintText ? (
-              <Text style={[styles.hint, { color: t.textMuted }]}>{hintText}</Text>
-            ) : null}
-            <Ionicons name="share-outline" size={17} color={t.textMuted} />
-          </View>
-        </View>
-      </Animated.View>
-    </GestureDetector>
+      </View>
+    </Animated.View>
   );
 }
 
