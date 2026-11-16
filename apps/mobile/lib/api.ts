@@ -22,6 +22,13 @@ export async function fetchFeed(limit = 50, offset = 0): Promise<Article[]> {
   return json.data;
 }
 
+export async function fetchArticle(id: string): Promise<Article> {
+  const res = await fetch(`${API_BASE}/api/articles/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = (await res.json()) as { data: Article };
+  return json.data;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -67,5 +74,33 @@ export function relativeTime(ts: number): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `منذ ${hrs} ساعة`;
   const days = Math.floor(hrs / 24);
-  return `منذ ${days} يوم`;
+  if (days === 1) return 'أمس';
+  if (days < 30) return `منذ ${days} يوم`;
+  const months = Math.floor(days / 30);
+  return `منذ ${months} شهر`;
+}
+
+const AR_MONTHS = [
+  'يناير',
+  'فبراير',
+  'مارس',
+  'أبريل',
+  'مايو',
+  'يونيو',
+  'يوليو',
+  'أغسطس',
+  'سبتمبر',
+  'أكتوبر',
+  'نوفمبر',
+  'ديسمبر',
+];
+
+/** Absolute publish date, e.g. "16 نوفمبر 2026، 03:41 ص". */
+export function fullDate(ts: number): string {
+  const d = new Date(ts);
+  const hours = d.getHours();
+  const h12 = hours % 12 === 0 ? 12 : hours % 12;
+  const mins = String(d.getMinutes()).padStart(2, '0');
+  const period = hours < 12 ? 'ص' : 'م';
+  return `${d.getDate()} ${AR_MONTHS[d.getMonth()]} ${d.getFullYear()}، ${h12}:${mins} ${period}`;
 }

@@ -1,31 +1,48 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  FlatList,
-  View,
-  Text,
-  Image,
-  TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
+  FlatList,
   RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
   useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { fetchFeed, relativeTime } from '../lib/api';
+import { fetchFeed } from '../lib/api';
 import type { Article } from '../lib/api';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
+import { FeedCard } from '../components/FeedCard';
+import { HeroDeck } from '../components/HeroDeck';
+import { CategoryPills, SectionHeader } from '../components/Pills';
+import { FloatingDock } from '../components/FloatingDock';
 
 const PAGE_SIZE = 30;
-const CATEGORY_PILLS: Array<{ id: string | null; label: string }> = [
-  { id: null, label: 'كل الأخبار' },
-  { id: 'egypt', label: 'مصر' },
-  { id: 'economy', label: 'اقتصاد' },
-  { id: 'sports', label: 'رياضة' },
-  { id: 'tech', label: 'تكنولوجيا' },
+const AR_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const AR_MONTHS = [
+  'يناير',
+  'فبراير',
+  'مارس',
+  'أبريل',
+  'مايو',
+  'يونيو',
+  'يوليو',
+  'أغسطس',
+  'سبتمبر',
+  'أكتوبر',
+  'نوفمبر',
+  'ديسمبر',
 ];
+
+function todayLabel(): string {
+  const d = new Date();
+  return `${AR_DAYS[d.getDay()]}، ${d.getDate()} ${AR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
 
 export default function FeedScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
@@ -55,7 +72,7 @@ export default function FeedScreen() {
     }
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     load(true).finally(() => setLoading(false));
   }, [load]);
 
@@ -66,146 +83,125 @@ export default function FeedScreen() {
   }, [load]);
 
   const openArticle = useCallback((a: Article) => {
-    router.push({ pathname: '/article', params: { url: a.url, title: a.title } });
+    router.push({ pathname: '/article', params: { id: a.id } });
   }, []);
 
-  const renderItem = ({ item }: { item: Article }) => (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={() => openArticle(item)}
-      style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}
-      accessibilityRole="button"
-      accessibilityLabel={item.title}
-    >
-      <View style={styles.cardBody}>
-        <View style={styles.cardMeta}>
-          <Text style={[styles.sourceName, { color: t.accent }]} numberOfLines={1}>
-            {item.sourceName}
-          </Text>
-          <Text style={[styles.time, { color: t.textMuted }]}>{relativeTime(item.publishedAt)}</Text>
-        </View>
-        <Text style={[styles.headline, { color: t.textPrimary }]} numberOfLines={3}>
-          {item.title}
-        </Text>
-      </View>
-      {item.imageUrl ? (
-        <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
-      ) : (
-        <View style={[styles.thumb, styles.thumbPlaceholder, { backgroundColor: t.surfaceSubtle }]}>
-          <Text style={styles.thumbPlaceholderText}>📰</Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+  const openSource = useCallback((a: Article) => {
+    router.push({ pathname: '/source/[id]', params: { id: a.sourceId } });
+  }, []);
+
+  const shown = activeCategory === null ? articles : articles.filter((a) => a.category === activeCategory);
+  const deckArticles = shown.slice(0, 3);
+  const listArticles = shown.slice(3);
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.center, { backgroundColor: t.background }]}>
-        <ActivityIndicator size="large" color={t.dockActiveGlow} />
-      </SafeAreaView>
+      <LinearGradient
+        colors={[t.bgGradientTop, t.bgGradientMid, t.bgGradientBottom]}
+        style={styles.root}
+      >
+        <SafeAreaView style={styles.center} edges={['top']}>
+          <ActivityIndicator size="large" color={t.accent} />
+        </SafeAreaView>
+      </LinearGradient>
     );
   }
 
   if (error && articles.length === 0) {
     return (
-      <SafeAreaView style={[styles.center, { backgroundColor: t.background }]}>
-        <Text style={[styles.errorText, { color: t.breaking }]}>{error}</Text>
-        <TouchableOpacity
-          style={[styles.retryBtn, { backgroundColor: t.pillActiveBg }]}
-          onPress={() => load(true)}
-        >
-          <Text style={[styles.retryText, { color: t.pillActiveText }]}>إعادة المحاولة</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      <LinearGradient
+        colors={[t.bgGradientTop, t.bgGradientMid, t.bgGradientBottom]}
+        style={styles.root}
+      >
+        <SafeAreaView style={styles.center} edges={['top']}>
+          <Text style={[styles.errorText, { color: t.breaking }]}>{error}</Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: t.pillActiveBg }]}
+            onPress={() => load(true)}
+          >
+            <Text style={[styles.retryText, { color: t.pillActiveText }]}>إعادة المحاولة</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </LinearGradient>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: t.background }]} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.headerDate, { color: t.textMuted }]}>رئيس التحرير</Text>
-          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>مركز الأخبار</Text>
-        </View>
-        <View style={styles.headerActions}>
-          <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
-            <Ionicons name="search" size={18} color={t.textSecondary} />
-          </View>
-          <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
-            <Ionicons name="notifications-outline" size={18} color={t.textSecondary} />
-          </View>
-        </View>
-      </View>
+    <LinearGradient
+      colors={[t.bgGradientTop, t.bgGradientMid, t.bgGradientBottom]}
+      style={styles.root}
+    >
+      <SafeAreaView style={styles.root} edges={['top']}>
+        <FlatList
+          data={listArticles}
+          keyExtractor={(a) => a.id}
+          renderItem={({ item }) => (
+            <FeedCard
+              article={item}
+              t={t}
+              onPress={() => openArticle(item)}
+              onPressSource={() => openSource(item)}
+            />
+          )}
+          contentContainerStyle={styles.list}
+          ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />
+          }
+          onEndReached={() => {
+            if (hasMoreRef.current) load(false);
+          }}
+          onEndReachedThreshold={0.5}
+          ListHeaderComponent={
+            <View>
+              {/* Header */}
+              <View style={styles.header}>
+                <View>
+                  <Text style={[styles.headerDate, { color: t.textMuted }]}>{todayLabel()}</Text>
+                  <Text style={[styles.headerTitle, { color: t.textPrimary }]}>مركز الأخبار</Text>
+                </View>
+                <View style={styles.headerActions}>
+                  <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
+                    <Ionicons name="search" size={18} color={t.textSecondary} />
+                  </View>
+                  <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
+                    <Ionicons name="notifications-outline" size={18} color={t.textSecondary} />
+                  </View>
+                </View>
+              </View>
 
-      {/* Category pills */}
-      <View style={styles.pills}>
-        {CATEGORY_PILLS.map((c) => {
-          const active = c.id === activeCategory;
-          return (
-            <TouchableOpacity
-              key={c.id ?? 'all'}
-              onPress={() => setActiveCategory(c.id)}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              style={[
-                styles.pill,
-                active
-                  ? { backgroundColor: t.pillActiveBg }
-                  : { backgroundColor: t.surfaceSubtle, borderColor: t.border, borderWidth: 1 },
-              ]}
-            >
-              <Text style={[styles.pillText, { color: active ? t.pillActiveText : t.textSecondary }]}>
-                {c.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+              {/* Category pills */}
+              <CategoryPills t={t} active={activeCategory} onChange={setActiveCategory} />
 
-      <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>الأكثر قراءة الآن</Text>
+              {/* Section header */}
+              <SectionHeader
+                t={t}
+                title="الأكثر قراءة الآن"
+                onAction={() => setActiveCategory(null)}
+              />
 
-      {/* Feed */}
-      <FlatList
-        data={activeCategory === null ? articles : articles.filter((a) => a.category === activeCategory)}
-        keyExtractor={(a) => a.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <Text style={[styles.empty, { color: t.textMuted }]}>لا توجد أخبار في هذا التصنيف</Text>
-        }
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.dockActiveGlow} />
-        }
-        onEndReached={() => {
-          if (hasMoreRef.current) load(false);
-        }}
-        onEndReachedThreshold={0.5}
-        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-      />
+              {/* Hero deck */}
+              <HeroDeck
+                articles={deckArticles}
+                t={t}
+                onPress={openArticle}
+                onPressSource={openSource}
+              />
 
-      {/* Floating capsule dock */}
-      <View style={[styles.dock, { backgroundColor: t.dockBg, borderColor: t.border }]}>
-        <View style={[styles.dockItem, styles.dockActive, { backgroundColor: t.dockActiveGlow }]}>
-          <Ionicons name="home" size={20} color="#064E3B" />
-        </View>
-        <TouchableOpacity
-          style={styles.dockItem}
-          onPress={() => router.push('/trending')}
-          accessibilityRole="button"
-          accessibilityLabel="الأكثر تداولاً"
-        >
-          <Ionicons name="flame-outline" size={20} color={t.textMuted} />
-        </TouchableOpacity>
-        <View style={styles.dockItem}>
-          <Ionicons name="bookmark-outline" size={20} color={t.textMuted} />
-        </View>
-        <View style={styles.dockItem}>
-          <Ionicons name="person-outline" size={20} color={t.textMuted} />
-        </View>
-      </View>
-    </SafeAreaView>
+              <SectionHeader t={t} title="آخر الأخبار" actionLabel="" />
+
+              {listArticles.length === 0 ? (
+                <Text style={[styles.empty, { color: t.textMuted }]}>
+                  لا توجد أخبار في هذا التصنيف
+                </Text>
+              ) : null}
+            </View>
+          }
+        />
+
+        <FloatingDock t={t} active="home" />
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
@@ -218,78 +214,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 12,
+    paddingBottom: 16,
   },
-  headerDate: { fontFamily: 'Cairo_400Regular', fontSize: 12, marginBottom: 2 },
-  headerTitle: { fontFamily: 'Cairo_700Bold', fontSize: 24 },
+  headerDate: { fontFamily: 'Cairo_400Regular', fontSize: 13, marginBottom: 2 },
+  headerTitle: { fontFamily: 'Cairo_700Bold', fontSize: 26 },
   headerActions: { flexDirection: 'row', gap: 10 },
   circleBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  pills: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    marginBottom: 18,
-  },
-  pill: { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 999 },
-  pillText: { fontFamily: 'Cairo_600SemiBold', fontSize: 13 },
-  sectionTitle: {
-    fontFamily: 'Cairo_700Bold',
-    fontSize: 17,
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  list: { paddingHorizontal: 12, paddingBottom: 110 },
-  card: {
-    flexDirection: 'row',
-    borderRadius: 24,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  cardBody: { flex: 1, padding: 14, justifyContent: 'space-between' },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  sourceName: { fontFamily: 'Cairo_600SemiBold', fontSize: 12 },
-  time: { fontFamily: 'Cairo_400Regular', fontSize: 11 },
-  headline: { fontFamily: 'Cairo_600SemiBold', fontSize: 15, lineHeight: 23 },
-  thumb: { width: 110, height: 110 },
-  thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  thumbPlaceholderText: { fontSize: 30 },
-  dock: {
-    position: 'absolute',
-    bottom: 18,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    width: 300,
-    height: 62,
-    borderRadius: 31,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  dockItem: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  dockActive: {},
+  list: { paddingBottom: 120 },
+  empty: { textAlign: 'center', marginTop: 12, fontFamily: 'Cairo_400Regular', fontSize: 14 },
   errorText: { fontSize: 16, textAlign: 'center', marginBottom: 16 },
-  empty: { textAlign: 'center', marginTop: 32, fontFamily: 'Cairo_400Regular', fontSize: 14 },
   retryBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 999 },
   retryText: { fontFamily: 'Cairo_600SemiBold' },
 });
