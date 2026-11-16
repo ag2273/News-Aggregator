@@ -70,7 +70,7 @@ function normalizeXml(xml: string, sourceId: string, sourceName: string): Articl
     : [];
 
   return items
-    .map((item) => {
+    .map((item): Article | null => {
       const url = extractText(item['link'] ?? item['guid']);
       if (!url || !url.startsWith('http')) return null;
       const title = extractText(item['title']);
@@ -91,7 +91,7 @@ function normalizeXml(xml: string, sourceId: string, sourceName: string): Articl
         country: 'EG',
         publishedAt: parseDate(item['pubDate'] ?? item['published']),
         isBreaking: false,
-      } satisfies Article;
+      };
     })
     .filter((a): a is Article => a !== null);
 }

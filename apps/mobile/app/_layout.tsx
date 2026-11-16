@@ -3,6 +3,7 @@ import { I18nManager, ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ArticleSheetProvider } from '../components/ArticleSheet';
+import { AuthProvider } from '../lib/auth';
 import {
   useFonts,
   Cairo_400Regular,
@@ -32,9 +33,11 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ArticleSheetProvider>
-          <Stack screenOptions={{ headerShown: false }} />
-        </ArticleSheetProvider>
+        <AuthProvider>
+          <ArticleSheetProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+          </ArticleSheetProvider>
+        </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

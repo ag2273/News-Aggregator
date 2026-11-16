@@ -155,9 +155,14 @@ export default function FeedScreen() {
             <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
               <Ionicons name="search" size={18} color={t.textSecondary} />
             </View>
-            <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
-              <Ionicons name="notifications-outline" size={18} color={t.textSecondary} />
-            </View>
+            <TouchableOpacity
+              style={[styles.circleBtn, { backgroundColor: t.surface }]}
+              onPress={() => router.push('/account')}
+              accessibilityRole="button"
+              accessibilityLabel="حسابي"
+            >
+              <Ionicons name="person-outline" size={18} color={t.textSecondary} />
+            </TouchableOpacity>
           </View>
         </View>
 
