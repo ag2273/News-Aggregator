@@ -38,6 +38,41 @@ export function getDeckAdjacentCards(
   return { nextArticle, prevArticle, farStrips };
 }
 
+/** In-memory set of image URLs that have completed native decoding/loading */
+const loadedCoverUrls = new Set<string>();
+
+export function markCoverLoaded(url: string | null | undefined): void {
+  if (url) loadedCoverUrls.add(url);
+}
+
+export function isCoverLoaded(url: string | null | undefined): boolean {
+  return Boolean(url && loadedCoverUrls.has(url));
+}
+
+export function markCoverError(url: string | null | undefined): void {
+  if (url) loadedCoverUrls.delete(url);
+}
+
+export function _resetLoadedCovers(): void {
+  loadedCoverUrls.clear();
+}
+
+/**
+ * Determines whether the front card cover opacity should be reset to 0.
+ * Returns false when the URL is already decoded/loaded (e.g. from adjacent card reveal),
+ * preventing the post-swipe re-fade flicker.
+ */
+export function shouldResetCoverOpacity(
+  incomingUrl: string | null | undefined,
+  lastLoadedUrl: string | null | undefined,
+): boolean {
+  if (!incomingUrl) return true;
+  if (isCoverLoaded(incomingUrl) || incomingUrl === lastLoadedUrl) {
+    return false;
+  }
+  return true;
+}
+
 /** Fallback cover dimensions before native layout measurement */
 export const DEFAULT_COVER_DIMENSIONS: CoverDimensions = {
   width: 320,

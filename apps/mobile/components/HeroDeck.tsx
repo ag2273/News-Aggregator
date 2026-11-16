@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   StyleSheet,
@@ -26,6 +26,10 @@ import {
   prefetchWindowCovers,
   getOffscreenCoverStyle,
   getDeckAdjacentCards,
+  isCoverLoaded,
+  markCoverLoaded,
+  markCoverError,
+  shouldResetCoverOpacity,
   type CoverDimensions,
 } from '../lib/preload';
 import type { Article } from '../lib/api';
@@ -107,18 +111,42 @@ export function HeroDeck({
     [coverDimensions, width],
   );
 
-  const imageOpacity = useSharedValue(0);
+  const currentUrl = front?.imageUrl ?? null;
+  const currentUrlRef = useRef<string | null>(currentUrl);
+  currentUrlRef.current = currentUrl;
+  const lastLoadedUrlRef = useRef<string | null>(null);
 
-  // Reset opacity when index changes so a residual decode never flashes blank
+  const imageOpacity = useSharedValue(shouldResetCoverOpacity(currentUrl, null) ? 0 : 1);
+
+  // URL-keyed effect (NOT index-keyed): only reset opacity if the incoming image is genuinely cold.
+  // Already-loaded/decoded URLs (e.g. from adjacent card reveal) keep opacity at 1, avoiding post-swipe reload flicker.
   useEffect(() => {
-    imageOpacity.value = 0;
-  }, [index, imageOpacity]);
+    if (!currentUrl) {
+      imageOpacity.value = 0;
+      return;
+    }
+    if (shouldResetCoverOpacity(currentUrl, lastLoadedUrlRef.current)) {
+      imageOpacity.value = 0;
+    } else {
+      imageOpacity.value = 1;
+      lastLoadedUrlRef.current = currentUrl;
+    }
+  }, [currentUrl, imageOpacity]);
 
   const handleImageLoad = useCallback(() => {
+    const url = currentUrlRef.current;
+    if (url) {
+      markCoverLoaded(url);
+      lastLoadedUrlRef.current = url;
+    }
     imageOpacity.value = withTiming(1, { duration: 150 });
   }, [imageOpacity]);
 
   const handleImageError = useCallback(() => {
+    const url = currentUrlRef.current;
+    if (url) {
+      markCoverError(url);
+    }
     imageOpacity.value = 0;
   }, [imageOpacity]);
 
@@ -394,7 +422,13 @@ export function StaticDeckCard({
   hintText?: string | null;
   style?: StyleProp<ViewStyle> | ReturnType<typeof useAnimatedStyle>;
 }) {
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => isCoverLoaded(article.imageUrl));
+
+  useEffect(() => {
+    if (isCoverLoaded(article.imageUrl)) {
+      setLoaded(true);
+    }
+  }, [article.imageUrl]);
 
   return (
     <Animated.View
@@ -435,7 +469,14 @@ export function StaticDeckCard({
               { opacity: loaded ? 1 : 0 },
             ]}
             resizeMode="cover"
-            onLoad={() => setLoaded(true)}
+            onLoad={() => {
+              markCoverLoaded(article.imageUrl);
+              setLoaded(true);
+            }}
+            onError={() => {
+              markCoverError(article.imageUrl);
+              setLoaded(false);
+            }}
           />
         ) : null}
       </View>

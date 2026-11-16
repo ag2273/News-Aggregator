@@ -13,6 +13,11 @@ import {
   _resetPrefetchCache,
   getOffscreenCoverStyle,
   getDeckAdjacentCards,
+  isCoverLoaded,
+  markCoverLoaded,
+  markCoverError,
+  shouldResetCoverOpacity,
+  _resetLoadedCovers,
   DEFAULT_COVER_DIMENSIONS,
   PRELOAD_RADIUS,
 } from '../lib/preload.ts';
@@ -200,6 +205,44 @@ check('StaticDeckCard renders cover image', heroDeckSource.includes('article.ima
 check('StaticDeckCard sets pointerEvents="none"', heroDeckSource.includes('pointerEvents="none"'), true);
 check('StaticDeckCard sets accessible={false}', heroDeckSource.includes('accessible={false}'), true);
 check('styles.layer is restricted to farStrips (not adjacent cards)', heroDeckSource.includes('farStrips') && heroDeckSource.includes('styles.layer'), true);
+
+console.log('— post-swipe opacity persistence (no reload flicker) —');
+_resetLoadedCovers();
+const url0 = 'https://img.test/0.jpg';
+const url1 = 'https://img.test/1.jpg';
+const coldUrl = 'https://img.test/cold.jpg';
+
+// Initial cold image: should reset opacity to 0
+check('cold image initially resets opacity', shouldResetCoverOpacity(url0, null), true);
+
+// Mark url0 loaded (as front card does on onLoad)
+markCoverLoaded(url0);
+check('url0 is now marked loaded', isCoverLoaded(url0), true);
+
+// While viewing url0, StaticDeckCard pre-loads url1 (adjacent card)
+markCoverLoaded(url1);
+check('url1 pre-marked loaded by adjacent card', isCoverLoaded(url1), true);
+
+// Now user finishes swipe: advance index from url0 to url1
+// Opacity must NOT reset for url1 because it was already loaded!
+check('advancing to pre-loaded url1 does NOT reset opacity', shouldResetCoverOpacity(url1, url0), false);
+
+// Staying on same URL does NOT reset opacity
+check('staying on same URL does NOT reset opacity', shouldResetCoverOpacity(url1, url1), false);
+
+// Jumping to a genuinely cold URL resets opacity to 0
+check('jumping to cold URL resets opacity', shouldResetCoverOpacity(coldUrl, url1), true);
+
+// Error removes URL from loaded cache and forces reset
+markCoverError(url1);
+check('error removes url1 from loaded cache', isCoverLoaded(url1), false);
+check('errored url1 now resets opacity', shouldResetCoverOpacity(url1, url0), true);
+
+// HeroDeck source check: verify buggy index-keyed opacity reset effect is gone
+const hasBuggyIndexReset = /useEffect\(\s*\(\)\s*=>\s*\{\s*imageOpacity\.value\s*=\s*0;\s*\}\s*,\s*\[\s*index/.test(heroDeckSource);
+check('buggy index-keyed opacity reset is completely eliminated', hasBuggyIndexReset, false);
+check('HeroDeck uses shouldResetCoverOpacity', heroDeckSource.includes('shouldResetCoverOpacity'), true);
+check('HeroDeck tracks lastLoadedUrlRef', heroDeckSource.includes('lastLoadedUrlRef'), true);
 
 console.log(failed === 0 ? 'ALL PASS' : `${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
