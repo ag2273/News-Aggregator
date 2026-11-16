@@ -18,6 +18,7 @@ import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import { FeedCard } from '../components/FeedCard';
 import { FloatingDock } from '../components/FloatingDock';
+import { useArticleSheet } from '../components/ArticleSheet';
 
 export default function TrendingScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
@@ -38,9 +39,14 @@ export default function TrendingScreen() {
     load().finally(() => setLoading(false));
   }, [load]);
 
-  const openArticle = useCallback((a: Article) => {
-    router.push({ pathname: '/article', params: { id: a.id } });
-  }, []);
+  const { open: openSheet } = useArticleSheet();
+
+  const openArticle = useCallback(
+    (a: Article) => {
+      openSheet(a);
+    },
+    [openSheet],
+  );
 
   const openSource = useCallback((a: Article) => {
     router.push({ pathname: '/source/[id]', params: { id: a.sourceId } });

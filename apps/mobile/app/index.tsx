@@ -21,6 +21,7 @@ import { FeedCard } from '../components/FeedCard';
 import { HeroDeck } from '../components/HeroDeck';
 import { CategoryPills, SectionHeader } from '../components/Pills';
 import { FloatingDock } from '../components/FloatingDock';
+import { useArticleSheet } from '../components/ArticleSheet';
 
 const PAGE_SIZE = 30;
 const AR_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -88,9 +89,14 @@ export default function FeedScreen() {
     setRefreshing(false);
   }, [load]);
 
-  const openArticle = useCallback((a: Article) => {
-    router.push({ pathname: '/article', params: { id: a.id } });
-  }, []);
+  const { open: openSheet } = useArticleSheet();
+
+  const openArticle = useCallback(
+    (a: Article) => {
+      openSheet(a);
+    },
+    [openSheet],
+  );
 
   const openSource = useCallback((a: Article) => {
     router.push({ pathname: '/source/[id]', params: { id: a.sourceId } });

@@ -19,6 +19,7 @@ import type { Theme } from '../../constants/colors';
 import { FeedCard } from '../../components/FeedCard';
 import { PublisherAvatar } from '../../components/Publisher';
 import { FloatingDock } from '../../components/FloatingDock';
+import { useArticleSheet } from '../../components/ArticleSheet';
 
 export default function SourceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,9 +46,14 @@ export default function SourceScreen() {
     load().finally(() => setLoading(false));
   }, [load]);
 
-  const openArticle = useCallback((a: Article) => {
-    router.push({ pathname: '/article', params: { id: a.id } });
-  }, []);
+  const { open: openSheet } = useArticleSheet();
+
+  const openArticle = useCallback(
+    (a: Article) => {
+      openSheet(a);
+    },
+    [openSheet],
+  );
 
   const sourceName = source?.name ?? id ?? 'المصدر';
 
