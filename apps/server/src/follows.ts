@@ -3,7 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FOLLOWS_FILE = path.resolve(__dirname, '../../data/follows.json');
+const rawDataDir = process.env['DATA_DIR'] || process.env['RAILWAY_VOLUME_MOUNT_PATH'];
+const DATA_DIR = rawDataDir
+  ? path.resolve(rawDataDir)
+  : path.resolve(__dirname, '../../data');
+const FOLLOWS_FILE = path.join(DATA_DIR, 'follows.json');
 
 export type FollowsMap = Record<string, string[]>;
 

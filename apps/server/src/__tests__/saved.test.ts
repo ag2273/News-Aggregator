@@ -16,8 +16,11 @@ import { insertArticles } from '../db.js';
 import type { Article } from '../types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SAVED_FILE = path.resolve(__dirname, '../../../data/saved.json');
-const USERS_FILE = path.resolve(__dirname, '../../../data/users.json');
+const DATA_DIR = process.env['DATA_DIR']
+  ? path.resolve(process.env['DATA_DIR'])
+  : path.resolve(__dirname, '../../../data');
+const SAVED_FILE = path.join(DATA_DIR, 'saved.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 describe('T6 saved articles store and endpoints', () => {
   const testUserId = 'test-user-saved-123';

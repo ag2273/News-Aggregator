@@ -15,7 +15,10 @@ import { _resetUsersCache } from '../users.js';
 import { Hono } from 'hono';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const USERS_FILE = path.resolve(__dirname, '../../../data/users.json');
+const DATA_DIR = process.env['DATA_DIR']
+  ? path.resolve(process.env['DATA_DIR'])
+  : path.resolve(__dirname, '../../../data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 describe('Auth unit & endpoint tests', () => {
   beforeEach(() => {

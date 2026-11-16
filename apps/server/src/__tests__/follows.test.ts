@@ -16,8 +16,11 @@ import { insertArticles } from '../db.js';
 import type { Article } from '../types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FOLLOWS_FILE = path.resolve(__dirname, '../../../data/follows.json');
-const USERS_FILE = path.resolve(__dirname, '../../../data/users.json');
+const DATA_DIR = process.env['DATA_DIR']
+  ? path.resolve(process.env['DATA_DIR'])
+  : path.resolve(__dirname, '../../../data');
+const FOLLOWS_FILE = path.join(DATA_DIR, 'follows.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 describe('T5 follows store and endpoints', () => {
   const testUserId = 'test-user-uuid-123';

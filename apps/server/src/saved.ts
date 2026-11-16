@@ -3,7 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SAVED_FILE = path.resolve(__dirname, '../../data/saved.json');
+const rawDataDir = process.env['DATA_DIR'] || process.env['RAILWAY_VOLUME_MOUNT_PATH'];
+const DATA_DIR = rawDataDir
+  ? path.resolve(rawDataDir)
+  : path.resolve(__dirname, '../../data');
+const SAVED_FILE = path.join(DATA_DIR, 'saved.json');
 
 export type SavedMap = Record<string, string[]>;
 

@@ -3,7 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const USERS_FILE = path.resolve(__dirname, '../../data/users.json');
+const rawDataDir = process.env['DATA_DIR'] || process.env['RAILWAY_VOLUME_MOUNT_PATH'];
+const DATA_DIR = rawDataDir
+  ? path.resolve(rawDataDir)
+  : path.resolve(__dirname, '../../data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 export interface StoredUser {
   id: string;

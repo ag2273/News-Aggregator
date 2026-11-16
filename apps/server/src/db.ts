@@ -6,7 +6,11 @@ import { categorize, detectBreaking } from './categorize.js';
 import { decodeHtmlEntities } from './text.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.resolve(__dirname, '../../data/news.json');
+const rawDataDir = process.env['DATA_DIR'] || process.env['RAILWAY_VOLUME_MOUNT_PATH'];
+const DATA_DIR = rawDataDir
+  ? path.resolve(rawDataDir)
+  : path.resolve(__dirname, '../../data');
+const DB_PATH = path.join(DATA_DIR, 'news.json');
 
 export interface StoredArticle extends Article {
   fetchedAt: number;
