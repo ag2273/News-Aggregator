@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { fetchFeed } from '../lib/api';
 import type { Article } from '../lib/api';
 import { palette } from '../constants/colors';
@@ -50,11 +51,15 @@ export default function FeedScreen() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [deckIndex, setDeckIndex] = useState(0);
+  const [deckDragging, setDeckDragging] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const offsetRef = useRef(0);
   const hasMoreRef = useRef(true);
+  const listRef = useRef<FlatList<Article>>(null);
+  // The feed's own scroll gesture, so the deck's horizontal pan can run beside it.
+  const scrollGesture = useMemo(() => Gesture.Native(), []);
 
   const load = useCallback(async (replace: boolean) => {
     try {
@@ -144,8 +149,11 @@ export default function FeedScreen() {
       style={styles.root}
     >
       <SafeAreaView style={styles.root} edges={['top']}>
-        <FlatList
-          data={listArticles}
+        <GestureDetector gesture={scrollGesture}>
+          <FlatList
+            ref={listRef}
+            scrollEnabled={!deckDragging}
+            data={listArticles}
           keyExtractor={(a) => a.id}
           renderItem={({ item }) => (
             <FeedCard
@@ -202,6 +210,8 @@ export default function FeedScreen() {
                 t={t}
                 onPress={openArticle}
                 onPressSource={openSource}
+                scrollGesture={scrollGesture}
+                onDragChange={setDeckDragging}
               />
 
               <SectionHeader t={t} title="آخر الأخبار" actionLabel="" />
@@ -213,7 +223,8 @@ export default function FeedScreen() {
               ) : null}
             </View>
           }
-        />
+          />
+        </GestureDetector>
 
         <FloatingDock t={t} active="home" />
       </SafeAreaView>

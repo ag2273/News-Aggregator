@@ -14,6 +14,9 @@ export const palette = {
     surface: '#FFFFFF',
     surfaceTranslucent: 'rgba(255, 255, 255, 0.85)',
     surfaceFrosted: 'rgba(255, 255, 255, 0.45)',
+    // Cards stacked behind the hero front card (progressively muted).
+    surfaceStackMid: '#F1F6F2',
+    surfaceStackBack: '#E4EDE6',
 
     // Floating dock
     dockBg: '#FFFFFF',
@@ -58,6 +61,8 @@ export const palette = {
     surface: '#182721',
     surfaceTranslucent: 'rgba(24, 39, 33, 0.85)',
     surfaceFrosted: 'rgba(0, 0, 0, 0.45)',
+    surfaceStackMid: '#15221C',
+    surfaceStackBack: '#111C17',
 
     dockBg: '#182721',
     dockShadow: 'rgba(0, 0, 0, 0.4)',
