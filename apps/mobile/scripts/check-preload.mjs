@@ -8,6 +8,8 @@ import {
   getPreloadCoverUrls,
   prefetchWindowCovers,
   _resetPrefetchCache,
+  getOffscreenCoverStyle,
+  DEFAULT_COVER_DIMENSIONS,
   PRELOAD_RADIUS,
 } from '../lib/preload.ts';
 
@@ -128,6 +130,29 @@ check('repeated prefetch for same window fetches 0 new', fetchedSame, []);
 // Advance to index 1: window is 0..4, so only art-4 needs to be fetched
 const fetchedAdvance = await prefetchWindowCovers(sampleArticles, 1, PRELOAD_RADIUS, mockPrefetch);
 check('advancing index fetches newly revealed cover', fetchedAdvance, ['https://img.test/4.jpg']);
+
+console.log('— off-screen cover dimensions for native decode warming —');
+// Unmeasured / null dimensions: must return real non-1px fallback dimensions
+const fallbackStyle = getOffscreenCoverStyle(null);
+check('unmeasured dimensions return real non-1px width (>1)', fallbackStyle.width > 1, true);
+check('unmeasured dimensions return real non-1px height (>1)', fallbackStyle.height > 1, true);
+check('fallback width matches DEFAULT_COVER_DIMENSIONS', fallbackStyle.width, DEFAULT_COVER_DIMENSIONS.width);
+check('fallback height matches DEFAULT_COVER_DIMENSIONS', fallbackStyle.height, DEFAULT_COVER_DIMENSIONS.height);
+
+// Window width fallback (e.g. iPhone width 390 -> 390 - 64 = 326)
+const windowFallbackStyle = getOffscreenCoverStyle(null, 390);
+check('window width fallback calculates real width (390 - 64 = 326)', windowFallbackStyle.width, 326);
+check('window width fallback has real height (>1)', windowFallbackStyle.height > 1, true);
+
+// Measured dimensions from onLayout
+const measuredStyle = getOffscreenCoverStyle({ width: 358, height: 215 });
+check('measured dimensions apply exact real width', measuredStyle.width, 358);
+check('measured dimensions apply exact real height', measuredStyle.height, 215);
+
+// Degenerate 1x1 dimensions must be rejected in favor of real dimensions
+const degenerateStyle = getOffscreenCoverStyle({ width: 1, height: 1 });
+check('degenerate 1x1 width is rejected for real dimension (>1)', degenerateStyle.width > 1, true);
+check('degenerate 1x1 height is rejected for real dimension (>1)', degenerateStyle.height > 1, true);
 
 console.log(failed === 0 ? 'ALL PASS' : `${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);

@@ -2,6 +2,40 @@ import type { Article } from './api';
 
 export const PRELOAD_RADIUS = 3;
 
+export interface CoverDimensions {
+  width: number;
+  height: number;
+}
+
+/** Fallback cover dimensions before native layout measurement */
+export const DEFAULT_COVER_DIMENSIONS: CoverDimensions = {
+  width: 320,
+  height: 200,
+};
+
+/**
+ * Returns display dimensions for off-screen neighbor cover pre-rendering.
+ * Ensures native image pipeline decodes textures at real render size rather than 1x1.
+ */
+export function getOffscreenCoverStyle(
+  dimensions?: CoverDimensions | null,
+  fallbackWidth?: number,
+): CoverDimensions {
+  const width =
+    dimensions && dimensions.width > 1
+      ? Math.round(dimensions.width)
+      : fallbackWidth && fallbackWidth > 64
+        ? Math.round(fallbackWidth - 64)
+        : DEFAULT_COVER_DIMENSIONS.width;
+
+  const height =
+    dimensions && dimensions.height > 1
+      ? Math.round(dimensions.height)
+      : DEFAULT_COVER_DIMENSIONS.height;
+
+  return { width, height };
+}
+
 export type PrefetchFn = (url: string) => Promise<boolean>;
 
 /**

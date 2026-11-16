@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -16,6 +16,8 @@ import {
   PRELOAD_RADIUS,
   getPreloadNeighbors,
   prefetchWindowCovers,
+  getOffscreenCoverStyle,
+  type CoverDimensions,
 } from '../lib/preload';
 import type { Article } from '../lib/api';
 import type { Theme } from '../constants/colors';
@@ -85,6 +87,32 @@ export function HeroDeck({
     () => getPreloadNeighbors(articles, index, PRELOAD_RADIUS),
     [articles, index],
   );
+
+  const [coverDimensions, setCoverDimensions] = useState<CoverDimensions | null>(null);
+
+  const offscreenCoverStyle = useMemo(
+    () => getOffscreenCoverStyle(coverDimensions, width),
+    [coverDimensions, width],
+  );
+
+  const imageOpacity = useSharedValue(0);
+
+  // Reset opacity when index changes so a residual decode never flashes blank
+  useEffect(() => {
+    imageOpacity.value = 0;
+  }, [index, imageOpacity]);
+
+  const handleImageLoad = useCallback(() => {
+    imageOpacity.value = withTiming(1, { duration: 150 });
+  }, [imageOpacity]);
+
+  const handleImageError = useCallback(() => {
+    imageOpacity.value = 0;
+  }, [imageOpacity]);
+
+  const imageFadeStyle = useAnimatedStyle(() => ({
+    opacity: imageOpacity.value,
+  }));
 
   const pan = useMemo(
     () =>
@@ -215,13 +243,35 @@ export function HeroDeck({
             {front.title} 🔥
           </Text>
 
-          {front.imageUrl ? (
-            <Image source={{ uri: front.imageUrl }} style={styles.image} resizeMode="cover" />
-          ) : (
-            <View style={[styles.image, styles.placeholder, { backgroundColor: t.pillInactiveBg }]}>
+          <View
+            style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}
+            onLayout={(e) => {
+              const { width: w, height: h } = e.nativeEvent.layout;
+              if (w > 1 && h > 1) {
+                setCoverDimensions((prev) => {
+                  if (prev?.width === w && prev?.height === h) return prev;
+                  return { width: w, height: h };
+                });
+              }
+            }}
+          >
+            {/* Base placeholder: always underneath so residual native decode never flashes empty/white */}
+            <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
               <Ionicons name="newspaper-outline" size={44} color={t.textMuted} />
             </View>
-          )}
+
+            {front.imageUrl ? (
+              <Animated.View style={[StyleSheet.absoluteFill, imageFadeStyle]}>
+                <Image
+                  source={{ uri: front.imageUrl }}
+                  style={styles.image}
+                  resizeMode="cover"
+                  onLoad={handleImageLoad}
+                  onError={handleImageError}
+                />
+              </Animated.View>
+            ) : null}
+          </View>
 
           <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
             <Text style={[styles.meta, { color: t.textMuted }]}>
@@ -239,7 +289,7 @@ export function HeroDeck({
         </Animated.View>
       </GestureDetector>
 
-      {/* Off-screen neighbor pre-render: pre-warms 3 ahead and 3 behind so native text/image layout & decoding are ready before swiping */}
+      {/* Off-screen neighbor pre-render: warms 3 ahead and 3 behind at real display dimensions */}
       <View
         style={styles.offscreenPreload}
         pointerEvents="none"
@@ -247,11 +297,15 @@ export function HeroDeck({
         aria-hidden={true}
       >
         {preloadNeighbors.map((a) => (
-          <View key={`preload-${a.id}`} style={styles.preloadItem}>
+          <View key={`preload-${a.id}`} style={[styles.preloadItem, offscreenCoverStyle]}>
             <Text style={styles.preloadText}>{a.title}</Text>
             <Text style={styles.preloadText}>{a.sourceName}</Text>
             {a.imageUrl ? (
-              <Image source={{ uri: a.imageUrl }} style={styles.preloadImage} resizeMode="cover" />
+              <Image
+                source={{ uri: a.imageUrl }}
+                style={offscreenCoverStyle}
+                resizeMode="cover"
+              />
             ) : null}
           </View>
         ))}
@@ -263,15 +317,16 @@ export function HeroDeck({
 const styles = StyleSheet.create({
   offscreenPreload: {
     position: 'absolute',
-    width: 1,
-    height: 1,
     opacity: 0,
     overflow: 'hidden',
     left: -9999,
+    top: -9999,
   },
-  preloadItem: { width: 1, height: 1 },
+  preloadItem: {
+    position: 'absolute',
+    opacity: 0,
+  },
   preloadText: { fontSize: 1 },
-  preloadImage: { width: 1, height: 1 },
   deck: {
     flex: 1,
     marginHorizontal: 16,
@@ -319,7 +374,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: { fontFamily: 'Cairo_700Bold', fontSize: 19, lineHeight: 29, marginBottom: 12 },
-  image: { width: '100%', flex: 1, minHeight: 120, borderRadius: 20, marginBottom: 12 },
+  imageContainer: {
+    width: '100%',
+    flex: 1,
+    minHeight: 120,
+    borderRadius: 20,
+    marginBottom: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  image: { width: '100%', height: '100%', borderRadius: 20 },
   placeholder: { alignItems: 'center', justifyContent: 'center' },
   metricsBar: {
     flexDirection: 'row',
