@@ -12,6 +12,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import { relativeTime } from '../lib/api';
 import { deckStep, swipeOutcome } from '../lib/swipe';
+import {
+  PRELOAD_RADIUS,
+  getPreloadNeighbors,
+  prefetchWindowCovers,
+} from '../lib/preload';
 import type { Article } from '../lib/api';
 import type { Theme } from '../constants/colors';
 import { PublisherAvatar, PublisherMeta } from './Publisher';
@@ -62,13 +67,24 @@ export function HeroDeck({
     [onIndexChange, tx],
   );
 
+  // Trigger loading next page when 8 cards or fewer remain, ensuring 3-ahead preload window never starves.
   useEffect(() => {
-    if (articles.length - index <= 4) onNearEnd?.();
+    if (articles.length - index <= 8) onNearEnd?.();
   }, [articles.length, index, onNearEnd]);
 
   useEffect(() => {
     tx.value = 0;
   }, [index, tx]);
+
+  // Preload cover images for the active window (current + 3 ahead + 3 behind)
+  useEffect(() => {
+    prefetchWindowCovers(articles, index, PRELOAD_RADIUS, Image.prefetch);
+  }, [articles, index]);
+
+  const preloadNeighbors = useMemo(
+    () => getPreloadNeighbors(articles, index, PRELOAD_RADIUS),
+    [articles, index],
+  );
 
   const pan = useMemo(
     () =>
@@ -222,11 +238,40 @@ export function HeroDeck({
           </View>
         </Animated.View>
       </GestureDetector>
+
+      {/* Off-screen neighbor pre-render: pre-warms 3 ahead and 3 behind so native text/image layout & decoding are ready before swiping */}
+      <View
+        style={styles.offscreenPreload}
+        pointerEvents="none"
+        accessible={false}
+        aria-hidden={true}
+      >
+        {preloadNeighbors.map((a) => (
+          <View key={`preload-${a.id}`} style={styles.preloadItem}>
+            <Text style={styles.preloadText}>{a.title}</Text>
+            <Text style={styles.preloadText}>{a.sourceName}</Text>
+            {a.imageUrl ? (
+              <Image source={{ uri: a.imageUrl }} style={styles.preloadImage} resizeMode="cover" />
+            ) : null}
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  offscreenPreload: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    overflow: 'hidden',
+    left: -9999,
+  },
+  preloadItem: { width: 1, height: 1 },
+  preloadText: { fontSize: 1 },
+  preloadImage: { width: 1, height: 1 },
   deck: {
     flex: 1,
     marginHorizontal: 16,
