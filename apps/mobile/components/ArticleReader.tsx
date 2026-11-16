@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   Image,
   ScrollView,
@@ -36,6 +36,8 @@ export function ArticleReader({
   onReadFull,
   onOpenSource,
   variant = 'screen',
+  onScrollTopChange,
+  scrollEnabled = true,
 }: {
   article: Article;
   t: Theme;
@@ -44,8 +46,24 @@ export function ArticleReader({
   onOpenSource?: () => void;
   /** 'sheet' = 3/4-height card with a pinned read-more button; 'screen' = full page. */
   variant?: 'screen' | 'sheet';
+  /** Notifies parent when the scroll view is at the top edge (contentOffset.y <= 2). */
+  onScrollTopChange?: (isAtTop: boolean) => void;
+  /** Allows parent gesture handler to lock scrolling during an active sheet drag. */
+  scrollEnabled?: boolean;
 }) {
   const inSheet = variant === 'sheet';
+  const isAtTopRef = useRef(true);
+
+  const handleScroll = useCallback(
+    (e: { nativeEvent: { contentOffset: { y: number } } }) => {
+      const atTop = e.nativeEvent.contentOffset.y <= 2;
+      if (atTop !== isAtTopRef.current) {
+        isAtTopRef.current = atTop;
+        onScrollTopChange?.(atTop);
+      }
+    },
+    [onScrollTopChange],
+  );
 
   const readMore = (
     <TouchableOpacity
@@ -109,6 +127,10 @@ export function ArticleReader({
             inSheet && styles.bottomSheetContentSheet,
           ]}
           showsVerticalScrollIndicator={false}
+          scrollEnabled={scrollEnabled}
+          bounces={!inSheet}
+          scrollEventThrottle={16}
+          onScroll={handleScroll}
         >
         <View style={styles.sheetPublisherRow}>
           <TouchableOpacity

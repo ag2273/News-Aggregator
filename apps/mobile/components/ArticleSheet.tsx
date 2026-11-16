@@ -8,11 +8,22 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import type { Article } from '../lib/api';
+import { sheetDismissOutcome } from '../lib/swipe';
 import { ArticleReader } from './ArticleReader';
 import { WebViewPane } from './WebViewPane';
+
+const SPRING = { damping: 20, stiffness: 200 };
 
 interface ArticleSheetApi {
   open: (article: Article) => void;
@@ -39,21 +50,68 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
   const [article, setArticle] = useState<Article | null>(null);
   const [visible, setVisible] = useState(false);
   const [showWeb, setShowWeb] = useState(false);
+  const [isAtTop, setIsAtTop] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const ty = useSharedValue(0);
+
   // The sheet covers ~3/4 of the screen so the feed stays visible above it.
   const sheetHeight = Math.round(height * 0.75);
 
-  const open = useCallback((next: Article) => {
-    setArticle(next);
-    setShowWeb(false);
-    setVisible(true);
-  }, []);
+  const open = useCallback(
+    (next: Article) => {
+      ty.value = 0;
+      setIsAtTop(true);
+      setIsDragging(false);
+      setArticle(next);
+      setShowWeb(false);
+      setVisible(true);
+    },
+    [ty],
+  );
 
   const close = useCallback(() => {
     setVisible(false);
     setShowWeb(false);
-  }, []);
+    setIsAtTop(true);
+    setIsDragging(false);
+    ty.value = 0;
+  }, [ty]);
 
   const api = useMemo<ArticleSheetApi>(() => ({ open, close }), [open, close]);
+
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!showWeb && isAtTop)
+        .activeOffsetY(10)
+        .failOffsetY(-10)
+        .shouldCancelWhenOutside(false)
+        .onStart(() => {
+          runOnJS(setIsDragging)(true);
+        })
+        .onUpdate((e) => {
+          ty.value = Math.max(0, e.translationY);
+        })
+        .onEnd((e) => {
+          const dismiss = sheetDismissOutcome(e.translationY, e.velocityY);
+          if (dismiss) {
+            ty.value = withTiming(sheetHeight + 40, { duration: 220 }, (finished) => {
+              'worklet';
+              if (finished) runOnJS(close)();
+            });
+          } else {
+            ty.value = withSpring(0, SPRING);
+          }
+        })
+        .onFinalize(() => {
+          runOnJS(setIsDragging)(false);
+        }),
+    [close, isAtTop, sheetHeight, showWeb, ty],
+  );
+
+  const sheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: ty.value }],
+  }));
 
   return (
     <ArticleSheetContext.Provider value={api}>
@@ -66,37 +124,42 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
         statusBarTranslucent
         onRequestClose={close}
       >
-        <View style={styles.modalRoot}>
+        <GestureHandlerRootView style={styles.modalRoot}>
           {/* Tapping the visible strip of feed above the sheet dismisses it. */}
           <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="إغلاق" />
-          <View
-            style={[
-              styles.sheet,
-              { height: sheetHeight, backgroundColor: t.surface },
-            ]}
-          >
-            {article && showWeb ? (
-              <WebViewPane
-                url={article.url}
-                title={article.sourceName}
-                t={t}
-                onClose={() => setShowWeb(false)}
-              />
-            ) : article ? (
-              <ArticleReader
-                article={article}
-                t={t}
-                variant="sheet"
-                onClose={close}
-                onReadFull={() => setShowWeb(true)}
-                onOpenSource={() => {
-                  close();
-                  router.push({ pathname: '/source/[id]', params: { id: article.sourceId } });
-                }}
-              />
-            ) : null}
-          </View>
-        </View>
+          <GestureDetector gesture={pan}>
+            <Animated.View
+              style={[
+                styles.sheet,
+                { height: sheetHeight, backgroundColor: t.surface },
+                sheetAnimatedStyle,
+              ]}
+            >
+              {article && showWeb ? (
+                <WebViewPane
+                  url={article.url}
+                  title={article.sourceName}
+                  t={t}
+                  onClose={() => setShowWeb(false)}
+                />
+              ) : article ? (
+                <ArticleReader
+                  article={article}
+                  t={t}
+                  variant="sheet"
+                  onClose={close}
+                  onReadFull={() => setShowWeb(true)}
+                  onScrollTopChange={setIsAtTop}
+                  scrollEnabled={!isDragging}
+                  onOpenSource={() => {
+                    close();
+                    router.push({ pathname: '/source/[id]', params: { id: article.sourceId } });
+                  }}
+                />
+              ) : null}
+            </Animated.View>
+          </GestureDetector>
+        </GestureHandlerRootView>
       </Modal>
     </ArticleSheetContext.Provider>
   );

@@ -8,8 +8,11 @@ import { fileURLToPath } from 'node:url';
 import {
   swipeOutcome,
   deckStep,
+  sheetDismissOutcome,
   SWIPE_DISTANCE,
   SWIPE_VELOCITY,
+  SHEET_DISMISS_DISTANCE,
+  SHEET_DISMISS_VELOCITY,
 } from '../lib/swipe.ts';
 
 const require = createRequire(import.meta.url);
@@ -30,6 +33,19 @@ console.log('— thresholds —');
 // exported constants must keep matching them.
 check('SWIPE_DISTANCE matches the worklet literal', SWIPE_DISTANCE, 90);
 check('SWIPE_VELOCITY matches the worklet literal', SWIPE_VELOCITY, 700);
+check('SHEET_DISMISS_DISTANCE matches the worklet literal', SHEET_DISMISS_DISTANCE, 120);
+check('SHEET_DISMISS_VELOCITY matches the worklet literal', SHEET_DISMISS_VELOCITY, 700);
+
+console.log('— sheet dismiss (sheetDismissOutcome) —');
+check('sheet: small slow nudge snaps back', sheetDismissOutcome(40, 100), false);
+check('sheet: exactly at distance threshold snaps back', sheetDismissOutcome(SHEET_DISMISS_DISTANCE, 0), false);
+check('sheet: one past threshold dismisses', sheetDismissOutcome(SHEET_DISMISS_DISTANCE + 1, 0), true);
+check('sheet: long drag down dismisses', sheetDismissOutcome(160, 0), true);
+check('sheet: fast downward flick with short travel dismisses', sheetDismissOutcome(20, SHEET_DISMISS_VELOCITY + 200), true);
+check('sheet: upward drag never dismisses', sheetDismissOutcome(-50, 0), false);
+check('sheet: fast upward flick never dismisses', sheetDismissOutcome(-20, -(SHEET_DISMISS_VELOCITY + 200)), false);
+check('sheet: far downward drag wins over upward velocity', sheetDismissOutcome(150, -500), true);
+check('sheet: zero movement snaps back', sheetDismissOutcome(0, 0), false);
 
 console.log('— threshold + direction (swipeOutcome) —');
 check('small slow nudge snaps back', swipeOutcome(40, 100), 0);
@@ -66,14 +82,17 @@ const out = babel.transformFileSync(file, {
 const code = out.code;
 check(
   'no worklet parameter default reads a module constant',
-  /=\s*[^,)=]*\bSWIPE_(DISTANCE|VELOCITY)\b/.test(
+  /=\s*[^,)=]*\b(SWIPE|SHEET)_(DISTANCE|VELOCITY)\b/.test(
     code.slice(code.indexOf('function swipeOutcome'), code.indexOf('__workletHash')),
+  ) ||
+  /=\s*[^,)=]*\b(SWIPE|SHEET)_(DISTANCE|VELOCITY)\b/.test(
+    code.slice(code.indexOf('function sheetDismissOutcome'), code.lastIndexOf('__workletHash')),
   ),
   false,
 );
 check(
   'no closure capture of the threshold constants',
-  /__closure=\[[^\]]*SWIPE_/.test(code),
+  /__closure=\[[^\]]*(SWIPE|SHEET)_/.test(code),
   false,
 );
 

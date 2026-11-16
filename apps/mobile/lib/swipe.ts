@@ -17,6 +17,9 @@
 export const SWIPE_DISTANCE = 90;
 export const SWIPE_VELOCITY = 700;
 
+export const SHEET_DISMISS_DISTANCE = 120;
+export const SHEET_DISMISS_VELOCITY = 700;
+
 export type SwipeDirection = -1 | 0 | 1;
 
 /**
@@ -32,6 +35,24 @@ export function swipeOutcome(translationX: number, velocityX: number): SwipeDire
   const leading = Math.sign(translationX) !== 0 ? translationX : velocityX;
   const dir = Math.sign(leading);
   return dir === 0 ? 0 : dir > 0 ? 1 : -1;
+}
+
+/**
+ * Downward drag decision for the article sheet modal.
+ * Pure + worklet-safe so the Pan handler and the tests share one rule.
+ *
+ * Dismisses if:
+ * 1. Dragged downward past 120px (translationY > 120)
+ * 2. Flicked downward with velocity > 700 and positive travel (translationY > 0)
+ *
+ * NOTE: thresholds are literals inside the body to prevent worklet closure/default-param crashes.
+ */
+export function sheetDismissOutcome(translationY: number, velocityY: number): boolean {
+  'worklet';
+  if (translationY <= 0) return false;
+  const far = translationY > 120;
+  const fast = velocityY > 700;
+  return far || fast;
 }
 
 /**
