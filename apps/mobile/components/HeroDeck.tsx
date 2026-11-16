@@ -29,9 +29,6 @@ import {
   getOffscreenCoverStyle,
   getDeckAdjacentCards,
   getActiveDeckCards,
-  isCoverLoaded,
-  markCoverLoaded,
-  markCoverError,
   type CoverDimensions,
 } from '../lib/preload';
 import type { Article } from '../lib/api';
@@ -384,8 +381,6 @@ export function HeroDeck({
                   source={{ uri: a.imageUrl }}
                   style={offscreenCoverStyle}
                   resizeMode="cover"
-                  onLoad={() => markCoverLoaded(a.imageUrl)}
-                  onError={() => markCoverError(a.imageUrl)}
                 />
               ) : null}
             </View>
@@ -424,14 +419,6 @@ export function DeckCard({
   onPressSource,
   onCoverLayout,
 }: DeckCardProps) {
-  const [loaded, setLoaded] = useState(() => isCoverLoaded(article.imageUrl));
-
-  useEffect(() => {
-    if (isCoverLoaded(article.imageUrl)) {
-      setLoaded(true);
-    }
-  }, [article.imageUrl]);
-
   const imageSource = useMemo(
     () => (article.imageUrl ? { uri: article.imageUrl } : undefined),
     [article.imageUrl],
@@ -484,28 +471,13 @@ export function DeckCard({
             : undefined
         }
       >
-        {/* Base placeholder: always underneath so residual native decode never flashes empty/white */}
-        <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
-          <Ionicons name="newspaper-outline" size={44} color={t.textMuted} />
-        </View>
-
+        {/* Solid container color shows through until the cover decodes: no opacity
+            toggle, so an already-loaded image is never hidden or re-faded. */}
         {article.imageUrl ? (
           <Image
             source={imageSource}
-            style={[
-              StyleSheet.absoluteFill,
-              styles.image,
-              { opacity: loaded ? 1 : 0 },
-            ]}
+            style={[StyleSheet.absoluteFill, styles.image]}
             resizeMode="cover"
-            onLoad={() => {
-              markCoverLoaded(article.imageUrl);
-              setLoaded(true);
-            }}
-            onError={() => {
-              markCoverError(article.imageUrl);
-              setLoaded(false);
-            }}
           />
         ) : null}
       </View>
@@ -628,7 +600,6 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   image: { width: '100%', height: '100%', borderRadius: 20 },
-  placeholder: { alignItems: 'center', justifyContent: 'center' },
   metricsBar: {
     flexDirection: 'row',
     alignItems: 'center',

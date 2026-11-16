@@ -14,11 +14,6 @@ import {
   getOffscreenCoverStyle,
   getDeckAdjacentCards,
   getActiveDeckCards,
-  isCoverLoaded,
-  markCoverLoaded,
-  markCoverError,
-  shouldResetCoverOpacity,
-  _resetLoadedCovers,
   DEFAULT_COVER_DIMENSIONS,
   PRELOAD_RADIUS,
 } from '../lib/preload.ts';
@@ -230,6 +225,7 @@ console.log('— HeroDeck component structural verification —');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const heroDeckSource = fs.readFileSync(path.resolve(__dirname, '../components/HeroDeck.tsx'), 'utf-8');
+const deckCardSource = heroDeckSource.slice(heroDeckSource.indexOf('export function DeckCard'));
 
 check('HeroDeck imports getActiveDeckCards', heroDeckSource.includes('getActiveDeckCards'), true);
 check('HeroDeck renders DeckCard component', heroDeckSource.includes('<DeckCard'), true);
@@ -238,7 +234,10 @@ check('HeroDeck rejects role-prefixed keys (next-, prev-)', !heroDeckSource.incl
 check('DeckCard renders publisher avatar and meta', heroDeckSource.includes('PublisherAvatar') && heroDeckSource.includes('PublisherMeta'), true);
 check('DeckCard renders title', heroDeckSource.includes('article.title'), true);
 check('DeckCard renders cover image', heroDeckSource.includes('article.imageUrl'), true);
-check('DeckCard seeds loaded state from isCoverLoaded', heroDeckSource.includes('isCoverLoaded(article.imageUrl)'), true);
+check('DeckCard cover Image has no opacity toggle (never hides a loaded image)', !deckCardSource.includes('opacity: loaded'), true);
+check('DeckCard cover Image has no loaded state at all', !deckCardSource.includes('setLoaded') && !deckCardSource.includes('useState(() => isCoverLoaded'), true);
+check('DeckCard placeholder icon layer is gone', !deckCardSource.includes('newspaper-outline'), true);
+check('DeckCard imageContainer keeps a solid background color', deckCardSource.includes('backgroundColor: t.pillInactiveBg'), true);
 check('DeckCard root uses cardBox styling with absolute positioning', heroDeckSource.includes('cardBox:') && heroDeckSource.includes("position: 'absolute'"), true);
 check('styles.layer is restricted to farStrips (not adjacent cards)', heroDeckSource.includes('farStrips') && heroDeckSource.includes('styles.layer'), true);
 check('Shared imageOpacity shared value is deleted', !heroDeckSource.includes('imageOpacity =') && !heroDeckSource.includes('imageOpacity.value'), true);
@@ -258,47 +257,20 @@ check('DeckCard memoizes cover Image source to prevent re-sourcing flicker', her
 console.log('— single deck-root GestureDetector (no handlerTag mutation / freeze) —');
 const gestureDetectorMatches = heroDeckSource.match(/<GestureDetector\b/g) || [];
 check('HeroDeck has exactly ONE GestureDetector at container root', gestureDetectorMatches.length, 1);
-const deckCardSource = heroDeckSource.slice(heroDeckSource.indexOf('export function DeckCard'));
 check('DeckCard has zero GestureDetector instances', deckCardSource.includes('<GestureDetector'), false);
 check('DeckCard uses Pressable for publisher row source tap', deckCardSource.includes('<Pressable') && deckCardSource.includes('onPressSource'), true);
 check('HeroDeck wraps root in GestureDetector with composed gesture', heroDeckSource.includes('<GestureDetector gesture={composed}>'), true);
 check('HeroDeck includes isAnimating safety timeout', heroDeckSource.includes('animTimeoutRef') && heroDeckSource.includes('clearAnimTimeout') && heroDeckSource.includes('startAnimTimeout'), true);
 
-console.log('— post-swipe opacity persistence (no reload flicker) —');
-_resetLoadedCovers();
-const url0 = 'https://img.test/0.jpg';
-const url1 = 'https://img.test/1.jpg';
-const coldUrl = 'https://img.test/cold.jpg';
-
-// Initial cold image: should reset opacity to 0
-check('cold image initially resets opacity', shouldResetCoverOpacity(url0, null), true);
-
-// Mark url0 loaded (as front card does on onLoad)
-markCoverLoaded(url0);
-check('url0 is now marked loaded', isCoverLoaded(url0), true);
-
-// While viewing url0, adjacent DeckCard pre-loads url1
-markCoverLoaded(url1);
-check('url1 pre-marked loaded by adjacent card', isCoverLoaded(url1), true);
-
-// Now user finishes swipe: advance index from url0 to url1
-// Opacity must NOT reset for url1 because it was already loaded!
-check('advancing to pre-loaded url1 does NOT reset opacity', shouldResetCoverOpacity(url1, url0), false);
-
-// Staying on same URL does NOT reset opacity
-check('staying on same URL does NOT reset opacity', shouldResetCoverOpacity(url1, url1), false);
-
-// Jumping to a genuinely cold URL resets opacity to 0
-check('jumping to cold URL resets opacity', shouldResetCoverOpacity(coldUrl, url1), true);
-
-// Error removes URL from loaded cache and forces reset
-markCoverError(url1);
-check('error removes url1 from loaded cache', isCoverLoaded(url1), false);
-check('errored url1 now resets opacity', shouldResetCoverOpacity(url1, url0), true);
-
-// HeroDeck source check: verify buggy index-keyed opacity reset effect is gone
-const hasBuggyIndexReset = /useEffect\(\s*\(\)\s*=>\s*\{\s*imageOpacity\.value\s*=\s*0;\s*\}\s*,\s*\[\s*index/.test(heroDeckSource);
-check('buggy index-keyed opacity reset is completely eliminated', hasBuggyIndexReset, false);
+console.log('— no opacity-toggling image patterns anywhere in the deck —');
+check('no "opacity: loaded" toggle in HeroDeck', heroDeckSource.includes('opacity: loaded'), false);
+check('no loaded-cover cache helpers remain in HeroDeck', !heroDeckSource.includes('markCoverLoaded') && !heroDeckSource.includes('markCoverError') && !heroDeckSource.includes('isCoverLoaded'), true);
+const offscreenPreloadIdx = heroDeckSource.indexOf('<View\n          style={styles.offscreenPreload}');
+const offscreenBlock = offscreenPreloadIdx === -1 ? '' : heroDeckSource.slice(offscreenPreloadIdx, offscreenPreloadIdx + 900);
+check('offscreen preload block still renders neighbor Images', offscreenBlock.includes('<Image') && offscreenBlock.includes('preloadNeighbors.map'), true);
+check('offscreen preload block carries no load-state callbacks', offscreenBlock.includes('markCover'), false);
+check('no index-keyed opacity reset effect', /useEffect\(\s*\(\)\s*=>\s*\{\s*imageOpacity\.value\s*=\s*0;\s*\}\s*,\s*\[\s*index/.test(heroDeckSource), false);
+check('buggy shared imageOpacity value is gone', !heroDeckSource.includes('imageOpacity =') && !heroDeckSource.includes('imageOpacity.value'), true);
 
 console.log(failed === 0 ? 'ALL PASS' : `${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
