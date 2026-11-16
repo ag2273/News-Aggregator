@@ -11,6 +11,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { relativeTime } from '../lib/api';
+import { deckStep, swipeOutcome } from '../lib/swipe';
 import type { Article } from '../lib/api';
 import type { Theme } from '../constants/colors';
 import { PublisherAvatar, PublisherMeta } from './Publisher';
@@ -50,40 +51,44 @@ export function HeroDeck({
 
   const front = articles[index];
   const back = [1, 2, 3].map((n) => articles[index + n]);
-  const canSwipe = Boolean(articles[index + 1]);
+  const canNext = index + 1 < articles.length;
+  const canPrev = index > 0;
 
-  const advance = useCallback(() => {
-    onIndexChange(index + 1);
-    tx.value = 0;
-  }, [index, onIndexChange, tx]);
+  const advanceTo = useCallback(
+    (next: number) => {
+      onIndexChange(next);
+      tx.value = 0;
+    },
+    [onIndexChange, tx],
+  );
 
   useEffect(() => {
     if (articles.length - index <= 4) onNearEnd?.();
   }, [articles.length, index, onNearEnd]);
 
-  const pan = useMemo(() => {
-    const gesture = Gesture.Pan()
-      .activeOffsetX([-10, 10])
-      .shouldCancelWhenOutside(false)
-      .onUpdate((e) => {
-        tx.value = e.translationX;
-      })
-      .onEnd((e) => {
-        const far = Math.abs(e.translationX) > 90;
-        const fast = Math.abs(e.velocityX) > 700;
-        if (!far && !fast) {
-          tx.value = withSpring(0, SPRING);
-          return;
-        }
-        const lead = e.translationX !== 0 ? e.translationX : e.velocityX;
-        const dir = lead >= 0 ? 1 : -1;
-        tx.value = withTiming(dir * width * 1.4, { duration: FLY_OUT_MS }, (finished) => {
-          'worklet';
-          if (finished) runOnJS(advance)();
-        });
-      });
-    return gesture;
-  }, [advance, tx, width]);
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([-10, 10])
+        .shouldCancelWhenOutside(false)
+        .onUpdate((e) => {
+          tx.value = e.translationX;
+        })
+        .onEnd((e) => {
+          const dir = swipeOutcome(e.translationX, e.velocityX);
+          // Physical direction: finger right = next article, finger left = previous.
+          const next = deckStep(index, dir, articles.length);
+          if (next === null) {
+            tx.value = withSpring(0, SPRING);
+            return;
+          }
+          tx.value = withTiming(dir * width * 1.4, { duration: FLY_OUT_MS }, (finished) => {
+            'worklet';
+            if (finished) runOnJS(advanceTo)(next);
+          });
+        }),
+    [advanceTo, articles.length, index, tx, width],
+  );
 
   const tapCard = useMemo(
     () =>
@@ -156,7 +161,7 @@ export function HeroDeck({
           ) : null,
         )}
 
-      <GestureDetector gesture={canSwipe ? composed : tapCard}>
+      <GestureDetector gesture={canNext || canPrev ? composed : tapCard}>
         <Animated.View
           accessible
           accessibilityRole="button"
@@ -197,8 +202,10 @@ export function HeroDeck({
               {relativeTime(front.publishedAt)}
             </Text>
             <View style={styles.hintRow}>
-              {canSwipe ? (
+              {canNext ? (
                 <Text style={[styles.hint, { color: t.textMuted }]}>اسحب للتالي</Text>
+              ) : canPrev ? (
+                <Text style={[styles.hint, { color: t.textMuted }]}>اسحب للسابق</Text>
               ) : null}
               <Ionicons name="share-outline" size={17} color={t.textMuted} />
             </View>

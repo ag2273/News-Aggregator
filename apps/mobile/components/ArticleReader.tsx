@@ -62,7 +62,7 @@ export function ArticleReader({
 
   return (
     <View style={[styles.articleRoot, inSheet && styles.sheetRoot]}>
-      <View style={styles.heroWrap}>
+      <View style={[styles.heroWrap, inSheet && styles.heroWrapSheet]}>
         {article.imageUrl ? (
           <Image source={{ uri: article.imageUrl }} style={styles.heroImage} resizeMode="cover" />
         ) : (
@@ -178,6 +178,8 @@ const styles = StyleSheet.create({
   articleRoot: { flex: 1, backgroundColor: '#000000' },
   sheetRoot: { backgroundColor: 'transparent' },
   heroWrap: { height: '46%', width: '100%', position: 'relative' },
+  // Inside the 3/4 sheet the cover is half as tall, leaving more room for text.
+  heroWrapSheet: { height: '23%' },
   heroImage: { width: '100%', height: '100%' },
   heroHeader: {
     position: 'absolute',

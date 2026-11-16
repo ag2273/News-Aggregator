@@ -2,26 +2,35 @@
  * Repeatable check for the hero-deck swipe decision.
  * Run: pnpm --filter @news/mobile test:swipe
  */
-import { swipeOutcome, SWIPE_DISTANCE, SWIPE_VELOCITY } from '../lib/swipe.ts';
-
-const cases = [
-  ['small slow nudge snaps back', 40, 100, 0],
-  ['exactly at the distance threshold snaps back', SWIPE_DISTANCE, 0, 0],
-  ['long drag right advances', 140, 0, 1],
-  ['long drag left advances', -140, 0, -1],
-  ['fast flick right with short travel advances', 30, SWIPE_VELOCITY + 500, 1],
-  ['fast flick left with short travel advances', -30, -(SWIPE_VELOCITY + 500), -1],
-  ['a far drag wins over opposite velocity', 120, -2000, 1],
-  ['no movement snaps back', 0, 0, 0],
-];
+import { swipeOutcome, deckStep, SWIPE_DISTANCE, SWIPE_VELOCITY } from '../lib/swipe.ts';
 
 let failed = 0;
-for (const [name, tx, vx, want] of cases) {
-  const got = swipeOutcome(tx, vx);
-  const ok = got === want;
+
+function check(name, got, want) {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
   if (!ok) failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}: tx=${tx} vx=${vx} -> ${got} (want ${want})`);
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
 }
+
+console.log('— threshold + direction (swipeOutcome) —');
+check('small slow nudge snaps back', swipeOutcome(40, 100), 0);
+check('exactly at the distance threshold snaps back', swipeOutcome(SWIPE_DISTANCE, 0), 0);
+check('long drag right = +1', swipeOutcome(140, 0), 1);
+check('long drag left = -1', swipeOutcome(-140, 0), -1);
+check('fast flick right with short travel = +1', swipeOutcome(30, SWIPE_VELOCITY + 500), 1);
+check('fast flick left with short travel = -1', swipeOutcome(-30, -(SWIPE_VELOCITY + 500)), -1);
+check('a far drag wins over opposite velocity', swipeOutcome(120, -2000), 1);
+check('no movement snaps back', swipeOutcome(0, 0), 0);
+
+console.log('— index step (deckStep): right = next, left = previous —');
+check('right swipe advances one', deckStep(0, 1, 20), 1);
+check('left swipe goes back one', deckStep(3, -1, 20), 2);
+check('left swipe at the first card does nothing', deckStep(0, -1, 20), null);
+check('right swipe at the last card does nothing', deckStep(19, 1, 20), null);
+check('right swipe from the second-to-last works', deckStep(18, 1, 20), 19);
+check('left swipe from the last card works', deckStep(19, -1, 20), 18);
+check('snap-back never moves the index', deckStep(7, 0, 20), null);
+check('empty feed never moves', deckStep(0, 1, 0), null);
 
 console.log(failed === 0 ? 'ALL PASS' : `${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
