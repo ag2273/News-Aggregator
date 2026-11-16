@@ -1,8 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -13,14 +11,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { fetchFeed } from '../lib/api';
 import type { Article } from '../lib/api';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
-import { FeedCard } from '../components/FeedCard';
 import { HeroDeck } from '../components/HeroDeck';
-import { CategoryPills, SectionHeader } from '../components/Pills';
+import { CategoryPills } from '../components/Pills';
 import { FloatingDock } from '../components/FloatingDock';
 import { useArticleSheet } from '../components/ArticleSheet';
 
@@ -48,18 +44,17 @@ function todayLabel(): string {
 
 export default function FeedScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
+  const { open: openSheet } = useArticleSheet();
+
   const [articles, setArticles] = useState<Article[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [deckIndex, setDeckIndex] = useState(0);
-  const [deckDragging, setDeckDragging] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const offsetRef = useRef(0);
   const hasMoreRef = useRef(true);
-  const listRef = useRef<FlatList<Article>>(null);
-  // The feed's own scroll gesture, so the deck's horizontal pan can run beside it.
-  const scrollGesture = useMemo(() => Gesture.Native(), []);
 
   const load = useCallback(async (replace: boolean) => {
     try {
@@ -68,8 +63,12 @@ export default function FeedScreen() {
       if (replace) {
         setArticles(data);
         offsetRef.current = data.length;
+        setDeckIndex(0);
       } else {
-        setArticles((prev) => [...prev, ...data]);
+        setArticles((prev) => {
+          const seen = new Set(prev.map((a) => a.id));
+          return [...prev, ...data.filter((a) => !seen.has(a.id))];
+        });
         offsetRef.current += data.length;
       }
       hasMoreRef.current = data.length === PAGE_SIZE;
@@ -83,18 +82,17 @@ export default function FeedScreen() {
     load(true).finally(() => setLoading(false));
   }, [load]);
 
-  // A new category starts a fresh deck.
+  // A new category starts the deck over.
   useEffect(() => {
     setDeckIndex(0);
   }, [activeCategory]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await load(true);
-    setRefreshing(false);
-  }, [load]);
-
-  const { open: openSheet } = useArticleSheet();
+  const loadMore = useCallback(async () => {
+    if (!hasMoreRef.current || loadingMore) return;
+    setLoadingMore(true);
+    await load(false);
+    setLoadingMore(false);
+  }, [load, loadingMore]);
 
   const openArticle = useCallback(
     (a: Article) => {
@@ -107,9 +105,8 @@ export default function FeedScreen() {
     router.push({ pathname: '/source/[id]', params: { id: a.sourceId } });
   }, []);
 
-  const shown = activeCategory === null ? articles : articles.filter((a) => a.category === activeCategory);
-  const deckArticles = shown.slice(deckIndex, deckIndex + 3);
-  const listArticles = shown.slice(deckIndex + 3);
+  const shown =
+    activeCategory === null ? articles : articles.filter((a) => a.category === activeCategory);
 
   if (loading) {
     return (
@@ -149,82 +146,40 @@ export default function FeedScreen() {
       style={styles.root}
     >
       <SafeAreaView style={styles.root} edges={['top']}>
-        <GestureDetector gesture={scrollGesture}>
-          <FlatList
-            ref={listRef}
-            scrollEnabled={!deckDragging}
-            data={listArticles}
-          keyExtractor={(a) => a.id}
-          renderItem={({ item }) => (
-            <FeedCard
-              article={item}
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.headerDate, { color: t.textMuted }]}>{todayLabel()}</Text>
+            <Text style={[styles.headerTitle, { color: t.textPrimary }]}>مركز الأخبار</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
+              <Ionicons name="search" size={18} color={t.textSecondary} />
+            </View>
+            <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
+              <Ionicons name="notifications-outline" size={18} color={t.textSecondary} />
+            </View>
+          </View>
+        </View>
+
+        <CategoryPills t={t} active={activeCategory} onChange={setActiveCategory} />
+
+        <View style={styles.deckArea}>
+          {shown.length === 0 ? (
+            <Text style={[styles.empty, { color: t.textMuted }]}>
+              لا توجد أخبار في هذا التصنيف
+            </Text>
+          ) : (
+            <HeroDeck
+              articles={shown}
+              index={Math.min(deckIndex, shown.length - 1)}
+              onIndexChange={setDeckIndex}
+              onNearEnd={loadMore}
               t={t}
-              onPress={() => openArticle(item)}
-              onPressSource={() => openSource(item)}
+              onPress={openArticle}
+              onPressSource={openSource}
             />
           )}
-          contentContainerStyle={styles.list}
-          ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />
-          }
-          onEndReached={() => {
-            if (hasMoreRef.current) load(false);
-          }}
-          onEndReachedThreshold={0.5}
-          ListHeaderComponent={
-            <View>
-              {/* Header */}
-              <View style={styles.header}>
-                <View>
-                  <Text style={[styles.headerDate, { color: t.textMuted }]}>{todayLabel()}</Text>
-                  <Text style={[styles.headerTitle, { color: t.textPrimary }]}>مركز الأخبار</Text>
-                </View>
-                <View style={styles.headerActions}>
-                  <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
-                    <Ionicons name="search" size={18} color={t.textSecondary} />
-                  </View>
-                  <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
-                    <Ionicons name="notifications-outline" size={18} color={t.textSecondary} />
-                  </View>
-                </View>
-              </View>
-
-              {/* Category pills */}
-              <CategoryPills t={t} active={activeCategory} onChange={setActiveCategory} />
-
-              {/* Section header */}
-              <SectionHeader
-                t={t}
-                title="الأكثر قراءة الآن"
-                onAction={() => setActiveCategory(null)}
-              />
-
-              {/* Hero deck (swipeable) */}
-              <HeroDeck
-                articles={deckArticles}
-                index={0}
-                onIndexChange={() =>
-                  setDeckIndex((i) => Math.min(i + 1, Math.max(shown.length - 1, 0)))
-                }
-                t={t}
-                onPress={openArticle}
-                onPressSource={openSource}
-                scrollGesture={scrollGesture}
-                onDragChange={setDeckDragging}
-              />
-
-              <SectionHeader t={t} title="آخر الأخبار" actionLabel="" />
-
-              {listArticles.length === 0 ? (
-                <Text style={[styles.empty, { color: t.textMuted }]}>
-                  لا توجد أخبار في هذا التصنيف
-                </Text>
-              ) : null}
-            </View>
-          }
-          />
-        </GestureDetector>
+        </View>
 
         <FloatingDock t={t} active="home" />
       </SafeAreaView>
@@ -241,7 +196,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 16,
+    paddingBottom: 14,
   },
   headerDate: { fontFamily: 'Cairo_400Regular', fontSize: 13, marginBottom: 2 },
   headerTitle: { fontFamily: 'Cairo_700Bold', fontSize: 26 },
@@ -258,8 +213,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  list: { paddingBottom: 120 },
-  empty: { textAlign: 'center', marginTop: 12, fontFamily: 'Cairo_400Regular', fontSize: 14 },
+  deckArea: {
+    flex: 1,
+    marginTop: 14,
+    // Clear the floating dock.
+    paddingBottom: 100,
+  },
+  empty: { textAlign: 'center', marginTop: 40, fontFamily: 'Cairo_400Regular', fontSize: 14 },
   errorText: { fontSize: 16, textAlign: 'center', marginBottom: 16 },
   retryBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 999 },
   retryText: { fontFamily: 'Cairo_600SemiBold' },

@@ -24,6 +24,7 @@ export function CategoryPills({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      style={styles.pillsScroll}
       contentContainerStyle={styles.pillsRow}
     >
       {CATEGORY_PILLS.map((c) => {
@@ -81,6 +82,8 @@ export function SectionHeader({
 }
 
 const styles = StyleSheet.create({
+  // A horizontal ScrollView would otherwise stretch to fill a column parent.
+  pillsScroll: { flexGrow: 0, flexShrink: 0 },
   pillsRow: { paddingHorizontal: 16, gap: 8, paddingVertical: 4 },
   pill: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
   pillText: { fontFamily: 'Cairo_600SemiBold', fontSize: 13 },
