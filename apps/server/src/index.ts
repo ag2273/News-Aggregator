@@ -26,6 +26,13 @@ import {
   unfollowSource,
 } from './follows.js';
 import {
+  getSavedArticleIds,
+  isArticleSaved,
+  saveArticle,
+  unsaveArticle,
+} from './saved.js';
+import type { Article } from './types.js';
+import {
   hashPassword,
   verifyPassword,
   createToken,
@@ -169,6 +176,49 @@ app.get('/api/feed/following', (c) => {
   const offset = Number(c.req.query('offset') ?? 0);
   const articles = getArticlesByFollowedSources(sourceIds, limit, offset);
   return c.json({ data: articles, total: articles.length });
+});
+
+// --- Saved articles routes (Bearer protected) ---
+
+app.get('/api/saved', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
+  const offset = Number(c.req.query('offset') ?? 0);
+  const savedIds = getSavedArticleIds(userId);
+  const articles: Article[] = [];
+  for (const id of savedIds) {
+    const a = getArticleById(id);
+    if (a) articles.push(a);
+  }
+  const page = articles.slice(offset, offset + limit);
+  return c.json({ data: page, total: page.length });
+});
+
+app.get('/api/saved/:articleId', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const articleId = c.req.param('articleId');
+  const saved = isArticleSaved(userId, articleId);
+  return c.json({ data: { saved } });
+});
+
+app.put('/api/saved/:articleId', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const articleId = c.req.param('articleId');
+  const article = getArticleById(articleId);
+  if (!article) return c.json({ error: 'article not found' }, 404);
+  const articleIds = saveArticle(userId, articleId);
+  return c.json({ data: { ok: true, saved: true, articleIds } });
+});
+
+app.delete('/api/saved/:articleId', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const articleId = c.req.param('articleId');
+  const articleIds = unsaveArticle(userId, articleId);
+  return c.json({ data: { ok: true, saved: false, articleIds } });
 });
 
 // --- News & Feed routes ---

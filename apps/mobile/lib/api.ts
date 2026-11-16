@@ -117,6 +117,40 @@ export async function fetchFollowingFeed(token: string, limit = 50, offset = 0):
   return json.data;
 }
 
+export async function fetchSavedArticles(token: string, limit = 50, offset = 0): Promise<Article[]> {
+  const res = await fetch(`${API_BASE}/api/saved?limit=${limit}&offset=${offset}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = (await res.json()) as { data: Article[] };
+  return json.data;
+}
+
+export async function fetchIsArticleSaved(articleId: string, token: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = (await res.json()) as { data: { saved: boolean } };
+  return json.data.saved;
+}
+
+export async function saveArticle(articleId: string, token: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+}
+
+export async function unsaveArticle(articleId: string, token: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+}
+
 export function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
   const mins = Math.floor(diff / 60_000);

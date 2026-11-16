@@ -25,7 +25,13 @@ export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
         label="الأكثر تداولاً"
         onPress={() => router.push('/trending')}
       />
-      <DockButton t={t} active={active === 'saved'} icon="bookmark-outline" label="المحفوظات" />
+      <DockButton
+        t={t}
+        active={active === 'saved'}
+        icon="bookmark-outline"
+        label="المحفوظات"
+        onPress={() => router.push('/saved')}
+      />
       <DockButton
         t={t}
         active={active === 'profile'}

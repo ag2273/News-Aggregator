@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Image,
   ScrollView,
@@ -10,8 +10,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { fullDate, relativeTime } from '../lib/api';
+import { router } from 'expo-router';
+import {
+  fetchIsArticleSaved,
+  fullDate,
+  relativeTime,
+  saveArticle,
+  unsaveArticle,
+} from '../lib/api';
 import type { Article } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import type { Theme } from '../constants/colors';
 import { PublisherAvatar } from './Publisher';
 
@@ -53,6 +61,47 @@ export function ArticleReader({
 }) {
   const inSheet = variant === 'sheet';
   const isAtTopRef = useRef(true);
+  const { user, token } = useAuth();
+  const [saved, setSaved] = useState(false);
+  const [togglingSaved, setTogglingSaved] = useState(false);
+
+  useEffect(() => {
+    if (!token || !article.id) {
+      setSaved(false);
+      return;
+    }
+    let cancelled = false;
+    fetchIsArticleSaved(article.id, token)
+      .then((isSaved) => {
+        if (!cancelled) setSaved(isSaved);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token, article.id]);
+
+  const handleToggleBookmark = useCallback(async () => {
+    if (!user || !token) {
+      router.push('/login');
+      return;
+    }
+    if (!article.id || togglingSaved) return;
+    setTogglingSaved(true);
+    try {
+      if (saved) {
+        await unsaveArticle(article.id, token);
+        setSaved(false);
+      } else {
+        await saveArticle(article.id, token);
+        setSaved(true);
+      }
+    } catch {
+      // Keep optimistic or current state
+    } finally {
+      setTogglingSaved(false);
+    }
+  }, [user, token, article.id, togglingSaved, saved]);
 
   const handleScroll = useCallback(
     (e: { nativeEvent: { contentOffset: { y: number } } }) => {
@@ -108,9 +157,15 @@ export function ArticleReader({
             </View>
           </View>
 
-          <View style={styles.frostedBtn}>
-            <Ionicons name="ellipsis-vertical" size={18} color="#FFFFFF" />
-          </View>
+          <TouchableOpacity
+            onPress={handleToggleBookmark}
+            disabled={togglingSaved}
+            style={[styles.frostedBtn, saved && { backgroundColor: t.accent }]}
+            accessibilityRole="button"
+            accessibilityLabel={saved ? 'إزالة من المحفوظات' : 'حفظ المقال'}
+          >
+            <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={18} color="#FFFFFF" />
+          </TouchableOpacity>
         </SafeAreaView>
       </View>
 
@@ -152,8 +207,27 @@ export function ArticleReader({
               </Text>
             </View>
           </TouchableOpacity>
-          <View style={[styles.sheetIconBtn, { backgroundColor: t.pillInactiveBg }]}>
-            <Ionicons name="share-outline" size={18} color={t.textPrimary} />
+          <View style={styles.sheetActionsRow}>
+            <TouchableOpacity
+              onPress={handleToggleBookmark}
+              disabled={togglingSaved}
+              style={[
+                styles.sheetIconBtn,
+                { backgroundColor: saved ? t.accent : t.pillInactiveBg },
+                togglingSaved && { opacity: 0.6 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={saved ? 'إزالة من المحفوظات' : 'حفظ المقال'}
+            >
+              <Ionicons
+                name={saved ? 'bookmark' : 'bookmark-outline'}
+                size={18}
+                color={saved ? '#FFFFFF' : t.textPrimary}
+              />
+            </TouchableOpacity>
+            <View style={[styles.sheetIconBtn, { backgroundColor: t.pillInactiveBg }]}>
+              <Ionicons name="share-outline" size={18} color={t.textPrimary} />
+            </View>
           </View>
         </View>
 
@@ -254,6 +328,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
+  },
+  sheetActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   publisherInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
   nameVerifiedRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
