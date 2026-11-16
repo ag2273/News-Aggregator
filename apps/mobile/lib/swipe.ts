@@ -5,6 +5,13 @@
  * Direction is the physical finger direction in screen coordinates:
  *   +1 = the finger moved right  → NEXT article
  *   -1 = the finger moved left   → PREVIOUS article
+ *
+ * IMPORTANT: worklets run on the UI thread. They must not take module constants
+ * as *default parameter values* — babel turns those into bare identifiers that
+ * are only bound inside the worklet body, so the call throws ReferenceError on
+ * the UI thread and the app dies. Thresholds are therefore plain literals
+ * inside the body; the exported constants below must stay in sync with them
+ * (scripts/check-swipe.mjs asserts that).
  */
 
 export const SWIPE_DISTANCE = 90;
@@ -15,21 +22,16 @@ export type SwipeDirection = -1 | 0 | 1;
 /**
  * @returns 1 = swipe right, -1 = swipe left, 0 = below threshold (snap back)
  */
-export function swipeOutcome(
-  translationX: number,
-  velocityX: number,
-  distance: number = SWIPE_DISTANCE,
-  velocity: number = SWIPE_VELOCITY,
-): SwipeDirection {
+export function swipeOutcome(translationX: number, velocityX: number): SwipeDirection {
   'worklet';
-  const far = Math.abs(translationX) > distance;
-  const fast = Math.abs(velocityX) > velocity;
+  const far = Math.abs(translationX) > 90;
+  const fast = Math.abs(velocityX) > 700;
   if (!far && !fast) return 0;
 
   // A slow long drag follows the finger; a fast flick follows the velocity.
   const leading = Math.sign(translationX) !== 0 ? translationX : velocityX;
   const dir = Math.sign(leading);
-  return dir === 0 ? 0 : (dir > 0 ? 1 : -1);
+  return dir === 0 ? 0 : dir > 0 ? 1 : -1;
 }
 
 /**
