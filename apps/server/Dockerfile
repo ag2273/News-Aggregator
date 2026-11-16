@@ -46,11 +46,9 @@ RUN pnpm --filter @news/server install --prod --frozen-lockfile
 # Copy compiled JavaScript output
 COPY --from=builder /app/apps/server/dist ./dist
 
-# Create persistent data volume mount point
+# Mount point for a Railway Volume (attach a Volume at /data in the Railway dashboard)
 RUN mkdir -p /data
 
 EXPOSE 3001
-
-VOLUME ["/data"]
 
 CMD ["node", "dist/index.js"]
