@@ -246,6 +246,15 @@ check('Shared imageFadeStyle is deleted', !heroDeckSource.includes('imageFadeSty
 check('Component-level lastLoadedUrlRef is deleted', !heroDeckSource.includes('lastLoadedUrlRef'), true);
 check('StaticDeckCard is exported for backwards compatibility', heroDeckSource.includes('export const StaticDeckCard = DeckCard'), true);
 
+console.log('— gesture stability & animation safety (no back-swipe freeze) —');
+check('HeroDeck synchronizes indexSV and totalSV shared values', heroDeckSource.includes('indexSV = useSharedValue') && heroDeckSource.includes('totalSV = useSharedValue'), true);
+check('HeroDeck guards gestures with isAnimating shared value', heroDeckSource.includes('isAnimating = useSharedValue'), true);
+const panHasIndexDep = /useMemo\s*\(\s*\(\)\s*=>\s*Gesture\.Pan\(\)[\s\S]*?,\s*\[[^\]]*\bindex\b[^\]]*\]\s*\)/.test(heroDeckSource);
+check('pan gesture avoids index in useMemo deps (stable gesture instance)', panHasIndexDep, false);
+check('pan onEnd worklet reads indexSV.value snapshot', heroDeckSource.includes('deckStep(indexSV.value, dir, totalSV.value)'), true);
+check('withTiming interruption safely cancels and resets tx to 0', heroDeckSource.includes('cancelAnimation(tx)') && heroDeckSource.includes('tx.value = 0'), true);
+check('DeckCard memoizes cover Image source to prevent re-sourcing flicker', heroDeckSource.includes('imageSource = useMemo') && heroDeckSource.includes('source={imageSource}'), true);
+
 console.log('— post-swipe opacity persistence (no reload flicker) —');
 _resetLoadedCovers();
 const url0 = 'https://img.test/0.jpg';

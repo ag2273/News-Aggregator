@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   StyleSheet,
@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -68,8 +69,14 @@ export function HeroDeck({
 }) {
   const { width } = useWindowDimensions();
   const tx = useSharedValue(0);
+  const indexSV = useSharedValue(index);
+  const totalSV = useSharedValue(articles.length);
+  const isAnimating = useSharedValue(false);
 
   const front = articles[index];
+  const frontRef = useRef(front);
+  frontRef.current = front;
+
   const { farStrips } = useMemo(
     () => getDeckAdjacentCards(articles, index),
     [articles, index],
@@ -81,12 +88,17 @@ export function HeroDeck({
   const canNext = index + 1 < articles.length;
   const canPrev = index > 0;
 
+  // Synchronize shared value snapshots for worklets without recreating gesture handlers
+  useEffect(() => {
+    indexSV.value = index;
+    totalSV.value = articles.length;
+  }, [index, articles.length, indexSV, totalSV]);
+
   const advanceTo = useCallback(
     (next: number) => {
       onIndexChange(next);
-      tx.value = 0;
     },
-    [onIndexChange, tx],
+    [onIndexChange],
   );
 
   // Trigger loading next page when 8 cards or fewer remain, ensuring 3-ahead preload window never starves.
@@ -94,9 +106,13 @@ export function HeroDeck({
     if (articles.length - index <= 8) onNearEnd?.();
   }, [articles.length, index, onNearEnd]);
 
+  // Safety fallback: ensure tx is cleanly at 0 when index changes while not animating
   useEffect(() => {
-    tx.value = 0;
-  }, [index, tx]);
+    if (!isAnimating.value && tx.value !== 0) {
+      cancelAnimation(tx);
+      tx.value = 0;
+    }
+  }, [index, tx, isAnimating]);
 
   // Preload cover images for the active window (current + 3 ahead + 3 behind)
   useEffect(() => {
@@ -115,6 +131,7 @@ export function HeroDeck({
     [coverDimensions, width],
   );
 
+  // Pan gesture is created ONCE with stable deps; worklet reads indexSV and totalSV snapshots
   const pan = useMemo(
     () =>
       Gesture.Pan()
@@ -122,37 +139,64 @@ export function HeroDeck({
         .failOffsetY([-15, 15])
         .shouldCancelWhenOutside(false)
         .onUpdate((e) => {
+          'worklet';
+          if (isAnimating.value) return;
           tx.value = e.translationX;
         })
         .onEnd((e) => {
+          'worklet';
+          if (isAnimating.value) return;
           const dir = swipeOutcome(e.translationX, e.velocityX);
           // Physical direction: finger right = next article, finger left = previous.
-          const next = deckStep(index, dir, articles.length);
+          const next = deckStep(indexSV.value, dir, totalSV.value);
           if (next === null) {
             tx.value = withSpring(0, SPRING);
             return;
           }
+          isAnimating.value = true;
           tx.value = withTiming(dir * width * 1.4, { duration: FLY_OUT_MS }, (finished) => {
             'worklet';
-            if (finished) runOnJS(advanceTo)(next);
+            if (finished) {
+              tx.value = 0;
+              isAnimating.value = false;
+              runOnJS(advanceTo)(next);
+            } else {
+              cancelAnimation(tx);
+              tx.value = 0;
+              isAnimating.value = false;
+            }
           });
         })
         .onFinalize((_e, success) => {
-          if (!success) {
+          'worklet';
+          if (!success && !isAnimating.value) {
             tx.value = withSpring(0, SPRING);
           }
         }),
-    [advanceTo, articles.length, index, tx, width],
+    [advanceTo, isAnimating, indexSV, totalSV, tx, width],
   );
+
+  const handleTap = useCallback(() => {
+    if (!isAnimating.value && frontRef.current) {
+      onPress(frontRef.current);
+    }
+  }, [isAnimating, onPress]);
+
+  const handleSourceTap = useCallback(() => {
+    if (!isAnimating.value && onPressSource && frontRef.current) {
+      onPressSource(frontRef.current);
+    }
+  }, [isAnimating, onPressSource]);
 
   const tapCard = useMemo(
     () =>
       Gesture.Tap()
         .maxDuration(280)
         .onEnd((_e, success) => {
-          if (success && front) runOnJS(onPress)(front);
+          'worklet';
+          if (success) runOnJS(handleTap)();
         }),
-    [front, onPress],
+    [handleTap],
   );
 
   const sourceTap = useMemo(
@@ -160,9 +204,10 @@ export function HeroDeck({
       Gesture.Tap()
         .maxDuration(280)
         .onEnd((_e, success) => {
-          if (success && onPressSource && front) runOnJS(onPressSource)(front);
+          'worklet';
+          if (success) runOnJS(handleSourceTap)();
         }),
-    [front, onPressSource],
+    [handleSourceTap],
   );
 
   const composed = useMemo(() => Gesture.Race(pan, tapCard), [pan, tapCard]);
@@ -361,6 +406,11 @@ export function DeckCard({
     }
   }, [article.imageUrl]);
 
+  const imageSource = useMemo(
+    () => (article.imageUrl ? { uri: article.imageUrl } : undefined),
+    [article.imageUrl],
+  );
+
   const disabledGesture = useMemo(() => Gesture.Tap().enabled(false), []);
   const activeGesture = interactive && gesture ? gesture : disabledGesture;
   const activeSourceGesture = interactive && sourceGesture ? sourceGesture : disabledGesture;
@@ -416,7 +466,7 @@ export function DeckCard({
 
           {article.imageUrl ? (
             <Image
-              source={{ uri: article.imageUrl }}
+              source={imageSource}
               style={[
                 StyleSheet.absoluteFill,
                 styles.image,
