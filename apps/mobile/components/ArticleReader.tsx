@@ -35,15 +35,33 @@ export function ArticleReader({
   onClose,
   onReadFull,
   onOpenSource,
+  variant = 'screen',
 }: {
   article: Article;
   t: Theme;
   onClose: () => void;
   onReadFull: () => void;
   onOpenSource?: () => void;
+  /** 'sheet' = 3/4-height card with a pinned read-more button; 'screen' = full page. */
+  variant?: 'screen' | 'sheet';
 }) {
+  const inSheet = variant === 'sheet';
+
+  const readMore = (
+    <TouchableOpacity
+      style={[styles.openWebBtn, { borderColor: t.borderLight }]}
+      onPress={onReadFull}
+      accessibilityRole="button"
+    >
+      <Text style={[styles.openWebText, { color: t.textPrimary }]}>
+        اقرأ الخبر كاملًا من المصدر
+      </Text>
+      <Ionicons name="open-outline" size={16} color={t.textPrimary} />
+    </TouchableOpacity>
+  );
+
   return (
-    <View style={styles.articleRoot}>
+    <View style={[styles.articleRoot, inSheet && styles.sheetRoot]}>
       <View style={styles.heroWrap}>
         {article.imageUrl ? (
           <Image source={{ uri: article.imageUrl }} style={styles.heroImage} resizeMode="cover" />
@@ -78,11 +96,20 @@ export function ArticleReader({
         </SafeAreaView>
       </View>
 
-      <ScrollView
-        style={[styles.bottomSheet, { backgroundColor: t.surface }]}
-        contentContainerStyle={styles.bottomSheetContent}
-        showsVerticalScrollIndicator={false}
+      <View
+        style={[
+          styles.sheetPane,
+          { backgroundColor: t.surface },
+        ]}
       >
+        <ScrollView
+          style={styles.sheetScroll}
+          contentContainerStyle={[
+            styles.bottomSheetContent,
+            inSheet && styles.bottomSheetContentSheet,
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.sheetPublisherRow}>
           <TouchableOpacity
             style={styles.publisherInfo}
@@ -131,23 +158,25 @@ export function ArticleReader({
           </Text>
         )}
 
-        <TouchableOpacity
-          style={[styles.openWebBtn, { borderColor: t.borderLight }]}
-          onPress={onReadFull}
-          accessibilityRole="button"
-        >
-          <Text style={[styles.openWebText, { color: t.textPrimary }]}>
-            اقرأ الخبر كاملًا من المصدر
-          </Text>
-          <Ionicons name="open-outline" size={16} color={t.textPrimary} />
-        </TouchableOpacity>
-      </ScrollView>
+        {inSheet ? (
+          <SafeAreaView
+            edges={['bottom']}
+            style={[styles.ctaBar, { backgroundColor: t.surface, borderTopColor: t.borderLight }]}
+          >
+            {readMore}
+          </SafeAreaView>
+        ) : (
+          readMore
+        )}
+        </ScrollView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   articleRoot: { flex: 1, backgroundColor: '#000000' },
+  sheetRoot: { backgroundColor: 'transparent' },
   heroWrap: { height: '46%', width: '100%', position: 'relative' },
   heroImage: { width: '100%', height: '100%' },
   heroHeader: {
@@ -180,13 +209,22 @@ const styles = StyleSheet.create({
   dotsRow: { flexDirection: 'row', gap: 4, marginTop: 4 },
   dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.4)' },
   dotActive: { width: 14, backgroundColor: '#FFFFFF' },
-  bottomSheet: {
+  sheetPane: {
     flex: 1,
     marginTop: -30,
     borderTopLeftRadius: 36,
     borderTopRightRadius: 36,
+    overflow: 'hidden',
+  },
+  sheetScroll: { flex: 1 },
+  ctaBar: {
+    paddingHorizontal: 22,
+    paddingTop: 10,
+    paddingBottom: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   bottomSheetContent: { padding: 22, paddingBottom: 48 },
+  bottomSheetContentSheet: { paddingBottom: 12 },
   sheetPublisherRow: {
     flexDirection: 'row',
     alignItems: 'center',
