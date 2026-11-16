@@ -163,7 +163,6 @@ export function HeroDeck({
     () =>
       Gesture.Pan()
         .activeOffsetX([-10, 10])
-        .failOffsetY([-15, 15])
         .shouldCancelWhenOutside(false)
         .onUpdate((e) => {
           'worklet';
@@ -174,7 +173,7 @@ export function HeroDeck({
           'worklet';
           const dir = swipeOutcome(e.translationX, e.velocityX);
           if (isAnimating.value) return;
-          // Physical direction: finger right = next article, finger left = previous.
+          // RTL feed: finger left = next article, finger right = previous.
           const next = deckStep(indexSV.value, dir, totalSV.value);
           if (next === null) {
             tx.value = withSpring(0, SPRING);
@@ -243,15 +242,15 @@ export function HeroDeck({
   }));
 
   const nextCardStyle = useAnimatedStyle(() => {
-    if (tx.value < 0) {
-      // Swiping left towards prev card -> fade next card out so prev card is cleanly revealed
-      const opacity = interpolate(-tx.value, [0, 50], [1, 0], 'clamp');
+    if (tx.value > 0) {
+      // Swiping right towards prev card -> fade next card out so prev card is cleanly revealed
+      const opacity = interpolate(tx.value, [0, 50], [1, 0], 'clamp');
       return {
         opacity,
         transform: [{ scale: 0.97 }, { translateY: -PEEK }],
       };
     }
-    const p = Math.min(tx.value / width, 1);
+    const p = Math.min(-tx.value / width, 1);
     return {
       opacity: 1,
       transform: [
@@ -262,15 +261,15 @@ export function HeroDeck({
   });
 
   const prevCardStyle = useAnimatedStyle(() => {
-    if (tx.value >= 0) {
+    if (tx.value <= 0) {
       return {
         opacity: 0,
         transform: [{ scale: 0.97 }, { translateY: -PEEK }],
       };
     }
-    const p = Math.min(-tx.value / width, 1);
+    const p = Math.min(tx.value / width, 1);
     return {
-      opacity: interpolate(-tx.value, [0, 50], [0, 1], 'clamp'),
+      opacity: interpolate(tx.value, [0, 50], [0, 1], 'clamp'),
       transform: [
         { scale: interpolate(p, [0, 1], [0.97, 1]) },
         { translateY: interpolate(p, [0, 1], [-PEEK, 0]) },
@@ -328,13 +327,13 @@ export function HeroDeck({
           const hintText =
             card.role === 'front'
               ? canNext
-                ? 'اسحب للتالي'
+                ? 'اسحب شمال للتالي'
                 : canPrev
-                  ? 'اسحب للسابق'
+                  ? 'اسحب يمين للسابق'
                   : null
               : card.role === 'next'
-                ? 'اسحب للتالي'
-                : 'اسحب للسابق';
+                ? 'اسحب شمال للتالي'
+                : 'اسحب يمين للسابق';
 
           return (
             <DeckCard

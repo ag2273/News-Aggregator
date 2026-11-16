@@ -3,8 +3,11 @@
  * Pure + worklet-safe so the Pan handler and the tests share one rule.
  *
  * Direction is the physical finger direction in screen coordinates:
- *   +1 = the finger moved right  → NEXT article
- *   -1 = the finger moved left   → PREVIOUS article
+ *   +1 = the finger moved right  → PREVIOUS article
+ *   -1 = the finger moved left   → NEXT article
+ *
+ * The app is Arabic-only and forces RTL (I18nManager.forceRTL in app/_layout),
+ * so "forward" is LEFT: it matches the reading direction.
  *
  * IMPORTANT: worklets run on the UI thread. They must not take module constants
  * as *default parameter values* — babel turns those into bare identifiers that
@@ -57,7 +60,7 @@ export function sheetDismissOutcome(translationY: number, velocityY: number): bo
 
 /**
  * Which deck index a swipe lands on, or null when the swipe should snap back.
- * Right (+1) goes forward, left (-1) goes back; both are clamped to the feed.
+ * RTL feed: left (-1) goes forward, right (+1) goes back; both are clamped to the feed.
  */
 export function deckStep(
   current: number,
@@ -66,7 +69,7 @@ export function deckStep(
 ): number | null {
   'worklet';
   if (direction === 0) return null;
-  const next = current + direction;
+  const next = current - direction;
   if (next < 0 || next >= total) return null;
   return next;
 }
