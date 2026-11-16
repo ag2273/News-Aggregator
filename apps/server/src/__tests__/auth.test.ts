@@ -20,9 +20,7 @@ const USERS_FILE = path.resolve(__dirname, '../../../data/users.json');
 describe('Auth unit & endpoint tests', () => {
   beforeEach(() => {
     // Reset users.json for clean test state
-    if (fs.existsSync(USERS_FILE)) {
-      fs.unlinkSync(USERS_FILE);
-    }
+    try { fs.rmSync(USERS_FILE, { force: true }); } catch {}
     _resetUsersCache();
   });
 

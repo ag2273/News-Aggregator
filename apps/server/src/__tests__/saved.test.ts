@@ -52,8 +52,8 @@ describe('T6 saved articles store and endpoints', () => {
   };
 
   beforeEach(() => {
-    if (fs.existsSync(SAVED_FILE)) fs.unlinkSync(SAVED_FILE);
-    if (fs.existsSync(USERS_FILE)) fs.unlinkSync(USERS_FILE);
+    try { fs.rmSync(SAVED_FILE, { force: true }); } catch {}
+    try { fs.rmSync(USERS_FILE, { force: true }); } catch {}
     _resetSavedCache();
     _resetUsersCache();
 

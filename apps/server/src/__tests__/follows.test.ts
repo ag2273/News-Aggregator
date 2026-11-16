@@ -24,8 +24,8 @@ describe('T5 follows store and endpoints', () => {
   let token: string;
 
   beforeEach(() => {
-    if (fs.existsSync(FOLLOWS_FILE)) fs.unlinkSync(FOLLOWS_FILE);
-    if (fs.existsSync(USERS_FILE)) fs.unlinkSync(USERS_FILE);
+    try { fs.rmSync(FOLLOWS_FILE, { force: true }); } catch {}
+    try { fs.rmSync(USERS_FILE, { force: true }); } catch {}
     _resetFollowsCache();
     _resetUsersCache();
 

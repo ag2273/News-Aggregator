@@ -66,10 +66,15 @@ export function HeroDeck({
     if (articles.length - index <= 4) onNearEnd?.();
   }, [articles.length, index, onNearEnd]);
 
+  useEffect(() => {
+    tx.value = 0;
+  }, [index, tx]);
+
   const pan = useMemo(
     () =>
       Gesture.Pan()
         .activeOffsetX([-10, 10])
+        .failOffsetY([-15, 15])
         .shouldCancelWhenOutside(false)
         .onUpdate((e) => {
           tx.value = e.translationX;
@@ -86,6 +91,11 @@ export function HeroDeck({
             'worklet';
             if (finished) runOnJS(advanceTo)(next);
           });
+        })
+        .onFinalize((_e, success) => {
+          if (!success) {
+            tx.value = withSpring(0, SPRING);
+          }
         }),
     [advanceTo, articles.length, index, tx, width],
   );

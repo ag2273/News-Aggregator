@@ -10,6 +10,8 @@ import {
 import { router } from 'expo-router';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
+  Extrapolation,
+  interpolate,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -52,6 +54,7 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
   const [showWeb, setShowWeb] = useState(false);
   const [isAtTop, setIsAtTop] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const ty = useSharedValue(0);
 
   // The sheet covers ~3/4 of the screen so the feed stays visible above it.
@@ -59,30 +62,41 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
 
   const open = useCallback(
     (next: Article) => {
-      ty.value = 0;
       setIsAtTop(true);
       setIsDragging(false);
+      setIsClosing(false);
       setArticle(next);
       setShowWeb(false);
+      ty.value = sheetHeight + 40;
       setVisible(true);
+      ty.value = withTiming(0, { duration: 250 });
     },
-    [ty],
+    [sheetHeight, ty],
   );
 
-  const close = useCallback(() => {
+  const finishClose = useCallback(() => {
     setVisible(false);
     setShowWeb(false);
     setIsAtTop(true);
     setIsDragging(false);
-    ty.value = 0;
-  }, [ty]);
+    setIsClosing(false);
+  }, []);
+
+  const close = useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+    ty.value = withTiming(sheetHeight + 40, { duration: 220 }, (finished) => {
+      'worklet';
+      if (finished) runOnJS(finishClose)();
+    });
+  }, [finishClose, isClosing, sheetHeight, ty]);
 
   const api = useMemo<ArticleSheetApi>(() => ({ open, close }), [open, close]);
 
   const pan = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!showWeb && isAtTop)
+        .enabled(!showWeb && isAtTop && !isClosing)
         .activeOffsetY(10)
         .failOffsetY(-10)
         .shouldCancelWhenOutside(false)
@@ -95,9 +109,10 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
         .onEnd((e) => {
           const dismiss = sheetDismissOutcome(e.translationY, e.velocityY);
           if (dismiss) {
+            runOnJS(setIsClosing)(true);
             ty.value = withTiming(sheetHeight + 40, { duration: 220 }, (finished) => {
               'worklet';
-              if (finished) runOnJS(close)();
+              if (finished) runOnJS(finishClose)();
             });
           } else {
             ty.value = withSpring(0, SPRING);
@@ -106,19 +121,29 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
         .onFinalize(() => {
           runOnJS(setIsDragging)(false);
         }),
-    [close, isAtTop, sheetHeight, showWeb, ty],
+    [finishClose, isAtTop, isClosing, sheetHeight, showWeb, ty],
   );
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: ty.value }],
   }));
 
+  const backdropAnimatedStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      ty.value,
+      [0, sheetHeight + 40],
+      [1, 0],
+      Extrapolation.CLAMP,
+    );
+    return { opacity };
+  });
+
   return (
     <ArticleSheetContext.Provider value={api}>
       {children}
       <Modal
         visible={visible}
-        animationType="slide"
+        animationType="none"
         transparent
         presentationStyle="overFullScreen"
         statusBarTranslucent
@@ -126,7 +151,9 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
       >
         <GestureHandlerRootView style={styles.modalRoot}>
           {/* Tapping the visible strip of feed above the sheet dismisses it. */}
-          <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="إغلاق" />
+          <Animated.View style={[styles.backdrop, backdropAnimatedStyle]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="إغلاق" />
+          </Animated.View>
           <GestureDetector gesture={pan}>
             <Animated.View
               style={[
@@ -150,7 +177,7 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
                   onClose={close}
                   onReadFull={() => setShowWeb(true)}
                   onScrollTopChange={setIsAtTop}
-                  scrollEnabled={!isDragging}
+                  scrollEnabled={!isDragging && !isClosing}
                   onOpenSource={() => {
                     close();
                     router.push({ pathname: '/source/[id]', params: { id: article.sourceId } });
