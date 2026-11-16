@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import {
+  Image,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -17,6 +25,7 @@ import {
   getPreloadNeighbors,
   prefetchWindowCovers,
   getOffscreenCoverStyle,
+  getDeckAdjacentCards,
   type CoverDimensions,
 } from '../lib/preload';
 import type { Article } from '../lib/api';
@@ -57,7 +66,10 @@ export function HeroDeck({
   const tx = useSharedValue(0);
 
   const front = articles[index];
-  const back = [1, 2, 3].map((n) => articles[index + n]);
+  const { nextArticle, prevArticle, farStrips } = useMemo(
+    () => getDeckAdjacentCards(articles, index),
+    [articles, index],
+  );
   const canNext = index + 1 < articles.length;
   const canPrev = index > 0;
 
@@ -173,11 +185,43 @@ export function HeroDeck({
     ],
   }));
 
-  const layerStyles = [
-    useAnimatedStyle(() => {
-      const p = Math.min(Math.abs(tx.value) / 220, 1);
-      return { transform: [{ translateY: -PEEK * p }] };
-    }),
+  const nextCardStyle = useAnimatedStyle(() => {
+    if (tx.value < 0) {
+      // Swiping left towards prev card -> fade next card out so prev card is cleanly revealed
+      const opacity = interpolate(-tx.value, [0, 50], [1, 0], 'clamp');
+      return {
+        opacity,
+        transform: [{ scale: 0.97 }, { translateY: -PEEK }],
+      };
+    }
+    const p = Math.min(tx.value / width, 1);
+    return {
+      opacity: 1,
+      transform: [
+        { scale: interpolate(p, [0, 1], [0.97, 1]) },
+        { translateY: interpolate(p, [0, 1], [-PEEK, 0]) },
+      ],
+    };
+  });
+
+  const prevCardStyle = useAnimatedStyle(() => {
+    if (tx.value >= 0) {
+      return {
+        opacity: 0,
+        transform: [{ scale: 0.97 }, { translateY: -PEEK }],
+      };
+    }
+    const p = Math.min(-tx.value / width, 1);
+    return {
+      opacity: interpolate(-tx.value, [0, 50], [0, 1], 'clamp'),
+      transform: [
+        { scale: interpolate(p, [0, 1], [0.97, 1]) },
+        { translateY: interpolate(p, [0, 1], [-PEEK, 0]) },
+      ],
+    };
+  });
+
+  const stripStyles = [
     useAnimatedStyle(() => {
       const p = Math.min(Math.abs(tx.value) / 220, 1);
       return { transform: [{ translateY: -PEEK * p }] };
@@ -192,28 +236,48 @@ export function HeroDeck({
 
   return (
     <View style={styles.deck}>
-      {back
-        .map((a, i) => ({ a, i }))
+      {/* Decorative far strips for index+3 and index+2 (pile hint only) */}
+      {farStrips
+        .map((a, idx) => ({ a, idx, stripIndex: idx + 1 }))
         .reverse()
-        .map(({ a, i }) =>
-          a ? (
-            <Animated.View
-              key={`${a.id}-${i}`}
-              pointerEvents="none"
-              style={[
-                styles.layer,
-                {
-                  top: (DEPTH - 1 - i) * PEEK,
-                  width: `${94 - i * 6}%`,
-                  backgroundColor: i === 0 ? t.surfaceStackMid : t.surfaceStackBack,
-                  borderColor: t.stackEdge,
-                  opacity: i === 0 ? 1 : 0.95 - i * 0.1,
-                },
-                layerStyles[i],
-              ]}
-            />
-          ) : null,
-        )}
+        .map(({ a, idx, stripIndex }) => (
+          <Animated.View
+            key={`strip-${a.id}-${stripIndex}`}
+            pointerEvents="none"
+            style={[
+              styles.layer,
+              {
+                top: (DEPTH - 1 - stripIndex) * PEEK,
+                width: `${94 - stripIndex * 6}%`,
+                backgroundColor: stripIndex === 1 ? t.surfaceStackMid : t.surfaceStackBack,
+                borderColor: t.stackEdge,
+                opacity: stripIndex === 1 ? 0.95 : 0.85,
+              },
+              stripStyles[idx] ?? null,
+            ]}
+          />
+        ))}
+
+      {/* Immediately-adjacent cards rendered with FULL content behind front card */}
+      {prevArticle ? (
+        <StaticDeckCard
+          key={`prev-${prevArticle.id}`}
+          article={prevArticle}
+          t={t}
+          hintText="اسحب للسابق"
+          style={prevCardStyle}
+        />
+      ) : null}
+
+      {nextArticle ? (
+        <StaticDeckCard
+          key={`next-${nextArticle.id}`}
+          article={nextArticle}
+          t={t}
+          hintText="اسحب للتالي"
+          style={nextCardStyle}
+        />
+      ) : null}
 
       <GestureDetector gesture={canNext || canPrev ? composed : tapCard}>
         <Animated.View
@@ -314,7 +378,98 @@ export function HeroDeck({
   );
 }
 
+/**
+ * Fully rendered card model for adjacent deck cards (index+1 and index-1).
+ * Positioned directly behind the front card with pointerEvents="none" and accessible={false}.
+ * Reveals full publisher, title, and cover image during horizontal dragging.
+ */
+export function StaticDeckCard({
+  article,
+  t,
+  hintText,
+  style,
+}: {
+  article: Article;
+  t: Theme;
+  hintText?: string | null;
+  style?: StyleProp<ViewStyle> | ReturnType<typeof useAnimatedStyle>;
+}) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      accessible={false}
+      aria-hidden={true}
+      style={[styles.adjacentCard, { backgroundColor: t.surface }, style]}
+    >
+      <View style={styles.cardHeader}>
+        <View style={styles.publisherRow}>
+          <PublisherAvatar name={article.sourceName} size={40} t={t} />
+          <PublisherMeta
+            name={article.sourceName}
+            relative={relativeTime(article.publishedAt)}
+            t={t}
+          />
+        </View>
+        <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
+          <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
+        </View>
+      </View>
+
+      <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={4}>
+        {article.title} 🔥
+      </Text>
+
+      <View style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}>
+        <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
+          <Ionicons name="newspaper-outline" size={44} color={t.textMuted} />
+        </View>
+
+        {article.imageUrl ? (
+          <Image
+            source={{ uri: article.imageUrl }}
+            style={[
+              StyleSheet.absoluteFill,
+              styles.image,
+              { opacity: loaded ? 1 : 0 },
+            ]}
+            resizeMode="cover"
+            onLoad={() => setLoaded(true)}
+          />
+        ) : null}
+      </View>
+
+      <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
+        <Text style={[styles.meta, { color: t.textMuted }]}>
+          {relativeTime(article.publishedAt)}
+        </Text>
+        <View style={styles.hintRow}>
+          {hintText ? (
+            <Text style={[styles.hint, { color: t.textMuted }]}>{hintText}</Text>
+          ) : null}
+          <Ionicons name="share-outline" size={17} color={t.textMuted} />
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
+  adjacentCard: {
+    position: 'absolute',
+    top: DEPTH * PEEK,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderRadius: 28,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 4,
+  },
   offscreenPreload: {
     position: 'absolute',
     opacity: 0,

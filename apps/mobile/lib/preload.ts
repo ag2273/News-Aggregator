@@ -7,6 +7,37 @@ export interface CoverDimensions {
   height: number;
 }
 
+export interface DeckAdjacentCards {
+  nextArticle: Article | null;
+  prevArticle: Article | null;
+  farStrips: Article[];
+}
+
+/**
+ * Returns the card models for deck rendering:
+ * - nextArticle (index + 1): rendered as a full card behind front card
+ * - prevArticle (index - 1): rendered as a full card behind front card
+ * - farStrips (index + 2, index + 3): rendered as decorative pile hint strips
+ */
+export function getDeckAdjacentCards(
+  articles: Article[],
+  currentIndex: number,
+): DeckAdjacentCards {
+  if (!articles.length || currentIndex < 0 || currentIndex >= articles.length) {
+    return { nextArticle: null, prevArticle: null, farStrips: [] };
+  }
+  const prevArticle = currentIndex > 0 ? articles[currentIndex - 1] ?? null : null;
+  const nextArticle = currentIndex + 1 < articles.length ? articles[currentIndex + 1] ?? null : null;
+  const farStrips: Article[] = [];
+  if (currentIndex + 2 < articles.length && articles[currentIndex + 2]) {
+    farStrips.push(articles[currentIndex + 2]);
+  }
+  if (currentIndex + 3 < articles.length && articles[currentIndex + 3]) {
+    farStrips.push(articles[currentIndex + 3]);
+  }
+  return { nextArticle, prevArticle, farStrips };
+}
+
 /** Fallback cover dimensions before native layout measurement */
 export const DEFAULT_COVER_DIMENSIONS: CoverDimensions = {
   width: 320,

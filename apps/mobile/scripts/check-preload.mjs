@@ -2,6 +2,9 @@
  * Verification checks for the HeroDeck preload window and image pre-warming.
  * Run: node --experimental-strip-types scripts/check-preload.mjs
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   getPreloadWindow,
   getPreloadNeighbors,
@@ -9,6 +12,7 @@ import {
   prefetchWindowCovers,
   _resetPrefetchCache,
   getOffscreenCoverStyle,
+  getDeckAdjacentCards,
   DEFAULT_COVER_DIMENSIONS,
   PRELOAD_RADIUS,
 } from '../lib/preload.ts';
@@ -153,6 +157,49 @@ check('measured dimensions apply exact real height', measuredStyle.height, 215);
 const degenerateStyle = getOffscreenCoverStyle({ width: 1, height: 1 });
 check('degenerate 1x1 width is rejected for real dimension (>1)', degenerateStyle.width > 1, true);
 check('degenerate 1x1 height is rejected for real dimension (>1)', degenerateStyle.height > 1, true);
+
+console.log('— deck adjacent cards: full content for index+1 & index-1 (no blank strips) —');
+// Test adjacent cards partitioning at index 0
+const adj0 = getDeckAdjacentCards(sampleArticles, 0);
+check('adj0 prevArticle is null at start of feed', adj0.prevArticle, null);
+check('adj0 nextArticle has id art-1', adj0.nextArticle?.id, 'art-1');
+check('adj0 nextArticle has full non-empty title', Boolean(adj0.nextArticle?.title), true);
+check('adj0 nextArticle has full cover imageUrl', Boolean(adj0.nextArticle?.imageUrl), true);
+check('adj0 nextArticle has publisher sourceName', Boolean(adj0.nextArticle?.sourceName), true);
+check('adj0 farStrips contains index+2 and index+3', adj0.farStrips.map((a) => a.id), ['art-2', 'art-3']);
+check('adj0 farStrips does NOT include nextArticle art-1', adj0.farStrips.some((a) => a.id === 'art-1'), false);
+
+// Test adjacent cards partitioning at index 5
+const adj5 = getDeckAdjacentCards(sampleArticles, 5);
+check('adj5 prevArticle has id art-4', adj5.prevArticle?.id, 'art-4');
+check('adj5 prevArticle has full non-empty title', Boolean(adj5.prevArticle?.title), true);
+check('adj5 prevArticle has full cover imageUrl', Boolean(adj5.prevArticle?.imageUrl), true);
+check('adj5 nextArticle has id art-6', adj5.nextArticle?.id, 'art-6');
+check('adj5 nextArticle has full non-empty title', Boolean(adj5.nextArticle?.title), true);
+check('adj5 nextArticle has full cover imageUrl', Boolean(adj5.nextArticle?.imageUrl), true);
+check('adj5 farStrips contains far hint cards only (art-7, art-8)', adj5.farStrips.map((a) => a.id), ['art-7', 'art-8']);
+
+// Test adjacent cards partitioning at last index (9)
+const adj9 = getDeckAdjacentCards(sampleArticles, 9);
+check('adj9 nextArticle is null at end of feed', adj9.nextArticle, null);
+check('adj9 prevArticle has id art-8', adj9.prevArticle?.id, 'art-8');
+check('adj9 farStrips is empty at end of feed', adj9.farStrips, []);
+
+console.log('— HeroDeck component structural verification —');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const heroDeckSource = fs.readFileSync(path.resolve(__dirname, '../components/HeroDeck.tsx'), 'utf-8');
+
+check('HeroDeck imports getDeckAdjacentCards', heroDeckSource.includes('getDeckAdjacentCards'), true);
+check('HeroDeck renders StaticDeckCard for adjacent cards', heroDeckSource.includes('<StaticDeckCard'), true);
+check('HeroDeck renders prevArticle as StaticDeckCard', heroDeckSource.includes('article={prevArticle}'), true);
+check('HeroDeck renders nextArticle as StaticDeckCard', heroDeckSource.includes('article={nextArticle}'), true);
+check('StaticDeckCard renders publisher info', heroDeckSource.includes('PublisherAvatar') && heroDeckSource.includes('PublisherMeta'), true);
+check('StaticDeckCard renders title', heroDeckSource.includes('article.title'), true);
+check('StaticDeckCard renders cover image', heroDeckSource.includes('article.imageUrl'), true);
+check('StaticDeckCard sets pointerEvents="none"', heroDeckSource.includes('pointerEvents="none"'), true);
+check('StaticDeckCard sets accessible={false}', heroDeckSource.includes('accessible={false}'), true);
+check('styles.layer is restricted to farStrips (not adjacent cards)', heroDeckSource.includes('farStrips') && heroDeckSource.includes('styles.layer'), true);
 
 console.log(failed === 0 ? 'ALL PASS' : `${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
