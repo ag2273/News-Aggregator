@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Article } from './types.js';
 import { categorize } from './categorize.js';
+import { decodeHtmlEntities } from './text.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.resolve(__dirname, '../../data/news.json');
@@ -13,15 +14,22 @@ export interface StoredArticle extends Article {
 
 let cache: StoredArticle[] | null = null;
 
-/** Lazy migration: re-classify legacy 'general' categories using the keyword classifier. */
+/** Lazy migration: re-classify legacy 'general' categories and decode leftover HTML entities. */
 function migrate(rows: StoredArticle[]): { rows: StoredArticle[]; changed: boolean } {
   let changed = false;
   const out = rows.map((r) => {
-    if (!r.category || r.category === 'general') {
+    let row = r;
+    if (!row.category || row.category === 'general') {
+      row = { ...row, category: categorize(row.title, row.summary) };
       changed = true;
-      return { ...r, category: categorize(r.title, r.summary) };
     }
-    return r;
+    const title = decodeHtmlEntities(row.title);
+    const summary = row.summary === null ? null : decodeHtmlEntities(row.summary) || null;
+    if (title !== row.title || summary !== row.summary) {
+      row = { ...row, title, summary };
+      changed = true;
+    }
+    return row;
   });
   return { rows: out, changed };
 }

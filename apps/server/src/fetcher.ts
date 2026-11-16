@@ -2,6 +2,7 @@ import { XMLParser } from 'fast-xml-parser';
 import crypto from 'crypto';
 import type { Article, Source } from './types.js';
 import { categorize } from './categorize.js';
+import { decodeHtmlEntities } from './text.js';
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -113,20 +114,24 @@ export async function fetchSource(source: Source): Promise<Article[]> {
     const title = extractText(item['title']);
     if (!title) continue;
 
-    const summary = extractText(item['description'] ?? item['summary'] ?? '')
-      .replace(/<[^>]+>/g, '') // strip HTML tags
-      .trim()
-      .slice(0, 500) || null;
+    const cleanTitle = decodeHtmlEntities(title);
+    if (!cleanTitle) continue;
+
+    const rawSummary = extractText(item['description'] ?? item['summary'] ?? '').replace(
+      /<[^>]+>/g,
+      '',
+    ); // strip HTML tags
+    const summary = decodeHtmlEntities(rawSummary).slice(0, 500) || null;
 
     articles.push({
       id: hashUrl(url),
-      title: title.trim(),
+      title: cleanTitle,
       summary,
       imageUrl: extractImage(item),
       url,
       sourceId: source.id,
       sourceName: source.nameAr,
-      category: categorize(title.trim(), summary),
+      category: categorize(cleanTitle, summary),
       country: source.country,
       publishedAt: parseDate(item['pubDate'] ?? item['published'] ?? item['updated']),
       isBreaking: false,
