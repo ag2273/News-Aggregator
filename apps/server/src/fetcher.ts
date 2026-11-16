@@ -1,7 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import crypto from 'crypto';
 import type { Article, Source } from './types.js';
-import { categorize } from './categorize.js';
+import { categorize, detectBreaking } from './categorize.js';
 import { decodeHtmlEntities } from './text.js';
 
 const parser = new XMLParser({
@@ -134,7 +134,7 @@ export async function fetchSource(source: Source): Promise<Article[]> {
       category: categorize(cleanTitle, summary),
       country: source.country,
       publishedAt: parseDate(item['pubDate'] ?? item['published'] ?? item['updated']),
-      isBreaking: false,
+      isBreaking: detectBreaking(cleanTitle),
     });
   }
 

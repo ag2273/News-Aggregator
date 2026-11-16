@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { categorize, normalizeCategory, CATEGORIES } from '../categorize.js';
+import { categorize, normalizeCategory, detectBreaking, CATEGORIES } from '../categorize.js';
 
 describe('categorize: title+summary → category id', () => {
   it('classifies tech articles', () => {
@@ -49,5 +49,33 @@ describe('normalizeCategory', () => {
 
   it('all category ids are unique', () => {
     expect(new Set(CATEGORIES.map((c) => c.id)).size).toBe(CATEGORIES.length);
+  });
+});
+
+describe('detectBreaking', () => {
+  it('detects breaking keywords in title', () => {
+    expect(detectBreaking('عاجل | جيش الاحتلال يستهدف شحنة')).toBe(true);
+    expect(detectBreaking('عاجل: انفجار في وسط العاصمة')).toBe(true);
+    expect(detectBreaking('عاجل| غوتيريش يدعو لوقف إطلاق النار')).toBe(true);
+    expect(detectBreaking('بيان عاجل من وزارة الداخلية')).toBe(true);
+    expect(detectBreaking('خبر عاجل عن اتفاق التهدئة')).toBe(true);
+    expect(detectBreaking('نداء غربي عاجل لإنقاذ النازحين')).toBe(true);
+  });
+
+  it('detects live coverage keywords in title', () => {
+    expect(detectBreaking('متابعة الأحداث لحظة بلحظة')).toBe(true);
+    expect(detectBreaking('تغطية مباشرة للقمة العربية')).toBe(true);
+  });
+
+  it('returns false for regular titles', () => {
+    expect(detectBreaking('الأهلي يفوز في مباراة القمة بالدوري المصري')).toBe(false);
+    expect(detectBreaking('ارتفاع أسعار الذهب والدولار اليوم في مصر')).toBe(false);
+    expect(detectBreaking('آبل تطرح هاتف آيفون جديد بتقنية الذكاء الاصطناعي')).toBe(false);
+  });
+
+  it('handles empty or non-string input safely', () => {
+    expect(detectBreaking('')).toBe(false);
+    expect(detectBreaking(null)).toBe(false);
+    expect(detectBreaking(undefined)).toBe(false);
   });
 });

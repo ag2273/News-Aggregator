@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Article } from './types.js';
-import { categorize } from './categorize.js';
+import { categorize, detectBreaking } from './categorize.js';
 import { decodeHtmlEntities } from './text.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +27,11 @@ function migrate(rows: StoredArticle[]): { rows: StoredArticle[]; changed: boole
     const summary = row.summary === null ? null : decodeHtmlEntities(row.summary) || null;
     if (title !== row.title || summary !== row.summary) {
       row = { ...row, title, summary };
+      changed = true;
+    }
+    const isBreaking = detectBreaking(row.title);
+    if (row.isBreaking !== isBreaking) {
+      row = { ...row, isBreaking };
       changed = true;
     }
     return row;

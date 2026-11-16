@@ -123,3 +123,11 @@ export function normalizeCategory(category: string | undefined | null): string {
   if (category && CATEGORIES.some((c) => c.id === category)) return category;
   return 'misc';
 }
+
+const BREAKING_KEYWORDS = ['عاجل', 'لحظة بلحظة', 'تغطية مباشرة'] as const;
+
+/** Detect if an article title represents breaking news. */
+export function detectBreaking(title: string | undefined | null): boolean {
+  if (!title) return false;
+  return BREAKING_KEYWORDS.some((kw) => title.includes(kw));
+}
