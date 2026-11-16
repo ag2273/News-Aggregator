@@ -74,12 +74,6 @@ export function HeroDeck({
   const totalSV = useSharedValue(articles.length);
   const isAnimating = useSharedValue(false);
 
-  // [deck] JS-thread heartbeat for freeze diagnosis
-  useEffect(() => {
-    const id = setInterval(() => console.warn('[deck] heartbeat ' + Date.now()), 2000);
-    return () => clearInterval(id);
-  }, []);
-
   const front = articles[index];
   const frontRef = useRef(front);
   frontRef.current = front;
@@ -101,7 +95,6 @@ export function HeroDeck({
     clearAnimTimeout();
     animTimeoutRef.current = setTimeout(() => {
       if (isAnimating.value) {
-        console.warn('[deck] isAnimating safety timeout triggered - resetting animation lock');
         cancelAnimation(tx);
         tx.value = 0;
         isAnimating.value = false;
@@ -132,7 +125,6 @@ export function HeroDeck({
 
   const advanceTo = useCallback(
     (next: number) => {
-      console.warn('[deck] advanceTo next=' + next);
       onIndexChange(next);
     },
     [onIndexChange],
@@ -178,30 +170,13 @@ export function HeroDeck({
         .shouldCancelWhenOutside(false)
         .onUpdate((e) => {
           'worklet';
-          if (isAnimating.value) {
-            console.warn('[deck] onUpdate ignored-animating');
-            return;
-          }
-          console.warn('[deck] onUpdate anim=' + isAnimating.value);
+          if (isAnimating.value) return;
           tx.value = e.translationX;
         })
         .onEnd((e) => {
           'worklet';
           const dir = swipeOutcome(e.translationX, e.velocityX);
-          console.warn(
-            '[deck] onEnd dir=' +
-              dir +
-              ' index=' +
-              indexSV.value +
-              ' total=' +
-              totalSV.value +
-              ' anim=' +
-              isAnimating.value,
-          );
-          if (isAnimating.value) {
-            console.warn('[deck] onEnd ignored-animating');
-            return;
-          }
+          if (isAnimating.value) return;
           // Physical direction: finger right = next article, finger left = previous.
           const next = deckStep(indexSV.value, dir, totalSV.value);
           if (next === null) {
@@ -212,9 +187,6 @@ export function HeroDeck({
           runOnJS(startAnimTimeout)();
           tx.value = withTiming(dir * width * 1.4, { duration: FLY_OUT_MS }, (finished) => {
             'worklet';
-            console.warn(
-              '[deck] withTiming completion finished=' + finished + ' anim=' + isAnimating.value,
-            );
             runOnJS(clearAnimTimeout)();
             if (finished) {
               tx.value = 0;
@@ -412,6 +384,8 @@ export function HeroDeck({
                   source={{ uri: a.imageUrl }}
                   style={offscreenCoverStyle}
                   resizeMode="cover"
+                  onLoad={() => markCoverLoaded(a.imageUrl)}
+                  onError={() => markCoverError(a.imageUrl)}
                 />
               ) : null}
             </View>
