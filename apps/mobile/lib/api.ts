@@ -66,6 +66,57 @@ export async function fetchSourceArticles(
   return { source: json.source, articles: json.data };
 }
 
+export interface Source {
+  id: string;
+  name: string;
+  country?: string;
+}
+
+export async function fetchSources(): Promise<Source[]> {
+  const res = await fetch(`${API_BASE}/api/sources`);
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = (await res.json()) as { data: Source[] };
+  return json.data;
+}
+
+export async function fetchFollows(token: string): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/follows`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = (await res.json()) as { data: { sourceIds: string[] } };
+  return json.data.sourceIds;
+}
+
+export async function followSource(sourceId: string, token: string): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/follows/${encodeURIComponent(sourceId)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = (await res.json()) as { data: { sourceIds: string[] } };
+  return json.data.sourceIds;
+}
+
+export async function unfollowSource(sourceId: string, token: string): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/follows/${encodeURIComponent(sourceId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = (await res.json()) as { data: { sourceIds: string[] } };
+  return json.data.sourceIds;
+}
+
+export async function fetchFollowingFeed(token: string, limit = 50, offset = 0): Promise<Article[]> {
+  const res = await fetch(`${API_BASE}/api/feed/following?limit=${limit}&offset=${offset}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = (await res.json()) as { data: Article[] };
+  return json.data;
+}
+
 export function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
   const mins = Math.floor(diff / 60_000);

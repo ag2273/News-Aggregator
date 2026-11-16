@@ -10,6 +10,7 @@ import {
   getCategories,
   getTrending,
   getArticlesBySource,
+  getArticlesByFollowedSources,
   getSourceMeta,
 } from './ingest.js';
 import {
@@ -19,6 +20,11 @@ import {
   toSafeUser,
   type StoredUser,
 } from './users.js';
+import {
+  getFollowedSources,
+  followSource,
+  unfollowSource,
+} from './follows.js';
 import {
   hashPassword,
   verifyPassword,
@@ -126,6 +132,43 @@ app.post('/api/auth/logout', (c) => {
   }
 
   return c.json({ data: { ok: true } });
+});
+
+// --- Follows routes (Bearer protected) ---
+
+app.get('/api/follows', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const sourceIds = getFollowedSources(userId);
+  return c.json({ data: { sourceIds } });
+});
+
+app.put('/api/follows/:sourceId', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const sourceId = c.req.param('sourceId');
+  const meta = getSourceMeta(sourceId);
+  if (!meta) return c.json({ error: 'source not found' }, 404);
+  const sourceIds = followSource(userId, sourceId);
+  return c.json({ data: { sourceIds } });
+});
+
+app.delete('/api/follows/:sourceId', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const sourceId = c.req.param('sourceId');
+  const sourceIds = unfollowSource(userId, sourceId);
+  return c.json({ data: { sourceIds } });
+});
+
+app.get('/api/feed/following', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const sourceIds = getFollowedSources(userId);
+  const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
+  const offset = Number(c.req.query('offset') ?? 0);
+  const articles = getArticlesByFollowedSources(sourceIds, limit, offset);
+  return c.json({ data: articles, total: articles.length });
 });
 
 // --- News & Feed routes ---

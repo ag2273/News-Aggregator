@@ -88,6 +88,16 @@ export function getArticlesBySource(sourceId: string, limit = 50, offset = 0): A
     .map(toArticle);
 }
 
+/** Articles from multiple followed sources, newest-first, with limit/offset. */
+export function getArticlesByFollowedSources(sourceIds: string[], limit = 50, offset = 0): Article[] {
+  if (!sourceIds.length) return [];
+  const allowed = new Set(sourceIds);
+  return getAllArticles()
+    .filter((a) => allowed.has(a.sourceId))
+    .slice(offset, offset + limit)
+    .map(toArticle);
+}
+
 /** Source metadata (Arabic name) for a source id, or null. */
 export function getSourceMeta(sourceId: string): { id: string; name: string } | null {
   const s = SOURCES.find((x) => x.id === sourceId);

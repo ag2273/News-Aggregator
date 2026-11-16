@@ -30,8 +30,8 @@ export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
         t={t}
         active={active === 'profile'}
         icon="person-outline"
-        label="حسابي"
-        onPress={() => router.push('/account')}
+        label="مصادري"
+        onPress={() => router.push('/sources')}
       />
     </View>
   );

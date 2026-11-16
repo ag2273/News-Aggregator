@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { fetchSourceArticles } from '../../lib/api';
+import { fetchFollows, fetchSourceArticles, followSource, unfollowSource } from '../../lib/api';
 import type { Article, SourceMeta } from '../../lib/api';
 import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
@@ -20,14 +20,17 @@ import { FeedCard } from '../../components/FeedCard';
 import { PublisherAvatar } from '../../components/Publisher';
 import { FloatingDock } from '../../components/FloatingDock';
 import { useArticleSheet } from '../../components/ArticleSheet';
+import { useAuth } from '../../lib/auth';
 
 export default function SourceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
+  const { user, token } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [source, setSource] = useState<SourceMeta | null>(null);
   const [followed, setFollowed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -45,6 +48,45 @@ export default function SourceScreen() {
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [load]);
+
+  // Sync follow state if user is logged in
+  useEffect(() => {
+    if (!token || !id) {
+      setFollowed(false);
+      return;
+    }
+    let cancelled = false;
+    fetchFollows(token)
+      .then((ids) => {
+        if (!cancelled) setFollowed(ids.includes(id));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token, id]);
+
+  const handleToggleFollow = async () => {
+    if (!user || !token) {
+      router.push('/login');
+      return;
+    }
+    if (!id || toggling) return;
+    setToggling(true);
+    try {
+      if (followed) {
+        await unfollowSource(id, token);
+        setFollowed(false);
+      } else {
+        await followSource(id, token);
+        setFollowed(true);
+      }
+    } catch {
+      // Keep optimistic or current state
+    } finally {
+      setToggling(false);
+    }
+  };
 
   const { open: openSheet } = useArticleSheet();
 
@@ -101,20 +143,22 @@ export default function SourceScreen() {
               </Text>
               <TouchableOpacity
                 activeOpacity={0.85}
-                onPress={() => setFollowed((v) => !v)}
+                onPress={handleToggleFollow}
+                disabled={toggling}
                 accessibilityRole="button"
                 accessibilityState={{ selected: followed }}
                 style={[
                   styles.followBtn,
                   followed
-                    ? { backgroundColor: t.followedBg }
-                    : { backgroundColor: t.pillActiveBg },
+                    ? { backgroundColor: t.followedBg, borderWidth: 1, borderColor: t.borderLight }
+                    : { backgroundColor: t.accent },
+                  toggling && { opacity: 0.7 },
                 ]}
               >
                 <Text
-                  style={[styles.followText, { color: followed ? t.followedText : t.pillActiveText }]}
+                  style={[styles.followText, { color: followed ? t.followedText : '#FFFFFF' }]}
                 >
-                  {followed ? 'مُتابَع ✓' : '+ متابعة المصدر'}
+                  {followed ? 'إلغاء المتابعة' : 'متابعة'}
                 </Text>
               </TouchableOpacity>
             </View>
