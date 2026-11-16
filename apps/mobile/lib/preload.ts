@@ -38,6 +38,51 @@ export function getDeckAdjacentCards(
   return { nextArticle, prevArticle, farStrips };
 }
 
+export type DeckCardRole = 'prev' | 'next' | 'front';
+
+export interface ActiveDeckCard {
+  article: Article;
+  role: DeckCardRole;
+  key: string;
+}
+
+/**
+ * Returns the active deck cards in z-order [prev, next, front] with stable keys
+ * equal strictly to article.id (never role-prefixed).
+ */
+export function getActiveDeckCards(
+  articles: Article[],
+  currentIndex: number,
+): ActiveDeckCard[] {
+  if (!articles.length || currentIndex < 0 || currentIndex >= articles.length) {
+    return [];
+  }
+  const cards: ActiveDeckCard[] = [];
+  if (currentIndex > 0 && articles[currentIndex - 1]) {
+    cards.push({
+      article: articles[currentIndex - 1],
+      role: 'prev',
+      key: articles[currentIndex - 1].id,
+    });
+  }
+  if (currentIndex + 1 < articles.length && articles[currentIndex + 1]) {
+    cards.push({
+      article: articles[currentIndex + 1],
+      role: 'next',
+      key: articles[currentIndex + 1].id,
+    });
+  }
+  const front = articles[currentIndex];
+  if (front) {
+    cards.push({
+      article: front,
+      role: 'front',
+      key: front.id,
+    });
+  }
+  return cards;
+}
+
 /** In-memory set of image URLs that have completed native decoding/loading */
 const loadedCoverUrls = new Set<string>();
 

@@ -13,6 +13,7 @@ import {
   _resetPrefetchCache,
   getOffscreenCoverStyle,
   getDeckAdjacentCards,
+  getActiveDeckCards,
   isCoverLoaded,
   markCoverLoaded,
   markCoverError,
@@ -190,21 +191,60 @@ check('adj9 nextArticle is null at end of feed', adj9.nextArticle, null);
 check('adj9 prevArticle has id art-8', adj9.prevArticle?.id, 'art-8');
 check('adj9 farStrips is empty at end of feed', adj9.farStrips, []);
 
+console.log('— active deck cards & key stability across role changes —');
+// At index 0: [next: art-1, front: art-0]
+const active0 = getActiveDeckCards(sampleArticles, 0);
+check('active0 returns exactly 2 cards [next, front]', active0.length, 2);
+check('active0 roles are [next, front]', active0.map((c) => c.role), ['next', 'front']);
+check('active0 keys are strictly article.id', active0.map((c) => c.key), ['art-1', 'art-0']);
+
+// At index 1: [prev: art-0, next: art-2, front: art-1]
+const active1 = getActiveDeckCards(sampleArticles, 1);
+check('active1 returns 3 cards [prev, next, front]', active1.length, 3);
+check('active1 roles are [prev, next, front]', active1.map((c) => c.role), ['prev', 'next', 'front']);
+check('active1 keys are strictly article.id', active1.map((c) => c.key), ['art-0', 'art-2', 'art-1']);
+
+// Key stability across advance 0 -> 1:
+// art-1 was in active0 (role: next) with key 'art-1'.
+// art-1 is in active1 (role: front) with key 'art-1'.
+const nextCardAt0 = active0.find((c) => c.article.id === 'art-1');
+const frontCardAt1 = active1.find((c) => c.article.id === 'art-1');
+check('art-1 key at index 0 (as next) is strictly art-1', nextCardAt0?.key, 'art-1');
+check('art-1 key at index 1 (as front) is strictly art-1', frontCardAt1?.key, 'art-1');
+check('art-1 key matches identically across next -> front advance (stable fiber reuse)', nextCardAt0?.key === frontCardAt1?.key, true);
+
+// Key stability across reverse 1 -> 0:
+// art-0 was in active1 (role: prev) with key 'art-0'.
+// art-0 is in active0 (role: front) with key 'art-0'.
+const prevCardAt1 = active1.find((c) => c.article.id === 'art-0');
+const frontCardAt0 = active0.find((c) => c.article.id === 'art-0');
+check('art-0 key matches identically across prev -> front reverse', prevCardAt1?.key === frontCardAt0?.key, true);
+
+// Boundary checks:
+const activeEnd = getActiveDeckCards(sampleArticles, 9);
+check('activeEnd has 2 cards [prev, front]', activeEnd.map((c) => c.role), ['prev', 'front']);
+check('activeEnd keys are strictly article.id', activeEnd.map((c) => c.key), ['art-8', 'art-9']);
+check('empty articles returns empty active cards', getActiveDeckCards([], 0), []);
+
 console.log('— HeroDeck component structural verification —');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const heroDeckSource = fs.readFileSync(path.resolve(__dirname, '../components/HeroDeck.tsx'), 'utf-8');
 
-check('HeroDeck imports getDeckAdjacentCards', heroDeckSource.includes('getDeckAdjacentCards'), true);
-check('HeroDeck renders StaticDeckCard for adjacent cards', heroDeckSource.includes('<StaticDeckCard'), true);
-check('HeroDeck renders prevArticle as StaticDeckCard', heroDeckSource.includes('article={prevArticle}'), true);
-check('HeroDeck renders nextArticle as StaticDeckCard', heroDeckSource.includes('article={nextArticle}'), true);
-check('StaticDeckCard renders publisher info', heroDeckSource.includes('PublisherAvatar') && heroDeckSource.includes('PublisherMeta'), true);
-check('StaticDeckCard renders title', heroDeckSource.includes('article.title'), true);
-check('StaticDeckCard renders cover image', heroDeckSource.includes('article.imageUrl'), true);
-check('StaticDeckCard sets pointerEvents="none"', heroDeckSource.includes('pointerEvents="none"'), true);
-check('StaticDeckCard sets accessible={false}', heroDeckSource.includes('accessible={false}'), true);
+check('HeroDeck imports getActiveDeckCards', heroDeckSource.includes('getActiveDeckCards'), true);
+check('HeroDeck renders DeckCard component', heroDeckSource.includes('<DeckCard'), true);
+check('HeroDeck maps activeCards keyed strictly by article.id', heroDeckSource.includes('key={card.article.id}'), true);
+check('HeroDeck rejects role-prefixed keys (next-, prev-)', !heroDeckSource.includes('key={`next-') && !heroDeckSource.includes('key={`prev-'), true);
+check('DeckCard renders publisher avatar and meta', heroDeckSource.includes('PublisherAvatar') && heroDeckSource.includes('PublisherMeta'), true);
+check('DeckCard renders title', heroDeckSource.includes('article.title'), true);
+check('DeckCard renders cover image', heroDeckSource.includes('article.imageUrl'), true);
+check('DeckCard seeds loaded state from isCoverLoaded', heroDeckSource.includes('isCoverLoaded(article.imageUrl)'), true);
+check('DeckCard root uses cardBox styling with absolute positioning', heroDeckSource.includes('cardBox:') && heroDeckSource.includes("position: 'absolute'"), true);
 check('styles.layer is restricted to farStrips (not adjacent cards)', heroDeckSource.includes('farStrips') && heroDeckSource.includes('styles.layer'), true);
+check('Shared imageOpacity shared value is deleted', !heroDeckSource.includes('imageOpacity =') && !heroDeckSource.includes('imageOpacity.value'), true);
+check('Shared imageFadeStyle is deleted', !heroDeckSource.includes('imageFadeStyle'), true);
+check('Component-level lastLoadedUrlRef is deleted', !heroDeckSource.includes('lastLoadedUrlRef'), true);
+check('StaticDeckCard is exported for backwards compatibility', heroDeckSource.includes('export const StaticDeckCard = DeckCard'), true);
 
 console.log('— post-swipe opacity persistence (no reload flicker) —');
 _resetLoadedCovers();
@@ -219,7 +259,7 @@ check('cold image initially resets opacity', shouldResetCoverOpacity(url0, null)
 markCoverLoaded(url0);
 check('url0 is now marked loaded', isCoverLoaded(url0), true);
 
-// While viewing url0, StaticDeckCard pre-loads url1 (adjacent card)
+// While viewing url0, adjacent DeckCard pre-loads url1
 markCoverLoaded(url1);
 check('url1 pre-marked loaded by adjacent card', isCoverLoaded(url1), true);
 
@@ -241,8 +281,6 @@ check('errored url1 now resets opacity', shouldResetCoverOpacity(url1, url0), tr
 // HeroDeck source check: verify buggy index-keyed opacity reset effect is gone
 const hasBuggyIndexReset = /useEffect\(\s*\(\)\s*=>\s*\{\s*imageOpacity\.value\s*=\s*0;\s*\}\s*,\s*\[\s*index/.test(heroDeckSource);
 check('buggy index-keyed opacity reset is completely eliminated', hasBuggyIndexReset, false);
-check('HeroDeck uses shouldResetCoverOpacity', heroDeckSource.includes('shouldResetCoverOpacity'), true);
-check('HeroDeck tracks lastLoadedUrlRef', heroDeckSource.includes('lastLoadedUrlRef'), true);
 
 console.log(failed === 0 ? 'ALL PASS' : `${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);

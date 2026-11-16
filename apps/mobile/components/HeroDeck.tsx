@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
   StyleSheet,
@@ -26,10 +26,10 @@ import {
   prefetchWindowCovers,
   getOffscreenCoverStyle,
   getDeckAdjacentCards,
+  getActiveDeckCards,
   isCoverLoaded,
   markCoverLoaded,
   markCoverError,
-  shouldResetCoverOpacity,
   type CoverDimensions,
 } from '../lib/preload';
 import type { Article } from '../lib/api';
@@ -70,8 +70,12 @@ export function HeroDeck({
   const tx = useSharedValue(0);
 
   const front = articles[index];
-  const { nextArticle, prevArticle, farStrips } = useMemo(
+  const { farStrips } = useMemo(
     () => getDeckAdjacentCards(articles, index),
+    [articles, index],
+  );
+  const activeCards = useMemo(
+    () => getActiveDeckCards(articles, index),
     [articles, index],
   );
   const canNext = index + 1 < articles.length;
@@ -110,49 +114,6 @@ export function HeroDeck({
     () => getOffscreenCoverStyle(coverDimensions, width),
     [coverDimensions, width],
   );
-
-  const currentUrl = front?.imageUrl ?? null;
-  const currentUrlRef = useRef<string | null>(currentUrl);
-  currentUrlRef.current = currentUrl;
-  const lastLoadedUrlRef = useRef<string | null>(null);
-
-  const imageOpacity = useSharedValue(shouldResetCoverOpacity(currentUrl, null) ? 0 : 1);
-
-  // URL-keyed effect (NOT index-keyed): only reset opacity if the incoming image is genuinely cold.
-  // Already-loaded/decoded URLs (e.g. from adjacent card reveal) keep opacity at 1, avoiding post-swipe reload flicker.
-  useEffect(() => {
-    if (!currentUrl) {
-      imageOpacity.value = 0;
-      return;
-    }
-    if (shouldResetCoverOpacity(currentUrl, lastLoadedUrlRef.current)) {
-      imageOpacity.value = 0;
-    } else {
-      imageOpacity.value = 1;
-      lastLoadedUrlRef.current = currentUrl;
-    }
-  }, [currentUrl, imageOpacity]);
-
-  const handleImageLoad = useCallback(() => {
-    const url = currentUrlRef.current;
-    if (url) {
-      markCoverLoaded(url);
-      lastLoadedUrlRef.current = url;
-    }
-    imageOpacity.value = withTiming(1, { duration: 150 });
-  }, [imageOpacity]);
-
-  const handleImageError = useCallback(() => {
-    const url = currentUrlRef.current;
-    if (url) {
-      markCoverError(url);
-    }
-    imageOpacity.value = 0;
-  }, [imageOpacity]);
-
-  const imageFadeStyle = useAnimatedStyle(() => ({
-    opacity: imageOpacity.value,
-  }));
 
   const pan = useMemo(
     () =>
@@ -286,100 +247,56 @@ export function HeroDeck({
           />
         ))}
 
-      {/* Immediately-adjacent cards rendered with FULL content behind front card */}
-      {prevArticle ? (
-        <StaticDeckCard
-          key={`prev-${prevArticle.id}`}
-          article={prevArticle}
-          t={t}
-          hintText="اسحب للسابق"
-          style={prevCardStyle}
-        />
-      ) : null}
+      {/* Unified active cards [prev, next, front] keyed strictly by article.id ONLY */}
+      {activeCards.map((card) => {
+        const isFront = card.role === 'front';
+        const cardStyle =
+          card.role === 'front'
+            ? frontStyle
+            : card.role === 'next'
+              ? nextCardStyle
+              : prevCardStyle;
+        const hintText =
+          card.role === 'front'
+            ? canNext
+              ? 'اسحب للتالي'
+              : canPrev
+                ? 'اسحب للسابق'
+                : null
+            : card.role === 'next'
+              ? 'اسحب للتالي'
+              : 'اسحب للسابق';
 
-      {nextArticle ? (
-        <StaticDeckCard
-          key={`next-${nextArticle.id}`}
-          article={nextArticle}
-          t={t}
-          hintText="اسحب للتالي"
-          style={nextCardStyle}
-        />
-      ) : null}
-
-      <GestureDetector gesture={canNext || canPrev ? composed : tapCard}>
-        <Animated.View
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={front.title}
-          onAccessibilityTap={() => onPress(front)}
-          style={[styles.frontCard, { backgroundColor: t.surface }, frontStyle]}
-        >
-          <View style={styles.cardHeader}>
-            <GestureDetector gesture={sourceTap}>
-              <View style={styles.publisherRow}>
-                <PublisherAvatar name={front.sourceName} size={40} t={t} />
-                <PublisherMeta
-                  name={front.sourceName}
-                  relative={relativeTime(front.publishedAt)}
-                  t={t}
-                />
-              </View>
-            </GestureDetector>
-            <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
-              <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
-            </View>
-          </View>
-
-          <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={4}>
-            {front.title} 🔥
-          </Text>
-
-          <View
-            style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}
-            onLayout={(e) => {
-              const { width: w, height: h } = e.nativeEvent.layout;
-              if (w > 1 && h > 1) {
-                setCoverDimensions((prev) => {
-                  if (prev?.width === w && prev?.height === h) return prev;
-                  return { width: w, height: h };
-                });
-              }
-            }}
-          >
-            {/* Base placeholder: always underneath so residual native decode never flashes empty/white */}
-            <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
-              <Ionicons name="newspaper-outline" size={44} color={t.textMuted} />
-            </View>
-
-            {front.imageUrl ? (
-              <Animated.View style={[StyleSheet.absoluteFill, imageFadeStyle]}>
-                <Image
-                  source={{ uri: front.imageUrl }}
-                  style={styles.image}
-                  resizeMode="cover"
-                  onLoad={handleImageLoad}
-                  onError={handleImageError}
-                />
-              </Animated.View>
-            ) : null}
-          </View>
-
-          <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
-            <Text style={[styles.meta, { color: t.textMuted }]}>
-              {relativeTime(front.publishedAt)}
-            </Text>
-            <View style={styles.hintRow}>
-              {canNext ? (
-                <Text style={[styles.hint, { color: t.textMuted }]}>اسحب للتالي</Text>
-              ) : canPrev ? (
-                <Text style={[styles.hint, { color: t.textMuted }]}>اسحب للسابق</Text>
-              ) : null}
-              <Ionicons name="share-outline" size={17} color={t.textMuted} />
-            </View>
-          </View>
-        </Animated.View>
-      </GestureDetector>
+        return (
+          <DeckCard
+            key={card.article.id}
+            article={card.article}
+            t={t}
+            hintText={hintText}
+            style={cardStyle}
+            interactive={isFront}
+            gesture={canNext || canPrev ? composed : tapCard}
+            sourceGesture={sourceTap}
+            onPress={onPress}
+            onPressSource={onPressSource}
+            onCoverLayout={
+              isFront
+                ? (layout) => {
+                    setCoverDimensions((prev) => {
+                      if (
+                        prev?.width === layout.width &&
+                        prev?.height === layout.height
+                      ) {
+                        return prev;
+                      }
+                      return layout;
+                    });
+                  }
+                : undefined
+            }
+          />
+        );
+      })}
 
       {/* Off-screen neighbor pre-render: warms 3 ahead and 3 behind at real display dimensions */}
       <View
@@ -406,22 +323,36 @@ export function HeroDeck({
   );
 }
 
-/**
- * Fully rendered card model for adjacent deck cards (index+1 and index-1).
- * Positioned directly behind the front card with pointerEvents="none" and accessible={false}.
- * Reveals full publisher, title, and cover image during horizontal dragging.
- */
-export function StaticDeckCard({
-  article,
-  t,
-  hintText,
-  style,
-}: {
+export interface DeckCardProps {
   article: Article;
   t: Theme;
   hintText?: string | null;
   style?: StyleProp<ViewStyle> | ReturnType<typeof useAnimatedStyle>;
-}) {
+  interactive?: boolean;
+  gesture?: any;
+  sourceGesture?: any;
+  onPress?: (a: Article) => void;
+  onPressSource?: (a: Article) => void;
+  onCoverLayout?: (layout: { width: number; height: number }) => void;
+}
+
+/**
+ * Unified full-content deck card used for front, next, and prev roles.
+ * Keyed strictly by article.id so advancing index preserves the React fiber instance
+ * across next -> front transition without unmounting or re-sourcing the cover Image.
+ */
+export function DeckCard({
+  article,
+  t,
+  hintText,
+  style,
+  interactive = false,
+  gesture,
+  sourceGesture,
+  onPress,
+  onPressSource,
+  onCoverLayout,
+}: DeckCardProps) {
   const [loaded, setLoaded] = useState(() => isCoverLoaded(article.imageUrl));
 
   useEffect(() => {
@@ -430,73 +361,113 @@ export function StaticDeckCard({
     }
   }, [article.imageUrl]);
 
+  const disabledGesture = useMemo(() => Gesture.Tap().enabled(false), []);
+  const activeGesture = interactive && gesture ? gesture : disabledGesture;
+  const activeSourceGesture = interactive && sourceGesture ? sourceGesture : disabledGesture;
+
   return (
-    <Animated.View
-      pointerEvents="none"
-      accessible={false}
-      aria-hidden={true}
-      style={[styles.adjacentCard, { backgroundColor: t.surface }, style]}
-    >
-      <View style={styles.cardHeader}>
-        <View style={styles.publisherRow}>
-          <PublisherAvatar name={article.sourceName} size={40} t={t} />
-          <PublisherMeta
-            name={article.sourceName}
-            relative={relativeTime(article.publishedAt)}
-            t={t}
-          />
-        </View>
-        <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
-          <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
-        </View>
-      </View>
-
-      <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={4}>
-        {article.title} 🔥
-      </Text>
-
-      <View style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}>
-        <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
-          <Ionicons name="newspaper-outline" size={44} color={t.textMuted} />
+    <GestureDetector gesture={activeGesture as any}>
+      <Animated.View
+        pointerEvents={interactive ? 'auto' : 'none'}
+        accessible={interactive}
+        accessibilityRole={interactive ? 'button' : undefined}
+        accessibilityLabel={interactive ? article.title : undefined}
+        onAccessibilityTap={interactive && onPress ? () => onPress(article) : undefined}
+        aria-hidden={!interactive}
+        style={[styles.cardBox, { backgroundColor: t.surface }, style]}
+      >
+        <View style={styles.cardHeader}>
+          <GestureDetector gesture={activeSourceGesture as any}>
+            <View style={styles.publisherRow}>
+              <PublisherAvatar name={article.sourceName} size={40} t={t} />
+              <PublisherMeta
+                name={article.sourceName}
+                relative={relativeTime(article.publishedAt)}
+                t={t}
+              />
+            </View>
+          </GestureDetector>
+          <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
+            <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
+          </View>
         </View>
 
-        {article.imageUrl ? (
-          <Image
-            source={{ uri: article.imageUrl }}
-            style={[
-              StyleSheet.absoluteFill,
-              styles.image,
-              { opacity: loaded ? 1 : 0 },
-            ]}
-            resizeMode="cover"
-            onLoad={() => {
-              markCoverLoaded(article.imageUrl);
-              setLoaded(true);
-            }}
-            onError={() => {
-              markCoverError(article.imageUrl);
-              setLoaded(false);
-            }}
-          />
-        ) : null}
-      </View>
-
-      <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
-        <Text style={[styles.meta, { color: t.textMuted }]}>
-          {relativeTime(article.publishedAt)}
+        <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={4}>
+          {article.title} 🔥
         </Text>
-        <View style={styles.hintRow}>
-          {hintText ? (
-            <Text style={[styles.hint, { color: t.textMuted }]}>{hintText}</Text>
+
+        <View
+          style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}
+          onLayout={
+            onCoverLayout
+              ? (e) => {
+                  const { width: w, height: h } = e.nativeEvent.layout;
+                  if (w > 1 && h > 1) {
+                    onCoverLayout({ width: w, height: h });
+                  }
+                }
+              : undefined
+          }
+        >
+          {/* Base placeholder: always underneath so residual native decode never flashes empty/white */}
+          <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
+            <Ionicons name="newspaper-outline" size={44} color={t.textMuted} />
+          </View>
+
+          {article.imageUrl ? (
+            <Image
+              source={{ uri: article.imageUrl }}
+              style={[
+                StyleSheet.absoluteFill,
+                styles.image,
+                { opacity: loaded ? 1 : 0 },
+              ]}
+              resizeMode="cover"
+              onLoad={() => {
+                markCoverLoaded(article.imageUrl);
+                setLoaded(true);
+              }}
+              onError={() => {
+                markCoverError(article.imageUrl);
+                setLoaded(false);
+              }}
+            />
           ) : null}
-          <Ionicons name="share-outline" size={17} color={t.textMuted} />
         </View>
-      </View>
-    </Animated.View>
+
+        <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
+          <Text style={[styles.meta, { color: t.textMuted }]}>
+            {relativeTime(article.publishedAt)}
+          </Text>
+          <View style={styles.hintRow}>
+            {hintText ? (
+              <Text style={[styles.hint, { color: t.textMuted }]}>{hintText}</Text>
+            ) : null}
+            <Ionicons name="share-outline" size={17} color={t.textMuted} />
+          </View>
+        </View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
+export const StaticDeckCard = DeckCard;
+
 const styles = StyleSheet.create({
+  cardBox: {
+    position: 'absolute',
+    top: DEPTH * PEEK,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderRadius: 28,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 26,
+    elevation: 6,
+  },
   adjacentCard: {
     position: 'absolute',
     top: DEPTH * PEEK,
@@ -506,10 +477,24 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 26,
+    elevation: 6,
+  },
+  frontCard: {
+    position: 'absolute',
+    top: DEPTH * PEEK,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderRadius: 28,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 26,
+    elevation: 6,
   },
   offscreenPreload: {
     position: 'absolute',
@@ -543,17 +528,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 1,
-  },
-  frontCard: {
-    flex: 1,
-    width: '100%',
-    borderRadius: 28,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
-    shadowRadius: 26,
-    elevation: 6,
   },
   cardHeader: {
     flexDirection: 'row',
