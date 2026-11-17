@@ -1,4 +1,4 @@
-export const API_BASE = process.env['EXPO_PUBLIC_API_URL'] ?? 'https://newsserver-production.up.railway.app';
+export const API_BASE = process.env['EXPO_PUBLIC_API_URL'] ?? 'https://news.nileorbit.com';
 
 export interface Article {
   id: string;
