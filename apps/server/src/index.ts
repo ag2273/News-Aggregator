@@ -263,6 +263,7 @@ app.get('/api/articles/:id', (c) => {
   return c.json({ data: article });
 });
 
+// Search across title, summary and source name (Arabic-normalized).
 app.get('/api/search', (c) => {
   const q = c.req.query('q') ?? '';
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50), 1), 200);
