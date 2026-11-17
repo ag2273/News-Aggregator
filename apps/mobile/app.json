@@ -11,6 +11,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.zorrotmh.newsaggregator",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
@@ -29,9 +30,15 @@
       ]
     ],
     "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
       "eas": {
-        "projectId": "TODO-SET-AFTER-EAS-INIT"
+        "projectId": "85586a9c-dd1e-4bbf-beb6-a4c4e35c92e1"
       }
-    }
+    },
+    "owner": "zorro_tmh"
   }
 }
