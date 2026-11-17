@@ -78,7 +78,14 @@ const heroDeckSource = fs.readFileSync(
   'utf-8',
 );
 check('HeroDeck has exactly ONE GestureDetector', (heroDeckSource.match(/<GestureDetector\b/g) || []).length, 1);
-check('cards behind the front one are real, inert, shared-body cards', heroDeckSource.includes('styles.layer') && heroDeckSource.includes("isFront ? 'auto' : 'none'") && heroDeckSource.includes('key={a.id}'), true);
+check('cards behind the front one are real, inert, shared-body cards', [
+  heroDeckSource.includes('styles.layer'),
+  heroDeckSource.includes("isFront ? 'auto' : 'none'"),
+  heroDeckSource.includes('key={a.id}'),
+  // Reveal must follow the drag direction, not a fixed slot order.
+  heroDeckSource.includes('zIndex: tx.value >= 0 ? 3 : 2'),
+  heroDeckSource.includes('zIndex: tx.value < 0 ? 3 : 2'),
+].every(Boolean), true);
 check('full-card neighbor component is gone', heroDeckSource.includes('DeckCard'), false);
 check('per-role reveal styles are gone', heroDeckSource.includes('nextCardStyle') || heroDeckSource.includes('prevCardStyle'), false);
 check('pan no longer fails on a slightly diagonal drag', heroDeckSource.includes('failOffsetY'), false);

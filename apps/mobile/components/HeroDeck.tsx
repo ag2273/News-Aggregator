@@ -147,18 +147,18 @@ export function HeroDeck({
   const frontRef = useRef(front);
   frontRef.current = front;
 
-  // Cards behind the front one, all rendered as real cards. Order is nearest
-  // first so the next card becomes front by reconciliation on advance, and the
-  // previous card is always mounted for a backward swipe.
-  const behind = useMemo(() => {
-    const list: Article[] = [];
-    if (articles[index + 1]) list.push(articles[index + 1]);
-    if (articles[index - 1]) list.push(articles[index - 1]);
-    for (let d = 2; d <= DEPTH; d++) {
-      if (articles[index + d]) list.push(articles[index + d]);
-    }
-    // Deepest first so the shallowest neighbour paints last, just under the front.
-    return list.slice(0, DEPTH).map((a, i) => ({ a, i })).reverse();
+  // Neighbour cards, deepest first so the front card (painted last) stays on top.
+  // The next and previous cards share the revealed slot geometry; the live drag
+  // direction below decides which of them is actually uncovered.
+  const neighbours = useMemo(() => {
+    const list: { a: Article; slot: number; role: 'prev' | 'next' | 'deep' }[] = [];
+    const deep = articles[index + 2];
+    const prev = articles[index - 1];
+    const next = articles[index + 1];
+    if (deep) list.push({ a: deep, slot: 1, role: 'deep' });
+    if (prev) list.push({ a: prev, slot: 0, role: 'prev' });
+    if (next) list.push({ a: next, slot: 0, role: 'next' });
+    return list;
   }, [articles, index]);
   const canNext = index + 1 < articles.length;
   const canPrev = index > 0;
@@ -304,20 +304,25 @@ export function HeroDeck({
     ],
   }));
 
-  const stripStyles = [
-    useAnimatedStyle(() => {
-      const p = Math.min(Math.abs(tx.value) / 220, 1);
-      return { transform: [{ translateY: -PEEK * p }] };
-    }),
-    useAnimatedStyle(() => {
-      const p = Math.min(Math.abs(tx.value) / 220, 1);
-      return { transform: [{ translateY: -PEEK * p }] };
-    }),
-    useAnimatedStyle(() => {
-      const p = Math.min(Math.abs(tx.value) / 220, 1);
-      return { transform: [{ translateY: -PEEK * p }] };
-    }),
-  ];
+  // Reveal follows the live drag: right (tx > 0) uncovers the next card, left
+  // (tx < 0) uncovers the previous one, and idle (tx === 0) puts next on top.
+  // Both directional neighbours share the revealed slot geometry, so a backward
+  // swipe shows the previous card at the same size and height as a forward one.
+  // The lift is inlined in each worklet: reanimated can capture primitives but
+  // cannot call a captured helper.
+  const nextStyle = useAnimatedStyle(() => ({
+    zIndex: tx.value >= 0 ? 3 : 2,
+    transform: [{ translateY: -PEEK * Math.min(Math.abs(tx.value) / 220, 1) }],
+  }));
+  const prevStyle = useAnimatedStyle(() => ({
+    zIndex: tx.value < 0 ? 3 : 2,
+    transform: [{ translateY: -PEEK * Math.min(Math.abs(tx.value) / 220, 1) }],
+  }));
+  const deepStyle = useAnimatedStyle(() => ({
+    zIndex: 1,
+    transform: [{ translateY: -PEEK * Math.min(Math.abs(tx.value) / 220, 1) }],
+  }));
+  const roleStyle = { next: nextStyle, prev: prevStyle, deep: deepStyle };
 
   if (!front) return null;
 
@@ -327,16 +332,16 @@ export function HeroDeck({
   // already-decoded Image — is reused when a neighbour becomes the front card.
   // Changing the element type or wrapping the body differently per role would
   // remount and flash an empty card.
-  const visible: { a: Article; slot: number }[] = [
-    ...behind.map(({ a, i }) => ({ a, slot: i })),
-    { a: front, slot: -1 },
+  const visible: { a: Article; slot: number; role: 'prev' | 'next' | 'deep' | 'front' }[] = [
+    ...neighbours,
+    { a: front, slot: -1, role: 'front' },
   ];
 
   return (
     <GestureDetector gesture={composed}>
       <View style={styles.deck}>
-        {visible.map(({ a, slot }) => {
-          const isFront = slot === -1;
+        {visible.map(({ a, slot, role }) => {
+          const isFront = role === 'front';
           return (
             <Animated.View
               key={a.id}
@@ -357,7 +362,7 @@ export function HeroDeck({
                         borderColor: t.stackEdge,
                         opacity: slot === 0 ? 1 : 0.95 - slot * 0.1,
                       },
-                      stripStyles[slot] ?? null,
+                      roleStyle[role],
                     ]
               }
             >
@@ -401,6 +406,8 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     borderRadius: 28,
+    // Above every neighbour so the front always covers them until it flies out.
+    zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.1,
