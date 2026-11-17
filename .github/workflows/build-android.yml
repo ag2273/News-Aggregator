@@ -18,6 +18,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Needed to publish the release asset (artifacts are quota-limited).
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,9 +72,25 @@ jobs:
             exit 1
           fi
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      # GitHub Actions artifact storage is quota-limited for this account, and a
+      # failed upload fails the job. Releases are not counted against that quota,
+      # so publish the APK as a prerelease asset instead.
+      - name: Stage APK for release
+        run: |
+          mkdir -p dist
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk \
+             dist/rais-altahrir-arm64-${{ github.run_number }}.apk
+          ls -lh dist/
+
+      - name: Publish APK release
+        uses: softprops/action-gh-release@v2
         with:
-          name: rais-altahrir-arm64
-          path: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
-          retention-days: 30
+          tag_name: apk-${{ github.run_number }}
+          name: رئيس التحرير build ${{ github.run_number }} (${{ github.sha }})
+          prerelease: true
+          files: dist/rais-altahrir-arm64-${{ github.run_number }}.apk
+          body: |
+            Android APK from commit ${{ github.sha }} (run ${{ github.run_number }}).
+            ABI: arm64-v8a only.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
