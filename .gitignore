@@ -7,3 +7,8 @@ dist/
 
 # runtime cache
 data/
+
+# generated native projects (rebuilt via expo prebuild in CI)
+apps/mobile/android/
+apps/mobile/ios/
+apps/mobile/.expo/

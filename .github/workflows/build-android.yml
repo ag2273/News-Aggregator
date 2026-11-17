@@ -1,0 +1,80 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/build-android.yml'
+
+concurrency:
+  group: android-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          # Gradle downloads the exact platform/build-tools/NDK it needs (licenses accepted above)
+          true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prebuild Android
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build APK (arm64-v8a only)
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a -Pexpo.useLegacyPackaging=true
+
+      - name: Check APK size
+        run: |
+          APK=apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          SIZE=$(stat -c%s "$APK")
+          MB=$((SIZE / 1024 / 1024))
+          echo "APK size: ${MB} MB"
+          if [ "$SIZE" -gt 31457280 ]; then
+            echo "::error::APK exceeds 30 MB (${MB} MB)"
+            exit 1
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rais-altahrir-arm64
+          path: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30

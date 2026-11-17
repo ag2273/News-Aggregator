@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "أخبار",
+    "name": "رئيس التحرير",
     "slug": "news-aggregator",
     "version": "1.0.0",
+    "icon": "./assets/icon.png",
     "scheme": "news-aggregator",
     "web": {
       "bundler": "metro"
@@ -11,10 +12,10 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.zorrotmh.newsaggregator",
+      "package": "com.nileorbit.newsrator",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#639982"
       }
     },
     "plugins": [
