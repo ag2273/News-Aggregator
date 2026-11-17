@@ -1,0 +1,33 @@
+name: Deploy server to VM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/server/**'
+      - 'docker-compose.yml'
+      - 'deploy/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+
+concurrency:
+  group: vm-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: news.nileorbit.com
+          username: growthconsulting_ai
+          key: ${{ secrets.DEPLOY_KEY }}
+          known_hosts: news.nileorbit.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINqbcEUUsORuarMS2k1U10mSts2csnAoUkW+Q5iU65f0
+          script: |
+            set -e
+            cd ~/news-aggregator
+            git pull --ff-only
+            sudo docker compose up -d --build
