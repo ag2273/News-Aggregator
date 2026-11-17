@@ -25,7 +25,7 @@ jobs:
           host: news.nileorbit.com
           username: growthconsulting_ai
           key: ${{ secrets.DEPLOY_KEY }}
-          known_hosts: news.nileorbit.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINqbcEUUsORuarMS2k1U10mSts2csnAoUkW+Q5iU65f0
+          fingerprint: SHA256:JlTHkLd3VM7szTSG9izvXyy/9gMMgbZwM0SvAJn1Lns
           script: |
             set -e
             cd ~/news-aggregator
