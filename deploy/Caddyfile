@@ -1,0 +1,16 @@
+# Caddyfile for the News Aggregator server.
+# DOMAIN comes from deploy/.env (loaded by docker compose via env_file).
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# SSE / streaming friendly: do not buffer responses.
+	reverse_proxy server:3001 {
+		flush_interval -1
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

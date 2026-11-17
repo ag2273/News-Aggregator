@@ -1,0 +1,52 @@
+# Self-hosted deployment for the News Aggregator server.
+#
+# Usage (from the repository root):
+#   cp deploy/.env.example deploy/.env   # then edit DOMAIN
+#   docker compose up -d --build
+#
+# Caddy terminates TLS and proxies to the app on the internal network.
+# The app port 3001 is NOT published on the host.
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: news-aggregator-server:local
+    environment:
+      DATA_DIR: /data
+      PORT: "3001"
+      NODE_ENV: production
+    volumes:
+      - server-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file:
+      - ./deploy/.env
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  server-data:
+  caddy-data:
+  caddy-config:
