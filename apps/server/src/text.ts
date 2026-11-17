@@ -1,4 +1,4 @@
-// HTML entity decoding for RSS titles/summaries.
+// HTML entity decoding for RSS titles/summaries (also used by the search normalizer).
 // Feeds routinely ship &nbsp;, &quot;, &#8230; etc. in plain-text fields.
 
 const NAMED: Record<string, string> = {
