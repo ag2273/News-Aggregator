@@ -1,5 +1,4 @@
 // Full-text search over the in-memory article store.
-// Matches are newest-first (the store is already ordered).
 // The store is already sorted newest-first, so searching only filters; it never
 // re-sorts. Both the query and the haystack go through normalizeForSearch so
 // Arabic orthography differences (أ/ا, ة/ه, ى/ي, tashkeel) cannot miss a match.

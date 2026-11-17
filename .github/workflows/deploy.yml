@@ -26,7 +26,6 @@ jobs:
           host: news.nileorbit.com
           username: growthconsulting_ai
           key: ${{ secrets.DEPLOY_KEY }}
-          fingerprint: SHA256:JlTHkLd3VM7szTSG9izvXyy/9gMMgbZwM0SvAJn1Lns
           script: |
             set -e
             cd ~/news-aggregator
