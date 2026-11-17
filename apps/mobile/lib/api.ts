@@ -126,6 +126,23 @@ export async function fetchSavedArticles(token: string, limit = 50, offset = 0):
   return json.data;
 }
 
+/**
+ * Full-text search. Returns the current page plus the total match count
+ * (the count is before limit/offset, so it can drive a "N results" label).
+ */
+export async function searchArticles(
+  q: string,
+  limit = 50,
+  offset = 0,
+): Promise<{ articles: Article[]; total: number }> {
+  const res = await fetch(
+    `${API_BASE}/api/search?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`,
+  );
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = (await res.json()) as { data: Article[]; total?: number };
+  return { articles: json.data, total: json.total ?? json.data.length };
+}
+
 export async function fetchIsArticleSaved(articleId: string, token: string): Promise<boolean> {
   const res = await fetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
     headers: { Authorization: `Bearer ${token}` },

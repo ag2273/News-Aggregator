@@ -31,6 +31,7 @@ import {
   saveArticle,
   unsaveArticle,
 } from './saved.js';
+import { searchArticles } from './search.js';
 import type { Article } from './types.js';
 import {
   hashPassword,
@@ -260,6 +261,14 @@ app.get('/api/articles/:id', (c) => {
   const article = getArticleById(id);
   if (!article) return c.json({ error: 'not found' }, 404);
   return c.json({ data: article });
+});
+
+app.get('/api/search', (c) => {
+  const q = c.req.query('q') ?? '';
+  const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50), 1), 200);
+  const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
+  const { articles, total } = searchArticles(q, limit, offset);
+  return c.json({ data: articles, total });
 });
 
 app.get('/health', (c) => c.json({ ok: true }));

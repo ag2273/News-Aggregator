@@ -152,9 +152,14 @@ export default function FeedScreen() {
             <Text style={[styles.headerTitle, { color: t.textPrimary }]}>مركز الأخبار</Text>
           </View>
           <View style={styles.headerActions}>
-            <View style={[styles.circleBtn, { backgroundColor: t.surface }]}>
+            <TouchableOpacity
+              style={[styles.circleBtn, { backgroundColor: t.surface }]}
+              onPress={() => router.push('/search')}
+              accessibilityRole="button"
+              accessibilityLabel="بحث"
+            >
               <Ionicons name="search" size={18} color={t.textSecondary} />
-            </View>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.circleBtn, { backgroundColor: t.surface }]}
               onPress={() => router.push('/account')}

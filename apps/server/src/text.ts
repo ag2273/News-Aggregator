@@ -45,3 +45,31 @@ function safeChar(code: number): string {
     return '';
   }
 }
+
+/**
+ * Search normalizer: makes Arabic (and Latin) text comparable.
+ *
+ * RSS headlines mix orthography freely — أ/إ/آ vs ا, ة vs ه, ى vs ي — and
+ * carry optional tashkeel (harakat) and tatweel. Users type whichever form
+ * they prefer, so both sides of a substring match go through this first.
+ * Latin text is lowercased so `Google` matches `google`.
+ */
+export function normalizeForSearch(input: string | null | undefined): string {
+  if (!input) return '';
+  return decodeHtmlEntities(input)
+    // Arabic diacritics: tashkeel, superscript alef, Quranic marks.
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
+    // Tatweel (kashida) is decorative only.
+    .replace(/\u0640/g, '')
+    // Alef variants -> bare alef: أ إ آ ٱ -> ا
+    .replace(/[\u0622\u0623\u0625\u0671]/g, '\u0627')
+    // Alef maqsura -> yeh: ى -> ي
+    .replace(/\u0649/g, '\u064A')
+    // Teh marbuta -> heh: ة -> ه
+    .replace(/\u0629/g, '\u0647')
+    // Western Arabic-Indic digits -> ASCII, so "٢٠٢٤" matches "2024".
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
