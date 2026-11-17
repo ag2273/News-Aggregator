@@ -82,9 +82,11 @@ check('cards behind the front one are real, inert, shared-body cards', [
   heroDeckSource.includes('styles.layer'),
   heroDeckSource.includes("isFront ? 'auto' : 'none'"),
   heroDeckSource.includes('key={a.id}'),
-  // Reveal must follow the drag direction, not a fixed slot order.
-  heroDeckSource.includes('zIndex: tx.value >= 0 ? 3 : 2'),
-  heroDeckSource.includes('zIndex: tx.value < 0 ? 3 : 2'),
+  // Reveal follows the drag direction via a per-gesture state, not a fixed slot.
+  heroDeckSource.includes("runOnJS(armReveal)(e.translationX > 0 ? 'next' : 'prev')"),
+  // Neighbours must stay static while dragging: no per-frame transform.
+  !/zIndex: tx\.value/.test(heroDeckSource),
+  !/translateY: -PEEK \* Math\.min/.test(heroDeckSource),
 ].every(Boolean), true);
 check('full-card neighbor component is gone', heroDeckSource.includes('DeckCard'), false);
 check('per-role reveal styles are gone', heroDeckSource.includes('nextCardStyle') || heroDeckSource.includes('prevCardStyle'), false);

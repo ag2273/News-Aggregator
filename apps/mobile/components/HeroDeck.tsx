@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -142,6 +142,23 @@ export function HeroDeck({
   const indexSV = useSharedValue(index);
   const totalSV = useSharedValue(articles.length);
   const isAnimating = useSharedValue(false);
+  // Which neighbour the current drag uncovers. Set ONCE per gesture when the
+  // drag passes a small threshold, then used as a static style value so nothing
+  // animates underneath the finger.
+  const [reveal, setReveal] = useState<'next' | 'prev'>('next');
+  const revealArmed = useSharedValue(0);
+
+  const armReveal = useCallback(
+    (nextReveal: 'next' | 'prev') => {
+      setReveal(nextReveal);
+    },
+    [],
+  );
+
+  const resetReveal = useCallback(() => {
+    revealArmed.value = 0;
+    setReveal('next');
+  }, [revealArmed]);
 
   const front = articles[index];
   const frontRef = useRef(front);
@@ -234,6 +251,11 @@ export function HeroDeck({
           'worklet';
           if (isAnimating.value) return;
           tx.value = e.translationX;
+          // Arm the reveal once per gesture: finger right -> next, left -> prev.
+          if (!revealArmed.value && Math.abs(e.translationX) > 5) {
+            revealArmed.value = 1;
+            runOnJS(armReveal)(e.translationX > 0 ? 'next' : 'prev');
+          }
         })
         .onEnd((e) => {
           'worklet';
@@ -242,7 +264,12 @@ export function HeroDeck({
           // Physical direction: finger right = next article, finger left = previous.
           const next = deckStep(indexSV.value, dir, totalSV.value);
           if (next === null) {
-            tx.value = withSpring(0, SPRING);
+            // Snap back: keep the armed reveal until the spring has returned the
+            // card to centre, otherwise the uncovered neighbour swaps mid-animation.
+            tx.value = withSpring(0, SPRING, (finished) => {
+              'worklet';
+              if (finished) runOnJS(resetReveal)();
+            });
             return;
           }
           isAnimating.value = true;
@@ -253,21 +280,38 @@ export function HeroDeck({
             if (finished) {
               tx.value = 0;
               isAnimating.value = false;
+              runOnJS(resetReveal)();
               runOnJS(advanceTo)(next);
             } else {
               cancelAnimation(tx);
               tx.value = 0;
               isAnimating.value = false;
+              runOnJS(resetReveal)();
             }
           });
         })
         .onFinalize((_e, success) => {
           'worklet';
           if (!success && !isAnimating.value) {
-            tx.value = withSpring(0, SPRING);
+            tx.value = withSpring(0, SPRING, (finished) => {
+              'worklet';
+              if (finished) runOnJS(resetReveal)();
+            });
           }
         }),
-    [advanceTo, clearAnimTimeout, indexSV, isAnimating, startAnimTimeout, totalSV, tx, width],
+    [
+      advanceTo,
+      armReveal,
+      clearAnimTimeout,
+      indexSV,
+      isAnimating,
+      resetReveal,
+      revealArmed,
+      startAnimTimeout,
+      totalSV,
+      tx,
+      width,
+    ],
   );
 
   const handleTap = useCallback(() => {
@@ -304,25 +348,15 @@ export function HeroDeck({
     ],
   }));
 
-  // Reveal follows the live drag: right (tx > 0) uncovers the next card, left
-  // (tx < 0) uncovers the previous one, and idle (tx === 0) puts next on top.
-  // Both directional neighbours share the revealed slot geometry, so a backward
-  // swipe shows the previous card at the same size and height as a forward one.
-  // The lift is inlined in each worklet: reanimated can capture primitives but
-  // cannot call a captured helper.
-  const nextStyle = useAnimatedStyle(() => ({
-    zIndex: tx.value >= 0 ? 3 : 2,
-    transform: [{ translateY: -PEEK * Math.min(Math.abs(tx.value) / 220, 1) }],
-  }));
-  const prevStyle = useAnimatedStyle(() => ({
-    zIndex: tx.value < 0 ? 3 : 2,
-    transform: [{ translateY: -PEEK * Math.min(Math.abs(tx.value) / 220, 1) }],
-  }));
-  const deepStyle = useAnimatedStyle(() => ({
-    zIndex: 1,
-    transform: [{ translateY: -PEEK * Math.min(Math.abs(tx.value) / 220, 1) }],
-  }));
-  const roleStyle = { next: nextStyle, prev: prevStyle, deep: deepStyle };
+  // Neighbours are fully static: they never translate, scale or fade while the
+  // finger moves. Only the front card follows the drag, and the revealed
+  // neighbour is simply uncovered as the front slides away. Ordering is a plain
+  // static zIndex so it cannot pop the way an animated zIndex does on Android.
+  const neighbourZ = (role: 'prev' | 'next' | 'deep') => {
+    if (role === 'deep') return 1;
+    const revealed = role === reveal;
+    return revealed ? 2 : 1;
+  };
 
   if (!front) return null;
 
@@ -361,8 +395,8 @@ export function HeroDeck({
                         backgroundColor: slot === 0 ? t.surfaceStackMid : t.surfaceStackBack,
                         borderColor: t.stackEdge,
                         opacity: slot === 0 ? 1 : 0.95 - slot * 0.1,
+                        zIndex: neighbourZ(role),
                       },
-                      roleStyle[role],
                     ]
               }
             >
