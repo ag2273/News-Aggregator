@@ -144,13 +144,23 @@ check('HeroDeck renders the cover Image', heroDeckSource.includes('<Image') && h
 check('cover Image has no opacity toggle', heroDeckSource.includes('opacity: loaded'), false);
 check('cover container keeps a solid background color', heroDeckSource.includes('backgroundColor: t.pillInactiveBg'), true);
 check('neighbours are real, keyed, inert cards sharing the front body', [
-  heroDeckSource.includes('styles.layer'),
-  heroDeckSource.includes("isFront ? 'auto' : 'none'"),
+  heroDeckSource.includes('styles.card'),
+  heroDeckSource.includes("isFrontRole(role) ? 'auto' : 'none'"),
   heroDeckSource.includes('key={a.id}'),
   (heroDeckSource.match(/<HeroCard\b/g) || []).length >= 1,
 ].every(Boolean), true);
-check('strip offsets use (DEPTH - 1 - slot) * PEEK', heroDeckSource.includes('(DEPTH - 1 - slot) * PEEK'), true);
-check('strip widths use 94 - slot * 6 percent', heroDeckSource.includes('${94 - slot * 6}%'), true);
+check('all cards share one absolute rect so text cannot move', [
+  heroDeckSource.includes("position: 'absolute'"),
+  heroDeckSource.includes('top: DEPTH * PEEK'),
+  !heroDeckSource.includes('styles.frontCard'),
+  !heroDeckSource.includes('styles.layer'),
+].every(Boolean), true);
+check('peek look comes from decorative text-free strips', [
+  heroDeckSource.includes('styles.peek'),
+  heroDeckSource.includes('peek-'),
+  heroDeckSource.includes('i * PEEK'),
+  heroDeckSource.includes('${82 + i * 6}%'),
+].every(Boolean), true);
 check('no off-screen pre-render block', heroDeckSource.includes('offscreenPreload') || heroDeckSource.includes('preloadNeighbors'), false);
 check('no coverDimensions state or onCoverLayout plumbing', heroDeckSource.includes('coverDimensions') || heroDeckSource.includes('onCoverLayout'), false);
 check('prefetch window still runs through Image.prefetch', heroDeckSource.includes('prefetchWindowCovers(articles, index, PRELOAD_RADIUS, Image.prefetch)'), true);
@@ -168,7 +178,7 @@ check('front cover source is memoized so a re-render does not re-source it', her
 console.log('— single deck-root GestureDetector (no handlerTag mutation / freeze) —');
 const gestureDetectorMatches = heroDeckSource.match(/<GestureDetector\b/g) || [];
 check('HeroDeck has exactly ONE GestureDetector at container root', gestureDetectorMatches.length, 1);
-check('publisher row source tap is wired only on the front card', heroDeckSource.includes('<Pressable') && heroDeckSource.includes('onPressSource={isFront ? handleSourcePress : undefined}'), true);
+check('publisher row source tap is wired only on the front card', heroDeckSource.includes('<Pressable') && heroDeckSource.includes('onPressSource={isFrontRole(role) ? handleSourcePress : undefined}'), true);
 check('HeroDeck wraps root in GestureDetector with composed gesture', heroDeckSource.includes('<GestureDetector gesture={composed}>'), true);
 check('HeroDeck includes isAnimating safety timeout', heroDeckSource.includes('animTimeoutRef') && heroDeckSource.includes('clearAnimTimeout') && heroDeckSource.includes('startAnimTimeout'), true);
 

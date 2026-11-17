@@ -79,8 +79,8 @@ const heroDeckSource = fs.readFileSync(
 );
 check('HeroDeck has exactly ONE GestureDetector', (heroDeckSource.match(/<GestureDetector\b/g) || []).length, 1);
 check('cards behind the front one are real, inert, shared-body cards', [
-  heroDeckSource.includes('styles.layer'),
-  heroDeckSource.includes("isFront ? 'auto' : 'none'"),
+  heroDeckSource.includes('styles.card'),
+  heroDeckSource.includes("isFrontRole(role) ? 'auto' : 'none'"),
   heroDeckSource.includes('key={a.id}'),
   // Reveal follows the drag direction via a per-gesture state, not a fixed slot.
   heroDeckSource.includes("runOnJS(armReveal)(e.translationX > 0 ? 'next' : 'prev')"),

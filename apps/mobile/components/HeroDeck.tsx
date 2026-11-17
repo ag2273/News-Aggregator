@@ -357,15 +357,14 @@ export function HeroDeck({
     const revealed = role === reveal;
     return revealed ? 2 : 1;
   };
+  const isFrontRole = (role: string) => role === 'front';
 
   if (!front) return null;
 
-  // One entry per rendered card, front LAST so it paints over the peeking
-  // neighbours. Every entry renders the SAME element type with the SAME key
-  // (article.id) and the SAME child tree, so the mounted instance — and its
-  // already-decoded Image — is reused when a neighbour becomes the front card.
-  // Changing the element type or wrapping the body differently per role would
-  // remount and flash an empty card.
+  // One entry per rendered card, front LAST so it paints over the neighbours.
+  // Every entry renders the SAME element type with the SAME key (article.id)
+  // and the SAME child tree, so the mounted instance — and its already-decoded
+  // Image — is reused when a neighbour becomes the front card.
   const visible: { a: Article; slot: number; role: 'prev' | 'next' | 'deep' | 'front' }[] = [
     ...neighbours,
     { a: front, slot: -1, role: 'front' },
@@ -374,41 +373,49 @@ export function HeroDeck({
   return (
     <GestureDetector gesture={composed}>
       <View style={styles.deck}>
-        {visible.map(({ a, slot, role }) => {
-          const isFront = role === 'front';
-          return (
-            <Animated.View
-              key={a.id}
-              pointerEvents={isFront ? 'auto' : 'none'}
-              accessible={isFront}
-              accessibilityRole={isFront ? 'button' : undefined}
-              accessibilityLabel={isFront ? a.title : undefined}
-              onAccessibilityTap={isFront ? () => onPress(a) : undefined}
-              style={
-                isFront
-                  ? [styles.frontCard, { backgroundColor: t.surface }, frontStyle]
-                  : [
-                      styles.layer,
-                      {
-                        top: (DEPTH - 1 - slot) * PEEK,
-                        width: `${94 - slot * 6}%`,
-                        backgroundColor: slot === 0 ? t.surfaceStackMid : t.surfaceStackBack,
-                        borderColor: t.stackEdge,
-                        opacity: slot === 0 ? 1 : 0.95 - slot * 0.1,
-                        zIndex: neighbourZ(role),
-                      },
-                    ]
-              }
-            >
-              <HeroCard
-                article={a}
-                t={t}
-                hint={isFront ? hint : undefined}
-                onPressSource={isFront ? handleSourcePress : undefined}
-              />
-            </Animated.View>
-          );
-        })}
+        {/* Peek bars: purely decorative, no text, so no content geometry rides
+            on them. They sit behind every card and give the stack look. */}
+        {Array.from({ length: DEPTH }, (_, i) => (
+          <View
+            key={`peek-${i}`}
+            pointerEvents="none"
+            style={[
+              styles.peek,
+              {
+                top: i * PEEK,
+                width: `${82 + i * 6}%`,
+                backgroundColor: i === DEPTH - 1 ? t.surfaceStackMid : t.surfaceStackBack,
+                borderColor: t.stackEdge,
+                opacity: i === DEPTH - 1 ? 1 : 0.9,
+              },
+            ]}
+          />
+        ))}
+
+        {visible.map(({ a, role }) => (
+          <Animated.View
+            key={a.id}
+            pointerEvents={isFrontRole(role) ? 'auto' : 'none'}
+            accessible={isFrontRole(role)}
+            accessibilityRole={isFrontRole(role) ? 'button' : undefined}
+            accessibilityLabel={isFrontRole(role) ? a.title : undefined}
+            onAccessibilityTap={isFrontRole(role) ? () => onPress(a) : undefined}
+            style={[
+              styles.card,
+              { backgroundColor: t.surface },
+              isFrontRole(role)
+                ? [{ zIndex: 10 }, frontStyle]
+                : { zIndex: neighbourZ(role as 'prev' | 'next' | 'deep') },
+            ]}
+          >
+            <HeroCard
+              article={a}
+              t={t}
+              hint={isFrontRole(role) ? hint : undefined}
+              onPressSource={isFrontRole(role) ? handleSourcePress : undefined}
+            />
+          </Animated.View>
+        ))}
       </View>
     </GestureDetector>
   );
@@ -418,16 +425,34 @@ const styles = StyleSheet.create({
   deck: {
     flex: 1,
     marginHorizontal: 16,
-    // Room for the three peeking card edges above the front card.
-    paddingTop: DEPTH * PEEK,
+    // Cards are absolutely positioned from an explicit top offset, so no padding
+    // is involved in their placement (padding would be ambiguous here).
+    paddingTop: 0,
     position: 'relative',
     alignItems: 'center',
   },
-  layer: {
+  /**
+   * Every card — front and neighbours alike — occupies this exact rect, so a
+   * card's text never shifts or re-wraps when it becomes the front card.
+   */
+  card: {
     position: 'absolute',
-    // Span from its peek offset down to the card's own bottom edge, so only the
-    // top strip is visible behind the (wider) front card.
+    left: 0,
+    right: 0,
+    top: DEPTH * PEEK,
     bottom: 0,
+    borderRadius: 28,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 26,
+    elevation: 6,
+  },
+  /** Decorative stack bar behind the cards. No content, so nothing can re-wrap. */
+  peek: {
+    position: 'absolute',
+    alignSelf: 'center',
+    height: 120,
     borderRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
@@ -435,18 +460,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 1,
-  },
-  frontCard: {
-    flex: 1,
-    width: '100%',
-    borderRadius: 28,
-    // Above every neighbour so the front always covers them until it flies out.
-    zIndex: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
-    shadowRadius: 26,
-    elevation: 6,
   },
   cardBody: { flex: 1, padding: 16 },
   cardHeader: {
