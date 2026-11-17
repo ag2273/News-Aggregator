@@ -66,6 +66,21 @@ export default function AccountScreen() {
               <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
 
               <TouchableOpacity
+                style={styles.settingsRow}
+                onPress={() => router.push('/settings')}
+                accessibilityRole="button"
+                accessibilityLabel="الإشعارات"
+              >
+                <Ionicons name="notifications-outline" size={18} color={t.textPrimary} />
+                <Text style={[styles.settingsRowText, { color: t.textPrimary }]}>
+                  الإشعارات
+                </Text>
+                <Ionicons name="chevron-back" size={16} color={t.textMuted} />
+              </TouchableOpacity>
+
+              <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
+
+              <TouchableOpacity
                 style={[styles.signOutBtn, { borderColor: t.breaking }]}
                 onPress={async () => {
                   await signOut();
@@ -187,6 +202,18 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 14,
     borderWidth: 1,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+    paddingVertical: 12,
+  },
+  settingsRowText: {
+    flex: 1,
+    fontFamily: 'Cairo_600SemiBold',
+    fontSize: 15,
   },
   signOutText: { fontFamily: 'Cairo_700Bold', fontSize: 14 },
   cardTitle: { fontFamily: 'Cairo_700Bold', fontSize: 20, marginBottom: 8, textAlign: 'center' },

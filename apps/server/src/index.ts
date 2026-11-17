@@ -32,6 +32,14 @@ import {
   unsaveArticle,
 } from './saved.js';
 import { searchArticles } from './search.js';
+import {
+  registerPushToken,
+  updatePushPrefs,
+  unregisterPushToken,
+  getPushPrefs,
+  isValidMode,
+  type PushMode,
+} from './push.js';
 import type { Article } from './types.js';
 import {
   hashPassword,
@@ -220,6 +228,87 @@ app.delete('/api/saved/:articleId', (c) => {
   const articleId = c.req.param('articleId');
   const articleIds = unsaveArticle(userId, articleId);
   return c.json({ data: { ok: true, saved: false, articleIds } });
+});
+
+// --- Push notification routes (Bearer protected) ---
+
+app.post('/api/push/register', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+
+  let body: { token?: unknown; platform?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+
+  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  const platform = typeof body.platform === 'string' ? body.platform.trim() : '';
+  if (!token) return c.json({ error: 'token is required' }, 400);
+
+  const record = registerPushToken(userId, token, platform || 'unknown');
+  return c.json({
+    data: { token: record.token, enabled: record.enabled, mode: record.mode },
+  });
+});
+
+app.put('/api/push/preferences', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+
+  let body: { token?: unknown; enabled?: unknown; mode?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+
+  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  if (!token) return c.json({ error: 'token is required' }, 400);
+  if (body.mode !== undefined && !isValidMode(body.mode)) {
+    return c.json({ error: "mode must be 'urgent' or 'all'" }, 400);
+  }
+  if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+    return c.json({ error: 'enabled must be a boolean' }, 400);
+  }
+
+  const record = updatePushPrefs(userId, token, {
+    enabled: body.enabled as boolean | undefined,
+    mode: body.mode as PushMode | undefined,
+  });
+  if (!record) return c.json({ error: 'not found' }, 404);
+  return c.json({ data: { token: record.token, enabled: record.enabled, mode: record.mode } });
+});
+
+app.get('/api/push/preferences', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+
+  const token = (c.req.query('token') ?? '').trim();
+  if (!token) return c.json({ error: 'token is required' }, 400);
+
+  const record = getPushPrefs(userId, token);
+  if (!record) return c.json({ error: 'not found' }, 404);
+  return c.json({ data: { token: record.token, enabled: record.enabled, mode: record.mode } });
+});
+
+app.delete('/api/push/register', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+
+  let body: { token?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+
+  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  if (!token) return c.json({ error: 'token is required' }, 400);
+
+  unregisterPushToken(userId, token);
+  return c.json({ data: { ok: true } });
 });
 
 // --- News & Feed routes ---

@@ -1,5 +1,5 @@
 import {
-  insertArticles,
+  insertArticlesDetailed,
   getAllArticles,
   findArticleById,
   getDistinctSources,
@@ -9,9 +9,12 @@ import { fetchSource } from './fetcher.js';
 import { SOURCES } from './types.js';
 import type { Article } from './types.js';
 import { CATEGORIES, normalizeCategory } from './categorize.js';
+import { sendPushNotifications } from './push.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 let lastFetchTime = 0;
+/** The first refresh after boot is a backfill, never a push trigger. */
+let firstRefreshDone = false;
 
 export async function refreshAll(): Promise<void> {
   const now = Date.now();
@@ -27,18 +30,31 @@ export async function refreshAll(): Promise<void> {
   const results = await Promise.allSettled(SOURCES.map((s) => fetchSource(s)));
 
   let totalNew = 0;
+  const freshArticles: Article[] = [];
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
     const src = SOURCES[i];
     if (r.status === 'fulfilled') {
-      const inserted = insertArticles(r.value);
-      console.log(`[ingest] ${src.id}: ${r.value.length} articles, ${inserted} new`);
-      totalNew += inserted;
+      const inserted = insertArticlesDetailed(r.value);
+      freshArticles.push(...inserted);
+      console.log(`[ingest] ${src.id}: ${r.value.length} articles, ${inserted.length} new`);
+      totalNew += inserted.length;
     } else {
       console.error(`[ingest] ${src.id}: ERROR`, r.reason);
     }
   }
   console.log('[ingest] done —', totalNew, 'new articles total');
+
+  // Push only what this run actually inserted, and never on the first run
+  // after process start (that one is a backfill of the whole store).
+  if (firstRefreshDone && freshArticles.length) {
+    try {
+      await sendPushNotifications(freshArticles);
+    } catch (err) {
+      console.error('[ingest] push failed:', err);
+    }
+  }
+  firstRefreshDone = true;
 }
 
 export function getArticles(limit = 50, offset = 0): Article[] {

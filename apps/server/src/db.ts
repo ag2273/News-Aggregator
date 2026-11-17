@@ -66,19 +66,29 @@ function save(): void {
 }
 
 export function insertArticles(articles: Article[]): number {
+  return insertArticlesDetailed(articles).length;
+}
+
+/**
+ * Insert only articles whose URL was not stored yet, returning the inserted
+ * rows. Callers that need the new articles themselves (e.g. push notifications)
+ * use this; the count-only wrapper stays for existing call sites and tests.
+ */
+export function insertArticlesDetailed(articles: Article[]): StoredArticle[] {
   const rows = load();
   const seen = new Set(rows.map((r) => r.url));
-  let count = 0;
+  const inserted: StoredArticle[] = [];
   const now = Date.now();
   for (const a of articles) {
     if (seen.has(a.url)) continue;
     seen.add(a.url);
-    rows.push({ ...a, fetchedAt: now });
-    count++;
+    const row: StoredArticle = { ...a, fetchedAt: now };
+    rows.push(row);
+    inserted.push(row);
   }
   cache = rows;
   save();
-  return count;
+  return inserted;
 }
 
 export function getAllArticles(): StoredArticle[] {

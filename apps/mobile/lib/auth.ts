@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE } from './api';
+import { registerDevice, unregisterDevice } from './notifications';
 
 export interface User {
   id: string;
@@ -180,8 +181,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(res.user);
   }, []);
 
+  // Auto-register this device for push once a session exists (fresh sign-in,
+  // sign-up, or a restore). Best effort and fire-and-forget: registration must
+  // never block or fail app startup.
+  useEffect(() => {
+    if (loading || !token) return;
+    registerDevice(token).catch(() => {
+      /* already logged inside notifications.ts */
+    });
+  }, [loading, token]);
+
   const signOut = useCallback(async () => {
+    // Remove this device's push token before the session goes away, otherwise the
+    // server would keep pushing to a signed-out device.
     if (token) {
+      await unregisterDevice(token);
       await logout(token);
     }
     await removeStoredToken();

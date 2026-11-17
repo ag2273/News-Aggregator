@@ -20,7 +20,18 @@
       "expo-router",
       "expo-font",
       "expo-status-bar",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#22C55E"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "TODO-SET-AFTER-EAS-INIT"
+      }
+    }
   }
 }
