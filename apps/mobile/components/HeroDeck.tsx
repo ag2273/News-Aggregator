@@ -215,11 +215,18 @@ export function HeroDeck({
     totalSV.value = articles.length;
   }, [index, articles.length, indexSV, totalSV]);
 
+  // Sole entry point for a committed swipe. Reset the shared values HERE, on the
+  // JS thread, right before the index changes: the outgoing card stays parked
+  // off-screen (tx = ±width * 1.4) until this runs, so it is never shown
+  // snapping back to centre, and the incoming card mounts already at rest.
   const advanceTo = useCallback(
     (next: number) => {
+      cancelAnimation(tx);
+      tx.value = 0;
+      isAnimating.value = false;
       onIndexChange(next);
     },
-    [onIndexChange],
+    [isAnimating, onIndexChange, tx],
   );
 
   // Trigger loading next page when 8 cards or fewer remain, ensuring 3-ahead preload window never starves.
@@ -278,8 +285,9 @@ export function HeroDeck({
             'worklet';
             runOnJS(clearAnimTimeout)();
             if (finished) {
-              tx.value = 0;
-              isAnimating.value = false;
+              // Do NOT reset tx here: the outgoing card must stay off-screen
+              // until advanceTo swaps the index, otherwise it snaps back into
+              // view for a few frames and flashes before the new card appears.
               runOnJS(resetReveal)();
               runOnJS(advanceTo)(next);
             } else {
