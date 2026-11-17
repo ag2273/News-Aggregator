@@ -139,13 +139,18 @@ const heroDeckSource = fs.readFileSync(path.resolve(__dirname, '../components/He
 
 check('full-card neighbor component is gone', heroDeckSource.includes('DeckCard'), false);
 check('HeroDeck renders publisher avatar and meta', heroDeckSource.includes('PublisherAvatar') && heroDeckSource.includes('PublisherMeta'), true);
-check('HeroDeck renders the front title', heroDeckSource.includes('front.title'), true);
-check('HeroDeck renders the cover Image', heroDeckSource.includes('coverSource') && heroDeckSource.includes('<Image'), true);
+check('HeroDeck renders the card title', heroDeckSource.includes('article.title'), true);
+check('HeroDeck renders the cover Image', heroDeckSource.includes('<Image') && heroDeckSource.includes('source={coverSource}'), true);
 check('cover Image has no opacity toggle', heroDeckSource.includes('opacity: loaded'), false);
 check('cover container keeps a solid background color', heroDeckSource.includes('backgroundColor: t.pillInactiveBg'), true);
-check('cards behind the front one are decorative strips', heroDeckSource.includes('pointerEvents="none"') && heroDeckSource.includes('styles.layer'), true);
-check('strip offsets use (DEPTH - 1 - i) * PEEK', heroDeckSource.includes('(DEPTH - 1 - i) * PEEK'), true);
-check('strip widths use 94 - i * 6 percent', heroDeckSource.includes('${94 - i * 6}%'), true);
+check('neighbours are real, keyed, inert cards sharing the front body', [
+  heroDeckSource.includes('styles.layer'),
+  heroDeckSource.includes("isFront ? 'auto' : 'none'"),
+  heroDeckSource.includes('key={a.id}'),
+  (heroDeckSource.match(/<HeroCard\b/g) || []).length >= 1,
+].every(Boolean), true);
+check('strip offsets use (DEPTH - 1 - slot) * PEEK', heroDeckSource.includes('(DEPTH - 1 - slot) * PEEK'), true);
+check('strip widths use 94 - slot * 6 percent', heroDeckSource.includes('${94 - slot * 6}%'), true);
 check('no off-screen pre-render block', heroDeckSource.includes('offscreenPreload') || heroDeckSource.includes('preloadNeighbors'), false);
 check('no coverDimensions state or onCoverLayout plumbing', heroDeckSource.includes('coverDimensions') || heroDeckSource.includes('onCoverLayout'), false);
 check('prefetch window still runs through Image.prefetch', heroDeckSource.includes('prefetchWindowCovers(articles, index, PRELOAD_RADIUS, Image.prefetch)'), true);
@@ -163,7 +168,7 @@ check('front cover source is memoized so a re-render does not re-source it', her
 console.log('— single deck-root GestureDetector (no handlerTag mutation / freeze) —');
 const gestureDetectorMatches = heroDeckSource.match(/<GestureDetector\b/g) || [];
 check('HeroDeck has exactly ONE GestureDetector at container root', gestureDetectorMatches.length, 1);
-check('publisher row source tap uses a Pressable', heroDeckSource.includes('<Pressable') && heroDeckSource.includes('onPress={handleSourcePress}'), true);
+check('publisher row source tap is wired only on the front card', heroDeckSource.includes('<Pressable') && heroDeckSource.includes('onPressSource={isFront ? handleSourcePress : undefined}'), true);
 check('HeroDeck wraps root in GestureDetector with composed gesture', heroDeckSource.includes('<GestureDetector gesture={composed}>'), true);
 check('HeroDeck includes isAnimating safety timeout', heroDeckSource.includes('animTimeoutRef') && heroDeckSource.includes('clearAnimTimeout') && heroDeckSource.includes('startAnimTimeout'), true);
 

@@ -28,9 +28,97 @@ const DEPTH = 3;
 /**
  * Full-screen swipe deck (Tinder-style). The front card fills the space it is
  * given; three card edges peek above it so the pile is obvious. Horizontal pan
- * advances; taps open the article sheet. The cards behind the front one are
- * decorative strips only.
+ * advances; taps open the article sheet.
+ *
+ * Every card in the window is a real card (same `HeroCard` body, keyed by
+ * article id) and is mounted at all times, including the three behind the front
+ * one and the previous one. When the index advances the neighbour that was
+ * already rendered simply becomes the front card through React reconciliation,
+ * so its text and decoded cover are on screen the moment the flying card leaves
+ * — no empty coloured rectangle, no reload, no blank image frame.
  */
+
+/**
+ * One deck card: publisher row → headline → cover → footer. Shared by the front
+ * card and the neighbours so both carry identical content and the same React
+ * instance survives an index change (a different element type would remount and
+ * drop the decoded image).
+ */
+function HeroCard({
+  article,
+  t,
+  hint,
+  onPressSource,
+}: {
+  article: Article;
+  t: Theme;
+  /** Footer instruction; only the front card shows one. */
+  hint?: string;
+  /** Only the front card is interactive; neighbours stay inert. */
+  onPressSource?: () => void;
+}) {
+  // Stable source object per article: re-renders must not re-key the image.
+  const coverSource = useMemo(
+    () => (article.imageUrl ? { uri: article.imageUrl } : undefined),
+    [article.imageUrl],
+  );
+
+  return (
+    <View style={styles.cardBody}>
+      <View style={styles.cardHeader}>
+        <Pressable
+          onPress={onPressSource}
+          disabled={!onPressSource}
+          style={styles.publisherRow}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={article.sourceName}
+        >
+          <PublisherAvatar name={article.sourceName} size={40} t={t} />
+          <PublisherMeta
+            name={article.sourceName}
+            relative={relativeTime(article.publishedAt)}
+            t={t}
+          />
+        </Pressable>
+        <View style={styles.headerTrailing}>
+          {article.isBreaking ? (
+            <View style={[styles.breakingBadge, { backgroundColor: t.breaking }]}>
+              <Text style={styles.breakingText}>عاجل</Text>
+            </View>
+          ) : null}
+          <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
+            <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
+          </View>
+        </View>
+      </View>
+
+      <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={4}>
+        {article.title} 🔥
+      </Text>
+
+      <View style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}>
+        {coverSource ? (
+          <Image
+            source={coverSource}
+            style={[StyleSheet.absoluteFill, styles.image]}
+            resizeMode="cover"
+          />
+        ) : null}
+      </View>
+
+      <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
+        <Text style={[styles.meta, { color: t.textMuted }]}>
+          {relativeTime(article.publishedAt)}
+        </Text>
+        <View style={styles.hintRow}>
+          {hint ? <Text style={[styles.hint, { color: t.textMuted }]}>{hint}</Text> : null}
+          <Ionicons name="share-outline" size={17} color={t.textMuted} />
+        </View>
+      </View>
+    </View>
+  );
+}
 export function HeroDeck({
   articles,
   index,
@@ -59,15 +147,22 @@ export function HeroDeck({
   const frontRef = useRef(front);
   frontRef.current = front;
 
-  const coverSource = useMemo(
-    () => (front?.imageUrl ? { uri: front.imageUrl } : undefined),
-    [front?.imageUrl],
-  );
-
-  // Decorative strips for the cards that would sit behind the front one.
-  const back = [1, 2, 3].map((n) => articles[index + n]);
+  // Cards behind the front one, all rendered as real cards. Order is nearest
+  // first so the next card becomes front by reconciliation on advance, and the
+  // previous card is always mounted for a backward swipe.
+  const behind = useMemo(() => {
+    const list: Article[] = [];
+    if (articles[index + 1]) list.push(articles[index + 1]);
+    if (articles[index - 1]) list.push(articles[index - 1]);
+    for (let d = 2; d <= DEPTH; d++) {
+      if (articles[index + d]) list.push(articles[index + d]);
+    }
+    // Deepest first so the shallowest neighbour paints last, just under the front.
+    return list.slice(0, DEPTH).map((a, i) => ({ a, i })).reverse();
+  }, [articles, index]);
   const canNext = index + 1 < articles.length;
   const canPrev = index > 0;
+  const hint = canNext ? 'اسحب للتالي' : canPrev ? 'اسحب للسابق' : undefined;
 
   // Track timestamp of publisher row tap to prevent triggering card body tap
   const lastSourcePressTimeRef = useRef(0);
@@ -226,95 +321,55 @@ export function HeroDeck({
 
   if (!front) return null;
 
+  // One entry per rendered card, front LAST so it paints over the peeking
+  // neighbours. Every entry renders the SAME element type with the SAME key
+  // (article.id) and the SAME child tree, so the mounted instance — and its
+  // already-decoded Image — is reused when a neighbour becomes the front card.
+  // Changing the element type or wrapping the body differently per role would
+  // remount and flash an empty card.
+  const visible: { a: Article; slot: number }[] = [
+    ...behind.map(({ a, i }) => ({ a, slot: i })),
+    { a: front, slot: -1 },
+  ];
+
   return (
     <GestureDetector gesture={composed}>
       <View style={styles.deck}>
-        {/* Decorative strips for the cards behind the front one (pile hint only) */}
-        {back
-          .map((a, i) => ({ a, i }))
-          .reverse()
-          .map(({ a, i }) =>
-            a ? (
-              <Animated.View
-                key={`${a.id}-${i}`}
-                pointerEvents="none"
-                style={[
-                  styles.layer,
-                  {
-                    top: (DEPTH - 1 - i) * PEEK,
-                    width: `${94 - i * 6}%`,
-                    backgroundColor: i === 0 ? t.surfaceStackMid : t.surfaceStackBack,
-                    borderColor: t.stackEdge,
-                    opacity: i === 0 ? 1 : 0.95 - i * 0.1,
-                  },
-                  stripStyles[i] ?? null,
-                ]}
-              />
-            ) : null,
-          )}
-
-        <Animated.View
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={front.title}
-          onAccessibilityTap={() => onPress(front)}
-          style={[styles.frontCard, { backgroundColor: t.surface }, frontStyle]}
-        >
-          <View style={styles.cardHeader}>
-            <Pressable
-              onPress={handleSourcePress}
-              style={styles.publisherRow}
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={front.sourceName}
+        {visible.map(({ a, slot }) => {
+          const isFront = slot === -1;
+          return (
+            <Animated.View
+              key={a.id}
+              pointerEvents={isFront ? 'auto' : 'none'}
+              accessible={isFront}
+              accessibilityRole={isFront ? 'button' : undefined}
+              accessibilityLabel={isFront ? a.title : undefined}
+              onAccessibilityTap={isFront ? () => onPress(a) : undefined}
+              style={
+                isFront
+                  ? [styles.frontCard, { backgroundColor: t.surface }, frontStyle]
+                  : [
+                      styles.layer,
+                      {
+                        top: (DEPTH - 1 - slot) * PEEK,
+                        width: `${94 - slot * 6}%`,
+                        backgroundColor: slot === 0 ? t.surfaceStackMid : t.surfaceStackBack,
+                        borderColor: t.stackEdge,
+                        opacity: slot === 0 ? 1 : 0.95 - slot * 0.1,
+                      },
+                      stripStyles[slot] ?? null,
+                    ]
+              }
             >
-              <PublisherAvatar name={front.sourceName} size={40} t={t} />
-              <PublisherMeta
-                name={front.sourceName}
-                relative={relativeTime(front.publishedAt)}
+              <HeroCard
+                article={a}
                 t={t}
+                hint={isFront ? hint : undefined}
+                onPressSource={isFront ? handleSourcePress : undefined}
               />
-            </Pressable>
-            <View style={styles.headerTrailing}>
-              {front.isBreaking ? (
-                <View style={[styles.breakingBadge, { backgroundColor: t.breaking }]}>
-                  <Text style={styles.breakingText}>عاجل</Text>
-                </View>
-              ) : null}
-              <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
-                <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
-              </View>
-            </View>
-          </View>
-
-          <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={4}>
-            {front.title} 🔥
-          </Text>
-
-          <View style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}>
-            {coverSource ? (
-              <Image
-                source={coverSource}
-                style={[StyleSheet.absoluteFill, styles.image]}
-                resizeMode="cover"
-              />
-            ) : null}
-          </View>
-
-          <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
-            <Text style={[styles.meta, { color: t.textMuted }]}>
-              {relativeTime(front.publishedAt)}
-            </Text>
-            <View style={styles.hintRow}>
-              {canNext ? (
-                <Text style={[styles.hint, { color: t.textMuted }]}>اسحب للتالي</Text>
-              ) : canPrev ? (
-                <Text style={[styles.hint, { color: t.textMuted }]}>اسحب للسابق</Text>
-              ) : null}
-              <Ionicons name="share-outline" size={17} color={t.textMuted} />
-            </View>
-          </View>
-        </Animated.View>
+            </Animated.View>
+          );
+        })}
       </View>
     </GestureDetector>
   );
@@ -346,13 +401,13 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     borderRadius: 28,
-    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.1,
     shadowRadius: 26,
     elevation: 6,
   },
+  cardBody: { flex: 1, padding: 16 },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
