@@ -187,6 +187,65 @@ describe('capsule on feed cards', () => {
   });
 });
 
+describe('props updating after mount (the reader bug)', () => {
+  it('shows counts that arrive after the first render', () => {
+    // Reproduction of the reported bug: the bar mounts with an all-zero article
+    // (the feed snapshot), then the reader's fresh fetch supplies real counts.
+    // useState alone ignored the second value, so the bar stayed blank.
+    const { rerender } = render(
+      <ReactionsBar t={t} article={article()} onNeedVerification={jest.fn()} />,
+    );
+    expect(screen.queryByText('3')).toBeNull();
+
+    rerender(
+      <ReactionsBar
+        t={t}
+        article={article({ reactions: counts({ like: 3, total: 3 }) })}
+        onNeedVerification={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('3')).toBeTruthy();
+    expect(screen.getByText('3 تفاعل')).toBeTruthy();
+  });
+
+  it('shows the NEW article counts when a different article reuses the same bar', () => {
+    // The reported repro: open an article with no reactions (e.g. from trending),
+    // go back, open the Lavrov article which has 3. The sheet keeps ONE reader
+    // instance (no key), so the bar must follow the article, not its first props.
+    const { rerender } = render(
+      <ReactionsBar t={t} article={article({ id: 'first' })} onNeedVerification={jest.fn()} />,
+    );
+    expect(screen.queryByText('3')).toBeNull();
+
+    rerender(
+      <ReactionsBar
+        t={t}
+        article={article({
+          id: 'b155d2c4ffae3c65',
+          reactions: counts({ like: 3, total: 3 }),
+        })}
+        onNeedVerification={jest.fn()}
+      />,
+    );
+    expect(screen.getByText('3')).toBeTruthy();
+  });
+
+  it('highlights myReaction that arrives after the first render', () => {
+    const { rerender } = render(
+      <ReactionsBar t={t} article={article()} onNeedVerification={jest.fn()} />,
+    );
+    rerender(
+      <ReactionsBar
+        t={t}
+        article={article({ reactions: counts({ like: 3, total: 3 }), myReaction: 'like' })}
+        onNeedVerification={jest.fn()}
+      />,
+    );
+    expect(screen.getByLabelText(/إعجاب/).props.accessibilityState.selected).toBe(true);
+  });
+});
+
 describe('counts come from the server', () => {
   it('replaces the optimistic count with the server response', async () => {
     // The server says someone else also reacted, so the truth is 5 not 1.

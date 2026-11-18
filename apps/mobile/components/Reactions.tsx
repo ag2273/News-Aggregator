@@ -14,7 +14,7 @@
  *  - optimistic update, rolled back with a toast if the call fails.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAccountGate } from './AccountGate';
 import type { Theme } from '../constants/colors';
@@ -61,6 +61,30 @@ export function useArticleReactions(
     myReaction: article.myReaction ?? null,
   });
   const [pending, setPending] = useState(false);
+
+  // The article object arrives from a parent that may fetch fresher numbers
+  // after mount (the reader does exactly that). useState only reads its initial
+  // value once, so without this the bar kept showing whatever the first render
+  // had — all zeros — while the parent held the real counts. That was the bug.
+  // While a write is in flight the optimistic state must win, so the sync is
+  // skipped then.
+  const articleTotal = article.reactions?.total;
+  const articleMine = article.myReaction ?? null;
+  // Tracks the last props we consumed, so a server response from a write is not
+  // immediately overwritten by the stale props that triggered that write.
+  const lastProps = useRef({ id: article.id, total: articleTotal, mine: articleMine });
+  useEffect(() => {
+    if (pending) return;
+    const previous = lastProps.current;
+    // Same props as last time means nothing new arrived: keep the newer state
+    // (e.g. counts just returned by the server).
+    if (previous.id === article.id && previous.total === articleTotal && previous.mine === articleMine) {
+      return;
+    }
+    lastProps.current = { id: article.id, total: articleTotal, mine: articleMine };
+    setState({ counts: article.reactions ?? EMPTY, myReaction: articleMine });
+    // Depend on the values, not the object identity: the parent re-renders often.
+  }, [article.id, articleTotal, articleMine, pending, article.reactions]);
   const [toast, setToast] = useState<string | null>(null);
 
   const toggle = useCallback(
@@ -97,7 +121,15 @@ export function useArticleReactions(
         // Always trust the server's numbers over the optimistic guess: another
         // user may have reacted in between, and a stale feed payload must never
         // become the displayed count.
-        .then((result) => setState({ counts: result.counts, myReaction: result.myReaction }))
+        .then((result) => {
+          setState({ counts: result.counts, myReaction: result.myReaction });
+          // The response is newer than the props that started this write.
+          lastProps.current = {
+            id: article.id,
+            total: article.reactions?.total,
+            mine: article.myReaction ?? null,
+          };
+        })
         .catch((err) => {
           setState(previous); // roll back
           setToast(
