@@ -23,6 +23,7 @@ import {
   type ScrollViewInstance,
   useWindowDimensions,
 } from 'react-native';
+import { keyboardOverlap } from './keyboardMath';
 
 /** Current keyboard height in dp; 0 while it is hidden. */
 export function useKeyboardHeight(): number {
@@ -70,15 +71,11 @@ export function useFormKeyboardAwareness(basePadding = 20): FormKeyboardAwarenes
   // Window height measured while no keyboard is up.
   const restingHeight = useRef(windowHeight);
 
-  // How much the window shrank because of the keyboard (0 under edge-to-edge).
-  const shrink =
-    keyboardHeight === 0 ? 0 : Math.max(0, restingHeight.current - windowHeight);
-
   useEffect(() => {
     if (keyboardHeight === 0) restingHeight.current = windowHeight;
   }, [keyboardHeight, windowHeight]);
 
-  const overlap = Math.max(0, Math.min(keyboardHeight - shrink, keyboardHeight));
+  const overlap = keyboardOverlap(keyboardHeight, windowHeight, restingHeight.current);
 
   const onFieldLayout = useCallback(
     (key: string) => (event: LayoutChangeEvent) => {

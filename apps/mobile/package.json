@@ -8,7 +8,8 @@
     "ios": "expo run:ios",
     "test:swipe": "node --experimental-strip-types scripts/check-swipe.mjs",
     "test:preload": "node --experimental-strip-types scripts/check-preload.mjs",
-    "test:notifications": "node --experimental-strip-types scripts/check-notifications.mjs"
+    "test:notifications": "node --experimental-strip-types scripts/check-notifications.mjs",
+    "test:keyboard": "node --experimental-strip-types scripts/check-keyboard.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/cairo": "^0.4.2",
