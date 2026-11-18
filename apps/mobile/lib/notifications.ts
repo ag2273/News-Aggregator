@@ -4,15 +4,24 @@
 // (Bearer auth) so the server can target this device. Tapping a notification
 // opens the article it refers to.
 //
-// Every entry point is defensive: a missing EAS projectId, a denied permission,
-// a simulator, or no network must never crash the app — it returns null/false
-// and logs one clear message.
+// Failures carry a typed reason (see pushErrors.ts) so the UI can tell the truth:
+// a build with no Firebase config cannot mint a token at all, and saying "check
+// your connection" for it sends the user chasing the wrong thing.
 
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { API_BASE } from './api';
+import {
+  PushError,
+  PUSH_ERROR_MESSAGES,
+  classifyHttpStatus,
+  classifyPushTokenError,
+  type PushFailureKind,
+} from './pushErrors';
+
+export { PushError, PUSH_ERROR_MESSAGES, type PushFailureKind };
 
 /** 'urgent' = breaking news only, 'all' = every new article. */
 export type PushMode = 'urgent' | 'all';
@@ -42,8 +51,8 @@ Notifications.setNotificationHandler({
 });
 
 /**
- * The EAS project id is required to mint an Expo push token. It is deliberately
- * not invented here: app.json ships a TODO placeholder, replaced after `eas init`.
+ * The EAS project id is required to mint an Expo push token. It comes from
+ * app.json extra.eas.projectId.
  */
 function getProjectId(): string | null {
   const id = (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas
@@ -52,9 +61,54 @@ function getProjectId(): string | null {
   return id;
 }
 
+function wrap(err: unknown, fallback: PushFailureKind = 'unknown'): PushError {
+  if (err instanceof PushError) return err;
+  const kind = classifyPushTokenError(err);
+  return new PushError(kind === 'unknown' ? fallback : kind, PUSH_ERROR_MESSAGES[kind]);
+}
+
+// A push token is stable for the life of the install; minting it hits Firebase
+// and Expo, so keep it for the session instead of repeating the work.
+let cachedPushToken: string | null = null;
+
+export function clearCachedPushToken(): void {
+  cachedPushToken = null;
+}
+
+/**
+ * Resolve this device's Expo push token.
+ *
+ * Throws PushError('config') when this build has no Firebase/FCM wiring: on
+ * Android the Expo token is derived from an FCM token, and without
+ * google-services.json `FirebaseMessaging.getInstance()` throws natively.
+ */
+export async function getDevicePushToken(): Promise<string> {
+  if (cachedPushToken) return cachedPushToken;
+
+  const projectId = getProjectId();
+  if (!projectId) {
+    throw new PushError('config', PUSH_ERROR_MESSAGES.config);
+  }
+
+  let token: string;
+  try {
+    const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
+    token = data;
+  } catch (err) {
+    console.warn('[notifications] could not obtain an Expo push token:', err);
+    throw wrap(err, 'config');
+  }
+  if (!token) throw new PushError('config', PUSH_ERROR_MESSAGES.config);
+
+  cachedPushToken = token;
+  return token;
+}
+
 export async function getPermissionStatus(): Promise<PermissionStatus> {
   const current = await Notifications.getPermissionsAsync();
-  const granted = current.granted || current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+  const granted =
+    current.granted ||
+    current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
   return {
     granted,
     canAskAgain: current.canAskAgain,
@@ -71,119 +125,124 @@ export async function requestPermissions(): Promise<boolean> {
   return asked.granted;
 }
 
-/**
- * Resolve this device's Expo push token, or null with a clear reason.
- * Simulators and missing projectId cannot produce a token.
- */
-export async function getDevicePushToken(): Promise<string | null> {
-  try {
-    const projectId = getProjectId();
-    if (!projectId) {
-      console.warn(
-        '[notifications] Missing extra.eas.projectId in app.json — run `eas init` and set it. Push registration skipped.',
-      );
-      return null;
-    }
-    const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
-    return data ?? null;
-  } catch (err) {
-    console.warn('[notifications] Could not obtain an Expo push token:', err);
-    return null;
-  }
+function authHeaders(authToken: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${authToken}`,
+  };
 }
 
-/** Register (upsert) this device with the server. */
-export async function registerDevice(authToken: string): Promise<PushPrefs | null> {
+async function postJson(
+  path: string,
+  authToken: string,
+  body: Record<string, unknown>,
+  method: 'POST' | 'PUT' = 'POST',
+): Promise<Response> {
   try {
-    const pushToken = await getDevicePushToken();
-    if (!pushToken) return null;
-    const res = await fetch(`${API_BASE}/api/push/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({ token: pushToken, platform: Platform.OS }),
+    return await fetch(`${API_BASE}${path}`, {
+      method,
+      headers: authHeaders(authToken),
+      body: JSON.stringify(body),
     });
-    if (!res.ok) {
-      console.warn('[notifications] register failed with status', res.status);
-      return null;
-    }
-    const json = (await res.json()) as { data?: PushPrefs };
-    return json.data ?? null;
   } catch (err) {
-    console.warn('[notifications] register request failed:', err);
-    return null;
+    throw wrap(err, 'network');
   }
 }
 
-/** Remove this device from the server (sign-out). Best effort. */
+function prefsFrom(res: Response, json: { data?: PushPrefs }): PushPrefs {
+  if (!json.data) throw new PushError('server', PUSH_ERROR_MESSAGES.server, res.status);
+  return json.data;
+}
+
+/** Register (upsert) this device with the server. Throws PushError on failure. */
+export async function registerDevice(authToken: string): Promise<PushPrefs> {
+  const pushToken = await getDevicePushToken();
+  const res = await postJson('/api/push/register', authToken, {
+    token: pushToken,
+    platform: Platform.OS,
+  });
+  if (!res.ok) {
+    const kind = classifyHttpStatus(res.status);
+    throw new PushError(kind, PUSH_ERROR_MESSAGES[kind], res.status);
+  }
+  return prefsFrom(res, (await res.json()) as { data?: PushPrefs });
+}
+
+/** Remove this device from the server (sign-out). Best effort, never throws. */
 export async function unregisterDevice(authToken: string): Promise<void> {
   try {
     const pushToken = await getDevicePushToken();
-    if (!pushToken) return;
     await fetch(`${API_BASE}/api/push/register`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
+      headers: authHeaders(authToken),
       body: JSON.stringify({ token: pushToken }),
     });
   } catch {
     // Sign-out must not fail because push cleanup did.
+  } finally {
+    clearCachedPushToken();
   }
 }
 
-/** Current preferences for this device, or null when it is not registered. */
+/** Current preferences for this device, or null when it is not registered yet. */
 export async function fetchPrefs(authToken: string): Promise<PushPrefs | null> {
+  const pushToken = await getDevicePushToken();
+
+  let res: Response;
   try {
-    const pushToken = await getDevicePushToken();
-    if (!pushToken) return null;
-    const res = await fetch(
+    res = await fetch(
       `${API_BASE}/api/push/preferences?token=${encodeURIComponent(pushToken)}`,
       { headers: { Authorization: `Bearer ${authToken}` } },
     );
-    if (!res.ok) return null;
-    const json = (await res.json()) as { data?: PushPrefs };
-    return json.data ?? null;
-  } catch {
-    return null;
+  } catch (err) {
+    throw wrap(err, 'network');
   }
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const kind = classifyHttpStatus(res.status);
+    throw new PushError(kind, PUSH_ERROR_MESSAGES[kind], res.status);
+  }
+
+  const json = (await res.json()) as { data?: PushPrefs };
+  return json.data ?? null;
 }
 
-/** Persist enabled/mode for this device. */
+/** Persist enabled/mode for this device. Throws PushError on failure. */
 export async function updatePrefs(
   authToken: string,
   prefs: { enabled?: boolean; mode?: PushMode },
-): Promise<PushPrefs | null> {
-  try {
-    const pushToken = await getDevicePushToken();
-    if (!pushToken) return null;
-    const res = await fetch(`${API_BASE}/api/push/preferences`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({ token: pushToken, ...prefs }),
-    });
-    if (!res.ok) {
-      console.warn('[notifications] preference update failed with status', res.status);
-      return null;
-    }
-    const json = (await res.json()) as { data?: PushPrefs };
-    return json.data ?? null;
-  } catch (err) {
-    console.warn('[notifications] preference update request failed:', err);
-    return null;
+): Promise<PushPrefs> {
+  const pushToken = await getDevicePushToken();
+
+  let res = await postJson(
+    '/api/push/preferences',
+    authToken,
+    { token: pushToken, ...prefs },
+    'PUT',
+  );
+
+  // 404: this device was never registered (or the server lost the record).
+  // Register once and retry, so the first toggle does not fail for that reason.
+  if (res.status === 404) {
+    await registerDevice(authToken);
+    res = await postJson(
+      '/api/push/preferences',
+      authToken,
+      { token: pushToken, ...prefs },
+      'PUT',
+    );
   }
+
+  if (!res.ok) {
+    const kind = classifyHttpStatus(res.status);
+    throw new PushError(kind, PUSH_ERROR_MESSAGES[kind], res.status);
+  }
+  return prefsFrom(res, (await res.json()) as { data?: PushPrefs });
 }
 
 /**
  * Navigate to the article a notification refers to.
- * The server sends data { articleId, url }; the article route is deep-linkable,
- * and the card's reader also accepts the stored url, so prefer the id.
+ * The server sends data { articleId, url }; prefer the id.
  */
 export function openNotificationArticle(data: Record<string, unknown> | undefined): void {
   const articleId = data?.['articleId'];

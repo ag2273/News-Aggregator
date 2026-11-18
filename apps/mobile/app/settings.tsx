@@ -17,14 +17,24 @@ import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import { useAuth } from '../lib/auth';
 import {
-  fetchPrefs,
+  PushError,
   getPermissionStatus,
   registerDevice,
   requestPermissions,
   updatePrefs,
   type PermissionStatus,
+  type PushFailureKind,
   type PushMode,
 } from '../lib/notifications';
+
+/** What we know about this device's push state. */
+type DeviceState =
+  | { status: 'loading' }
+  | { status: 'ready' }
+  /** The build cannot mint a push token at all (no Firebase/FCM wiring). */
+  | { status: 'unavailable' }
+  /** Network/auth/server trouble; retrying can help. */
+  | { status: 'error'; kind: PushFailureKind };
 
 export default function SettingsScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
@@ -33,7 +43,7 @@ export default function SettingsScreen() {
   const [enabled, setEnabled] = useState(false);
   const [mode, setMode] = useState<PushMode>('urgent');
   const [permission, setPermission] = useState<PermissionStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [device, setDevice] = useState<DeviceState>({ status: 'loading' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,46 +55,61 @@ export default function SettingsScreen() {
     }
   }, []);
 
+  /**
+   * Make sure this device is registered, then read its stored preferences.
+   * A token-fetch failure is a build/config problem, not a connection problem,
+   * and is reported as such.
+   */
   const loadPrefs = useCallback(async () => {
     if (!token) return;
+    setError(null);
+    setDevice({ status: 'loading' });
     try {
-      setError(null);
-      // Make sure the device is registered, then read its stored preferences.
       const registered = await registerDevice(token);
-      const prefs = registered ?? (await fetchPrefs(token));
-      if (prefs) {
-        setEnabled(prefs.enabled);
-        setMode(prefs.mode);
+      setEnabled(registered.enabled);
+      setMode(registered.mode);
+      setDevice({ status: 'ready' });
+    } catch (err) {
+      const pushErr = err instanceof PushError ? err : null;
+      const kind: PushFailureKind = pushErr?.kind ?? 'unknown';
+      if (kind === 'config') {
+        setDevice({ status: 'unavailable' });
+      } else {
+        setDevice({ status: 'error', kind });
+        setError(pushErr?.message ?? 'تعذّر تحميل إعدادات الإشعارات.');
       }
-    } catch {
-      setError('تعذّر تحميل إعدادات الإشعارات.');
     }
   }, [token]);
 
   useEffect(() => {
     if (authLoading) return;
     if (!token) {
-      setLoading(false);
+      setDevice({ status: 'ready' });
       return;
     }
     (async () => {
       await refreshPermission();
       await loadPrefs();
-      setLoading(false);
     })();
   }, [authLoading, token, loadPrefs, refreshPermission]);
 
   const persist = async (next: { enabled?: boolean; mode?: PushMode }) => {
     if (!token) return;
     setSaving(true);
+    setError(null);
     try {
       const saved = await updatePrefs(token, next);
-      if (saved) {
-        setEnabled(saved.enabled);
-        setMode(saved.mode);
-        setError(null);
+      setEnabled(saved.enabled);
+      setMode(saved.mode);
+      setDevice({ status: 'ready' });
+    } catch (err) {
+      const pushErr = err instanceof PushError ? err : null;
+      const kind: PushFailureKind = pushErr?.kind ?? 'unknown';
+      if (kind === 'config') {
+        setDevice({ status: 'unavailable' });
       } else {
-        setError('تعذّر حفظ التفضيلات. تحقق من الاتصال.');
+        setDevice({ status: 'error', kind });
+        setError(pushErr?.message ?? 'تعذّر حفظ التفضيلات.');
       }
     } finally {
       setSaving(false);
@@ -98,7 +123,7 @@ export default function SettingsScreen() {
       await refreshPermission();
       if (!granted) {
         setEnabled(false);
-        setError('الإذن مرفوض. فعّل الإشعارات من إعدادات النظام.');
+        setError('إذن الإشعارات مرفوض. فعّله من إعدادات النظام.');
         return;
       }
     }
@@ -109,6 +134,9 @@ export default function SettingsScreen() {
     if (next === mode) return;
     await persist({ mode: next });
   };
+
+  const unavailable = device.status === 'unavailable';
+  const loadingPrefs = device.status === 'loading';
 
   if (!authLoading && !user) {
     return (
@@ -166,95 +194,121 @@ export default function SettingsScreen() {
           <View style={styles.circleSpacer} />
         </View>
 
-        {loading ? (
+        {loadingPrefs && !unavailable ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={t.accent} />
           </View>
         ) : (
           <View style={styles.content}>
-            <View style={[styles.card, { backgroundColor: t.surface }]}>
-              <View style={styles.row}>
-                <View style={styles.rowText}>
-                  <Text style={[styles.rowTitle, { color: t.textPrimary }]}>
-                    تفعيل الإشعارات
-                  </Text>
-                  <Text style={[styles.rowSub, { color: t.textMuted }]}>
-                    {permission?.granted
-                      ? 'الإشعارات مسموح بها من النظام'
-                      : 'الإشعارات غير مسموح بها من النظام'}
-                  </Text>
+            {unavailable ? (
+              <View style={[styles.card, { backgroundColor: t.surface }]}>
+                <View style={styles.row}>
+                  <Ionicons name="notifications-off-outline" size={22} color={t.textMuted} />
+                  <View style={styles.rowText}>
+                    <Text style={[styles.rowTitle, { color: t.textPrimary }]}>
+                      الإشعارات غير متاحة في هذه النسخة
+                    </Text>
+                    <Text style={[styles.rowSub, { color: t.textMuted }]}>
+                      سيتم تفعيلها في تحديث قادم. لا حاجة لتغيير أي إعداد.
+                    </Text>
+                  </View>
                 </View>
-                <Switch
-                  value={enabled}
-                  onValueChange={onToggleEnabled}
-                  disabled={saving}
-                  trackColor={{ false: t.borderLight, true: t.accent }}
-                  thumbColor={enabled ? '#FFFFFF' : undefined}
-                  accessibilityLabel="تفعيل الإشعارات"
-                />
-              </View>
-
-              {permission?.denied ? (
                 <TouchableOpacity
                   style={[styles.settingsBtn, { borderColor: t.borderLight }]}
-                  onPress={() => Linking.openSettings()}
+                  onPress={() => loadPrefs()}
                   accessibilityRole="button"
                 >
-                  <Ionicons name="settings-outline" size={16} color={t.accent} />
-                  <Text style={[styles.settingsBtnText, { color: t.accent }]}>
-                    فتح إعدادات النظام
-                  </Text>
+                  <Ionicons name="refresh-outline" size={16} color={t.accent} />
+                  <Text style={[styles.settingsBtnText, { color: t.accent }]}>إعادة المحاولة</Text>
                 </TouchableOpacity>
-              ) : null}
-            </View>
+              </View>
+            ) : (
+              <>
+                <View style={[styles.card, { backgroundColor: t.surface }]}>
+                  <View style={styles.row}>
+                    <View style={styles.rowText}>
+                      <Text style={[styles.rowTitle, { color: t.textPrimary }]}>
+                        تفعيل الإشعارات
+                      </Text>
+                      <Text style={[styles.rowSub, { color: t.textMuted }]}>
+                        {permission?.granted
+                          ? 'الإشعارات مسموح بها من النظام'
+                          : 'الإشعارات غير مسموح بها من النظام'}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={enabled}
+                      onValueChange={onToggleEnabled}
+                      disabled={saving}
+                      trackColor={{ false: t.borderLight, true: t.accent }}
+                      thumbColor={enabled ? '#FFFFFF' : undefined}
+                      accessibilityLabel="تفعيل الإشعارات"
+                    />
+                  </View>
 
-            <Text style={[styles.sectionLabel, { color: t.textMuted }]}>
-              ما الذي تصلك إشعاراته؟
-            </Text>
-
-            <View style={[styles.card, { backgroundColor: t.surface }]}>
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => onSelectMode('urgent')}
-                disabled={saving || !enabled}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: mode === 'urgent' }}
-              >
-                <Ionicons
-                  name={mode === 'urgent' ? 'radio-button-on' : 'radio-button-off'}
-                  size={20}
-                  color={mode === 'urgent' ? t.accent : t.textMuted}
-                />
-                <View style={styles.rowText}>
-                  <Text style={[styles.rowTitle, { color: t.textPrimary }]}>العاجل فقط</Text>
-                  <Text style={[styles.rowSub, { color: t.textMuted }]}>
-                    إشعار عند نشر خبر عاجل
-                  </Text>
+                  {permission?.denied ? (
+                    <TouchableOpacity
+                      style={[styles.settingsBtn, { borderColor: t.borderLight }]}
+                      onPress={() => Linking.openSettings()}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="settings-outline" size={16} color={t.accent} />
+                      <Text style={[styles.settingsBtnText, { color: t.accent }]}>
+                        فتح إعدادات النظام
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
-              </TouchableOpacity>
 
-              <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
+                <Text style={[styles.sectionLabel, { color: t.textMuted }]}>
+                  ما الذي تصلك إشعاراته؟
+                </Text>
 
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => onSelectMode('all')}
-                disabled={saving || !enabled}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: mode === 'all' }}
-              >
-                <Ionicons
-                  name={mode === 'all' ? 'radio-button-on' : 'radio-button-off'}
-                  size={20}
-                  color={mode === 'all' ? t.accent : t.textMuted}
-                />
-                <View style={styles.rowText}>
-                  <Text style={[styles.rowTitle, { color: t.textPrimary }]}>كل الأخبار</Text>
-                  <Text style={[styles.rowSub, { color: t.textMuted }]}>
-                    إشعار مع كل خبر جديد
-                  </Text>
+                <View style={[styles.card, { backgroundColor: t.surface }]}>
+                  <TouchableOpacity
+                    style={styles.optionRow}
+                    onPress={() => onSelectMode('urgent')}
+                    disabled={saving || !enabled}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: mode === 'urgent' }}
+                  >
+                    <Ionicons
+                      name={mode === 'urgent' ? 'radio-button-on' : 'radio-button-off'}
+                      size={20}
+                      color={mode === 'urgent' ? t.accent : t.textMuted}
+                    />
+                    <View style={styles.rowText}>
+                      <Text style={[styles.rowTitle, { color: t.textPrimary }]}>العاجل فقط</Text>
+                      <Text style={[styles.rowSub, { color: t.textMuted }]}>
+                        إشعار عند نشر خبر عاجل
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
+
+                  <TouchableOpacity
+                    style={styles.optionRow}
+                    onPress={() => onSelectMode('all')}
+                    disabled={saving || !enabled}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: mode === 'all' }}
+                  >
+                    <Ionicons
+                      name={mode === 'all' ? 'radio-button-on' : 'radio-button-off'}
+                      size={20}
+                      color={mode === 'all' ? t.accent : t.textMuted}
+                    />
+                    <View style={styles.rowText}>
+                      <Text style={[styles.rowTitle, { color: t.textPrimary }]}>كل الأخبار</Text>
+                      <Text style={[styles.rowSub, { color: t.textMuted }]}>
+                        إشعار مع كل خبر جديد
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
-            </View>
+              </>
+            )}
 
             {saving ? (
               <ActivityIndicator style={styles.saving} color={t.accent} />
@@ -265,6 +319,17 @@ export default function SettingsScreen() {
                 <Text style={styles.errorToastText}>{error}</Text>
               </View>
             )}
+
+            {device.status === 'error' ? (
+              <TouchableOpacity
+                style={[styles.settingsBtn, { borderColor: t.borderLight, marginTop: 12 }]}
+                onPress={() => loadPrefs()}
+                accessibilityRole="button"
+              >
+                <Ionicons name="refresh-outline" size={16} color={t.accent} />
+                <Text style={[styles.settingsBtnText, { color: t.accent }]}>إعادة المحاولة</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
       </SafeAreaView>

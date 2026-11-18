@@ -53,9 +53,35 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Push notifications need the Firebase Android config: expo-notifications
+      # derives the push token from an FCM token, and without google-services.json
+      # FirebaseMessaging.getInstance() throws natively at runtime. The file
+      # holds project keys, so it comes from a repository secret rather than git.
+      # Missing secret: the build still succeeds, it just cannot push.
+      - name: Add Firebase config (google-services.json)
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_B64" ]; then
+            echo "$GOOGLE_SERVICES_JSON_B64" | base64 -d > apps/mobile/google-services.json
+            echo "google-services.json written ($(wc -c < apps/mobile/google-services.json) bytes)"
+          else
+            echo "::warning::GOOGLE_SERVICES_JSON_B64 is not set — this APK cannot receive push notifications."
+          fi
+
       - name: Prebuild Android
         working-directory: apps/mobile
         run: npx expo prebuild --platform android --no-install
+
+      - name: Verify Firebase config reached the Android project
+        run: |
+          if [ -f apps/mobile/google-services.json ]; then
+            test -f apps/mobile/android/app/google-services.json \
+              && echo "google-services.json copied into android/app" \
+              || { echo "::error::app.config.js did not copy google-services.json"; exit 1; }
+          else
+            echo "no google-services.json — skipping verification (push disabled in this build)"
+          fi
 
       - name: Build APK (arm64-v8a only)
         working-directory: apps/mobile/android
