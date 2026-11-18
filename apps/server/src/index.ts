@@ -59,8 +59,12 @@ export const app = new Hono();
 
 app.use('*', cors());
 
-// Push needs the Firebase service-account key. Warn once at boot; never crash.
-loadServiceAccount();
+// Push needs the Firebase service-account key. Log the outcome once at boot
+// (never the key itself); a missing key disables push but never crashes.
+const pushAccount = loadServiceAccount();
+if (pushAccount) {
+  console.log(`[push] FCM credentials loaded (project ${pushAccount.project_id})`);
+}
 
 // Trigger a refresh on startup
 refreshAll().catch(console.error);
