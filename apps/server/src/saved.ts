@@ -69,6 +69,17 @@ export function unsaveArticle(userId: string, articleId: string): string[] {
 }
 
 /** Reset cache (for vitest test isolation) */
+/** Delete every saved-article row for a user (account deletion). */
+export function deleteSavedForUser(userId: string): number {
+  const map = load();
+  const existing = map[userId];
+  if (!existing) return 0;
+  delete map[userId];
+  cache = map;
+  save();
+  return existing.length;
+}
+
 export function _resetSavedCache(): void {
   cache = null;
 }

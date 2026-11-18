@@ -31,6 +31,8 @@ export interface AuthContextType {
   signIn: (email: string, pass: string) => Promise<void>;
   signUp: (email: string, pass: string, name?: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Delete the account permanently, then sign out locally. */
+  deleteAccount: (password: string) => Promise<void>;
   /** Re-read the session (used by the "تحققت" button and on foreground). */
   refreshSession: () => Promise<void>;
 }
@@ -124,6 +126,27 @@ export async function getMe(token: string): Promise<User> {
     throw new Error(json.error ?? 'انتهت صلاحية الجلسة');
   }
   return json.data.user;
+}
+
+/**
+ * Permanently delete the account and all its data.
+ * Requires the password: a stolen session alone must not be able to do this.
+ */
+export async function deleteAccountRequest(token: string, password: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/auth/account`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ password }),
+  });
+  if (res.status === 401) {
+    throw new Error('كلمة المرور غير صحيحة');
+  }
+  if (!res.ok) {
+    throw new Error('تعذّر حذف الحساب. حاول مرة أخرى.');
+  }
 }
 
 export async function logout(token: string): Promise<void> {
@@ -253,6 +276,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, [token]);
 
+  // Delete the account, then forget the local session. The server has already
+  // removed every record, so local cleanup is all that is left.
+  const removeAccount = useCallback(
+    async (password: string) => {
+      if (!token) throw new Error('سجّل الدخول أولاً');
+      await deleteAccountRequest(token, password);
+      await removeStoredToken();
+      setToken(null);
+      setUser(null);
+    },
+    [token],
+  );
+
   const value = useMemo<AuthContextType>(
     () => ({
       user,
@@ -262,9 +298,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn,
       signUp,
       signOut,
+      deleteAccount: removeAccount,
       refreshSession,
     }),
-    [user, token, loading, signIn, signUp, signOut, refreshSession],
+    [user, token, loading, signIn, signUp, signOut, removeAccount, refreshSession],
   );
 
   return React.createElement(AuthContext.Provider, { value }, children);

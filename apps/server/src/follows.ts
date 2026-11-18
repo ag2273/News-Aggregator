@@ -60,6 +60,17 @@ export function unfollowSource(userId: string, sourceId: string): string[] {
 }
 
 /** Reset cache (for vitest test isolation) */
+/** Delete every follow row for a user (account deletion). Returns rows removed. */
+export function deleteFollowsForUser(userId: string): number {
+  const map = load();
+  const existing = map[userId];
+  if (!existing) return 0;
+  delete map[userId];
+  cache = map;
+  save();
+  return existing.length;
+}
+
 export function _resetFollowsCache(): void {
   cache = null;
 }

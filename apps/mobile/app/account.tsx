@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -14,6 +14,8 @@ import { router } from 'expo-router';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import { useAuth } from '../lib/auth';
+import { crashNow } from '../lib/crash';
+import appConfig from '../app.json';
 
 /** Amber for "waiting on you" states; the palette has no warning token. */
 const AMBER = '#F59E0B';
@@ -23,6 +25,21 @@ export default function AccountScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
   const { user, loading, signOut, emailVerified } = useAuth();
   const verify = useVerificationActions();
+
+  /**
+   * Hidden crash trigger for verifying Crashlytics on a real device: seven taps
+   * on the version string within four seconds. Deliberately awkward so it cannot
+   * happen by accident while scrolling or tapping around.
+   */
+  const taps = useRef<number[]>([]);
+  const onVersionTap = useCallback(() => {
+    const now = Date.now();
+    taps.current = [...taps.current.filter((t) => now - t < 4000), now];
+    if (taps.current.length >= 7) {
+      taps.current = [];
+      crashNow();
+    }
+  }, []);
 
   return (
     <LinearGradient
@@ -148,6 +165,19 @@ export default function AccountScreen() {
               <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
 
               <TouchableOpacity
+                style={styles.settingsRow}
+                onPress={() => router.push('/delete-account')}
+                accessibilityRole="button"
+                accessibilityLabel="حذف الحساب"
+              >
+                <Ionicons name="trash-outline" size={18} color={t.breaking} />
+                <Text style={[styles.settingsRowText, { color: t.breaking }]}>حذف الحساب</Text>
+                <Ionicons name="chevron-back" size={16} color={t.textMuted} />
+              </TouchableOpacity>
+
+              <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
+
+              <TouchableOpacity
                 style={[styles.signOutBtn, { borderColor: t.breaking }]}
                 onPress={async () => {
                   await signOut();
@@ -161,6 +191,17 @@ export default function AccountScreen() {
                   numberOfLines={1}
                 >
                   تسجيل الخروج
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={onVersionTap}
+                activeOpacity={1}
+                accessibilityRole="button"
+                accessibilityLabel={`إصدار التطبيق ${appConfig.expo.version}`}
+              >
+                <Text style={[styles.versionText, { color: t.textMuted }]}>
+                  {`رئيس التحرير ${appConfig.expo.version}`}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -314,6 +355,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: 'Cairo_600SemiBold',
     fontSize: 15,
+  },
+  versionText: {
+    fontFamily: 'Cairo_400Regular',
+    fontSize: 10,
+    marginTop: 14,
+    opacity: 0.7,
   },
   signOutText: {
     fontFamily: 'Cairo_700Bold',

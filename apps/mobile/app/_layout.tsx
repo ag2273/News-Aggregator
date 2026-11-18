@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ArticleSheetProvider } from '../components/ArticleSheet';
 import { AuthProvider, useAuth } from '../lib/auth';
+import { initCrashReporting } from '../lib/crash';
 import {
   addNotificationResponseListener,
   addPushTokenRefreshListener,
@@ -54,6 +55,11 @@ export default function RootLayout() {
 
   // Open the article a tapped notification refers to.
   useEffect(() => addNotificationResponseListener(), []);
+
+  // Crash reporting only (no analytics). Failure here must never block startup.
+  useEffect(() => {
+    initCrashReporting().catch(() => {});
+  }, []);
 
   if (!fontsLoaded) {
     return (

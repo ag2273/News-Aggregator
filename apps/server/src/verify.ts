@@ -194,6 +194,20 @@ export function sentTimes(userId: string): number[] {
   return load().resends.find((r) => r.userId === userId)?.sentAt ?? [];
 }
 
+/** Delete a user's verification tokens and resend history (account deletion). */
+export function deleteVerifyDataForUser(userId: string): number {
+  const store = load();
+  const before = store.tokens.length + store.resends.length;
+  store.tokens = store.tokens.filter((t) => t.userId !== userId);
+  store.resends = store.resends.filter((r) => r.userId !== userId);
+  const removed = before - (store.tokens.length + store.resends.length);
+  if (removed > 0) {
+    cache = store;
+    save();
+  }
+  return removed;
+}
+
 export function _resetVerifyCache(): void {
   cache = null;
 }

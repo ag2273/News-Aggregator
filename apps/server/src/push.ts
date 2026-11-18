@@ -153,6 +153,19 @@ export function getAllPushRecords(): PushRecord[] {
   return load().slice();
 }
 
+/** Delete every push token for a user (account deletion). */
+export function deletePushTokensForUser(userId: string): number {
+  const rows = load();
+  const next = rows.filter((r) => r.userId !== userId);
+  const removed = rows.length - next.length;
+  if (removed > 0) {
+    console.log(`[push] removed ${removed} token(s) for a deleted account`);
+    cache = next;
+    save();
+  }
+  return removed;
+}
+
 /** Drop a token the push service rejected (unregistered / permanently invalid). */
 export function removeDeadToken(token: string): boolean {
   const rows = load();

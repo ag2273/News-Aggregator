@@ -2,4 +2,7 @@ packages:
   - 'apps/*'
 allowBuilds:
   esbuild: true
+  '@firebase/util': true
+  protobufjs: true
+  '@parcel/watcher': true
 nodeLinker: hoisted

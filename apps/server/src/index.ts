@@ -46,6 +46,11 @@ import {
 } from './saved.js';
 import { searchArticles } from './search.js';
 import {
+  deleteAccount,
+  checkDeleteRateLimit,
+  recordDeleteAttempt,
+} from './account.js';
+import {
   registerPushToken,
   updatePushPrefs,
   unregisterPushToken,
@@ -276,6 +281,172 @@ app.post('/api/auth/login', async (c) => {
 
   const token = createToken(user.id);
   return c.json({ data: { token, user: toSafeUser(user) } });
+});
+
+/**
+ * DELETE /api/auth/account — in-app account deletion.
+ * Requires the current password: a stolen session alone must not be able to
+ * destroy the account. Removes every record for the user; sessions die with the
+ * account because every route looks the user up by id.
+ */
+app.delete('/api/auth/account', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+
+  const user = findUserById(userId);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  let body: { password?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (typeof body.password !== 'string' || !body.password) {
+    return c.json({ error: 'password is required' }, 400);
+  }
+  if (!(await verifyPassword(body.password, user.passwordHash))) {
+    return c.json({ error: 'incorrect password' }, 401);
+  }
+
+  const report = deleteAccount(userId);
+  if (!report) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ data: { deleted: true } });
+});
+
+/**
+ * POST /api/delete-account — the public web form, for people without the app.
+ * Same password proof; rate-limited per IP because it is unauthenticated.
+ */
+app.post('/api/delete-account', async (c) => {
+  const ip =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
+    c.req.header('x-real-ip') ||
+    'unknown';
+
+  const limit = checkDeleteRateLimit(`ip:${ip}`);
+  if (!limit.allowed) {
+    const retry = Math.ceil(limit.retryAfterMs / 1000);
+    return c.json(
+      { error: 'too many requests', retryAfterSeconds: retry },
+      429,
+    );
+  }
+
+  let body: { email?: unknown; password?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    recordDeleteAttempt(`ip:${ip}`, false);
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+
+  const email = typeof body.email === 'string' ? normalizeEmail(body.email) : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (!email || !password) {
+    recordDeleteAttempt(`ip:${ip}`, false);
+    return c.json({ error: 'email and password are required' }, 400);
+  }
+
+  const user = findUserByEmail(email);
+  // Same answer for unknown address and wrong password, so the form cannot be
+  // used to discover which addresses have accounts.
+  const valid = user ? await verifyPassword(password, user.passwordHash) : false;
+  if (!user || !valid) {
+    recordDeleteAttempt(`ip:${ip}`, false);
+    return c.json({ error: 'incorrect email or password' }, 401);
+  }
+
+  deleteAccount(user.id);
+  recordDeleteAttempt(`ip:${ip}`, true);
+  return c.json({ data: { deleted: true } });
+});
+
+/** GET /delete-account — the public Arabic page explaining how to delete. */
+app.get('/delete-account', (c) => {
+  return c.html(`<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>حذف الحساب — رئيس التحرير</title>
+    <style>
+      body{margin:0;min-height:100vh;background:#0B1511;color:#F8FAFC;font-family:system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;text-align:right;padding:24px}
+      .wrap{max-width:520px;margin:0 auto;background:#182721;border-radius:20px;padding:28px}
+      h1{font-size:22px;margin:0 0 8px}
+      h2{font-size:16px;margin:24px 0 8px;color:#34D399}
+      p,li{font-size:14px;line-height:26px;color:#CBD5E1}
+      ul{padding-inline-start:20px}
+      label{display:block;font-size:13px;margin:12px 0 6px;color:#94A3B8}
+      input{width:100%;box-sizing:border-box;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:#12221B;color:#F8FAFC;padding:0 12px;font-size:14px}
+      button{width:100%;height:46px;margin-top:18px;border:0;border-radius:12px;background:#EF4444;color:#fff;font-size:15px;font-weight:700}
+      .note{font-size:12px;color:#94A3B8;margin-top:14px}
+      .ok{background:#14301F;color:#6EE7B7;padding:12px;border-radius:12px;margin-top:16px;font-size:13px}
+      .err{background:#3B1215;color:#F87171;padding:12px;border-radius:12px;margin-top:16px;font-size:13px}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>حذف الحساب</h1>
+      <p>تحذف حسابك في تطبيق «رئيس التحرير» نهائيًا. الحذف لا رجعة فيه.</p>
+
+      <h2>من داخل التطبيق</h2>
+      <p>افتح التطبيق ← «حسابي» ← «حذف الحساب» ← أدخل كلمة المرور للتأكيد.</p>
+
+      <h2>من غير التطبيق</h2>
+      <p>لو مسحت التطبيق، اكتب بريدك وكلمة المرور هنا وحذف حسابك على طول.</p>
+      <form id="f">
+        <label for="email">البريد الإلكتروني</label>
+        <input id="email" name="email" type="email" autocomplete="email" dir="ltr" required />
+        <label for="password">كلمة المرور</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" dir="ltr" required />
+        <button type="submit">حذف الحساب نهائيًا</button>
+      </form>
+      <div id="msg" class="note">بنحذف كل بياناتك: الحساب نفسه، المصادر اللي بتتابعها، المقالات المحفوظة، وتوكن الإشعارات. مفيش نسخة بترجع.</div>
+
+      <h2>قبل الحذف</h2>
+      <ul>
+        <li>مش هتقدر ترجع الحساب بعد الحذف.</li>
+        <li>لو حابب تحتفظ بحاجة، احفظ روابط المقالات المهمة الأول.</li>
+        <li>لأي استفسار: no-reply@nileorbit.com</li>
+      </ul>
+    </div>
+    <script>
+      // A single anchored submit; no frameworks. The endpoint answers JSON.
+      document.getElementById('f').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const msg = document.getElementById('msg');
+        msg.className = 'note';
+        msg.textContent = 'جاري الحذف…';
+        try {
+          const res = await fetch('/api/delete-account', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: document.getElementById('email').value,
+              password: document.getElementById('password').value,
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (res.ok && json.data && json.data.deleted) {
+            document.getElementById('f').style.display = 'none';
+            msg.className = 'ok';
+            msg.textContent = 'تم حذف حسابك وكل بياناته. شكرًا لاستخدامك رئيس التحرير.';
+          } else if (res.status === 429) {
+            msg.className = 'err';
+            msg.textContent = 'محاولات كثيرة. حاول تاني بعد ' + (json.retryAfterSeconds || 3600) + ' ثانية.';
+          } else {
+            msg.className = 'err';
+            msg.textContent = 'البريد أو كلمة المرور غلط.';
+          }
+        } catch {
+          msg.className = 'err';
+          msg.textContent = 'تعذّر الاتصال. حاول مرة أخرى.';
+        }
+      });
+    </script>
+  </body>
+</html>`);
 });
 
 app.get('/api/auth/me', (c) => {
