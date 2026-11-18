@@ -421,3 +421,81 @@ export async function fetchGroupedFeed(
     totalRows: json.totalRows ?? json.data.length,
   };
 }
+
+
+export interface KeywordPrefs {
+  keywords: Array<{ keyword: string; label: string; notify: boolean }>;
+  mutedKeywords: string[];
+  mutedSources: string[];
+  limits: { keywords: number; mutedKeywords: number };
+}
+
+function authHeaders(token: string): Record<string, string> {
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+}
+
+export async function fetchPreferences(token: string): Promise<KeywordPrefs> {
+  const res = await fetch(`${API_BASE}/api/preferences`, { headers: authHeaders(token) });
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as { data: KeywordPrefs };
+  return json.data;
+}
+
+export async function addFollowedKeyword(
+  token: string,
+  keyword: string,
+  notify = true,
+): Promise<{ keyword: string; label: string; notify: boolean }[]> {
+  const res = await fetch(`${API_BASE}/api/keywords`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ keyword, notify }),
+  });
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as { data: { keywords: { keyword: string; label: string; notify: boolean }[] } };
+  return json.data.keywords;
+}
+
+export async function removeFollowedKeyword(token: string, keyword: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/keywords/${encodeURIComponent(keyword)}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw await apiError(res);
+}
+
+export async function setKeywordNotify(
+  token: string,
+  keyword: string,
+  notify: boolean,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/keywords/${encodeURIComponent(keyword)}/notify`, {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify({ notify }),
+  });
+  if (!res.ok) throw await apiError(res);
+}
+
+export async function mute(token: string, body: { keyword?: string; sourceId?: string }): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/mutes`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await apiError(res);
+}
+
+export async function unmute(
+  token: string,
+  params: { keyword?: string; sourceId?: string },
+): Promise<void> {
+  const q = params.keyword
+    ? `keyword=${encodeURIComponent(params.keyword)}`
+    : `sourceId=${encodeURIComponent(params.sourceId ?? '')}`;
+  const res = await fetch(`${API_BASE}/api/mutes?${q}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw await apiError(res);
+}

@@ -151,6 +151,26 @@ export default function AccountScreen() {
 
               <TouchableOpacity
                 style={styles.settingsRow}
+                onPress={() => router.push('/keywords')}
+                accessibilityRole="button"
+                accessibilityLabel="الكلمات المفتاحية والكتم"
+              >
+                <Ionicons name="options-outline" size={18} color={t.textPrimary} />
+                <View style={styles.rowText}>
+                  <Text style={[styles.settingsRowText, { color: t.textPrimary }]}>
+                    الكلمات المفتاحية والكتم
+                  </Text>
+                  <Text style={[styles.settingsRowSub, { color: t.textMuted }]}>
+                    تخصيص الخلاصات وتصفية المحتوى المكتوم
+                  </Text>
+                </View>
+                <Ionicons name="chevron-back" size={16} color={t.textMuted} />
+              </TouchableOpacity>
+
+              <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
+
+              <TouchableOpacity
+                style={styles.settingsRow}
                 onPress={() => router.push('/settings')}
                 accessibilityRole="button"
                 accessibilityLabel="الإشعارات"
@@ -351,6 +371,8 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingVertical: 12,
   },
+  rowText: { flex: 1 },
+  settingsRowSub: { fontFamily: 'Cairo_400Regular', fontSize: 11, marginTop: 2 },
   settingsRowText: {
     flex: 1,
     fontFamily: 'Cairo_600SemiBold',

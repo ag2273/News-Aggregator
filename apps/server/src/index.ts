@@ -49,6 +49,19 @@ import {
 import { searchArticles } from './search.js';
 import { groupedFeedPage } from './groupedFeed.js';
 import {
+  getPreferences,
+  addKeyword,
+  removeKeyword,
+  setKeywordNotify,
+  muteKeyword,
+  unmuteKeyword,
+  muteSource,
+  unmuteSource,
+  isMuted,
+  MAX_FOLLOWED_KEYWORDS,
+  MAX_MUTED_KEYWORDS,
+} from './keywords.js';
+import {
   isValidReaction,
   setReaction,
   removeReaction,
@@ -732,7 +745,18 @@ app.get('/api/feed', async (c) => {
   }
 
   const { articles, total } = getBalancedFeed(limit, offset, maxPerSource);
-  return c.json({ data: articles.map((a) => withReactions(a, viewerId)), total });
+
+  // Mutes hide content for a signed-in user, server-side. Filtering happens after
+  // balancing so a hidden article does not reshuffle everyone else's order, and
+  // the page may legitimately come back shorter than `limit`.
+  let visible = articles;
+  if (viewerId) {
+    const prefs = getPreferences(viewerId);
+    if (prefs.mutedSources.length || prefs.mutedKeywords.length) {
+      visible = articles.filter((a) => !isMuted(a, prefs));
+    }
+  }
+  return c.json({ data: visible.map((a) => withReactions(a, viewerId)), total });
 });
 
 app.get('/api/sources', (c) => {
@@ -831,6 +855,113 @@ app.get('/api/articles/:id/reactions', (c) => {
       emoji: REACTION_EMOJI,
     },
   });
+});
+
+/** GET /api/preferences — followed keywords and mutes for the caller. */
+app.get('/api/preferences', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+  const prefs = getPreferences(userId);
+  return c.json({
+    data: {
+      keywords: prefs.keywords,
+      mutedKeywords: prefs.mutedKeywords,
+      mutedSources: prefs.mutedSources,
+      limits: { keywords: MAX_FOLLOWED_KEYWORDS, mutedKeywords: MAX_MUTED_KEYWORDS },
+    },
+  });
+});
+
+/** POST /api/keywords {keyword, notify} — follow a keyword. */
+app.post('/api/keywords', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+
+  let body: { keyword?: unknown; notify?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (typeof body.keyword !== 'string') return c.json({ error: 'keyword is required' }, 400);
+
+  const result = addKeyword(userId, body.keyword, body.notify !== false);
+  if (!result.ok) {
+    if (result.error === 'limit') {
+      return c.json({ error: `keyword limit reached (${MAX_FOLLOWED_KEYWORDS})` }, 409);
+    }
+    if (result.error === 'duplicate') return c.json({ error: 'already following' }, 409);
+    return c.json({ error: 'keyword must be at least 2 characters' }, 400);
+  }
+  return c.json({ data: { keywords: result.keywords } });
+});
+
+/** DELETE /api/keywords/:keyword */
+app.delete('/api/keywords/:keyword', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+  return c.json({ data: { keywords: removeKeyword(userId, c.req.param('keyword')) } });
+});
+
+/** PUT /api/keywords/:keyword/notify {notify} — per-keyword toggle. */
+app.put('/api/keywords/:keyword/notify', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+
+  let body: { notify?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (typeof body.notify !== 'boolean') return c.json({ error: 'notify must be a boolean' }, 400);
+  return c.json({
+    data: { keywords: setKeywordNotify(userId, c.req.param('keyword'), body.notify) },
+  });
+});
+
+/** POST /api/mutes {keyword} or {sourceId} */
+app.post('/api/mutes', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+
+  let body: { keyword?: unknown; sourceId?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (typeof body.keyword === 'string') {
+    return c.json({ data: { mutedKeywords: muteKeyword(userId, body.keyword) } });
+  }
+  if (typeof body.sourceId === 'string') {
+    return c.json({ data: { mutedSources: muteSource(userId, body.sourceId) } });
+  }
+  return c.json({ error: 'keyword or sourceId is required' }, 400);
+});
+
+/** DELETE /api/mutes?keyword=… or ?sourceId=… */
+app.delete('/api/mutes', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+
+  const keyword = c.req.query('keyword');
+  const sourceId = c.req.query('sourceId');
+  if (keyword) return c.json({ data: { mutedKeywords: unmuteKeyword(userId, keyword) } });
+  if (sourceId) return c.json({ data: { mutedSources: unmuteSource(userId, sourceId) } });
+  return c.json({ error: 'keyword or sourceId is required' }, 400);
 });
 
 app.get('/api/search', (c) => {

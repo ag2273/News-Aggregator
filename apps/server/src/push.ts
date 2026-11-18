@@ -13,6 +13,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Article } from './types.js';
+import {
+  getPreferences,
+  matchingFollowedKeywords,
+  keywordPushBudget,
+  recordKeywordPush,
+  isMuted,
+  type FollowedKeyword,
+} from './keywords.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rawDataDir = process.env['DATA_DIR'] || process.env['RAILWAY_VOLUME_MOUNT_PATH'];
@@ -196,6 +204,24 @@ export function shouldPushTo(record: PushRecord, article: Article): boolean {
   return record.mode === 'all';
 }
 
+/** Article ids already sent as a keyword push this process — one per article. */
+const keywordPushedIds = new Set<string>();
+
+/**
+ * Pure rule for a keyword push: the article matches a keyword the user follows
+ * with notifications on, the device is enabled, and the article is not already
+ * going out as a breaking/all push for the same device.
+ */
+export function shouldKeywordPush(
+  record: PushRecord,
+  matched: FollowedKeyword[],
+  alreadyPushed: boolean,
+): boolean {
+  if (!record.enabled) return false;
+  if (alreadyPushed) return false;
+  return matched.some((k) => k.notify);
+}
+
 /** Ids already delivered this process — one article never pushes twice. */
 const pushedArticleIds = new Set<string>();
 
@@ -323,18 +349,27 @@ export interface FcmMessage {
  * Breaking news goes to the high-importance channel with high priority; every
  * other article uses the default-importance channel.
  */
-export function buildFcmMessage(article: Article, token: string): FcmMessage {
+export function buildFcmMessage(
+  article: Article,
+  token: string,
+  options: { keyword?: string } = {},
+): FcmMessage {
+  // A keyword push always goes out on the "news" channel: it is a topic match,
+  // not a breaking alert, so it must not arrive with breaking importance.
+  const isKeyword = typeof options.keyword === 'string';
+  const title = isKeyword
+    ? `${options.keyword}`
+    : article.isBreaking
+      ? 'خبر عاجل'
+      : article.sourceName;
   return {
     token,
-    notification: {
-      title: article.isBreaking ? 'خبر عاجل' : article.sourceName,
-      body: article.title,
-    },
-    data: { articleId: article.id },
+    notification: { title, body: article.title },
+    data: { articleId: article.id, ...(isKeyword ? { keyword: options.keyword! } : {}) },
     android: {
-      priority: article.isBreaking ? 'high' : 'normal',
+      priority: !isKeyword && article.isBreaking ? 'high' : 'normal',
       notification: {
-        channel_id: article.isBreaking ? CHANNEL_BREAKING : CHANNEL_NEWS,
+        channel_id: !isKeyword && article.isBreaking ? CHANNEL_BREAKING : CHANNEL_NEWS,
         color: '#22C55E',
       },
     },
@@ -456,10 +491,67 @@ export async function sendPushNotifications(
     if (result === 'dead') removeDeadToken(record.token);
   });
 
+  // Second pass: keyword pushes. An article already sent to a device as a
+  // breaking/all push is not sent again for a keyword, and each user has a daily
+  // budget. Muted articles are never keyword-pushed.
+  const alreadySent = new Set(jobs.map((j) => `${j.article.id}:${j.record.userId}`));
+  const keywordJobs: Array<{ article: Article; record: PushRecord; keyword: string }> = [];
+  const budgetUsed = new Map<string, number>();
+
+  for (const article of pushable) {
+    if (keywordPushedIds.has(article.id)) continue;
+    // Devices belong to users; group by user so preferences are read once.
+    const byUser = new Map<string, PushRecord[]>();
+    for (const record of records) {
+      const list = byUser.get(record.userId) ?? [];
+      list.push(record);
+      byUser.set(record.userId, list);
+    }
+
+    for (const [userId, userRecords] of byUser) {
+      const prefs = getPreferences(userId);
+      if (!prefs.keywords.length) continue;
+      if (isMuted(article, prefs)) continue;
+
+      const matched = matchingFollowedKeywords(article, prefs);
+      if (!matched.length) continue;
+
+      const budget = keywordPushBudget(userId);
+      const used = budgetUsed.get(userId) ?? 0;
+      if (budget.remaining - used <= 0) continue;
+
+      let sent = false;
+      for (const record of userRecords) {
+        if (!shouldKeywordPush(record, matched, alreadySent.has(`${article.id}:${record.userId}`))) continue;
+        const keyword = matched[0]!.label;
+        keywordJobs.push({ article, record, keyword });
+        sent = true;
+      }
+      if (sent) {
+        budgetUsed.set(userId, used + 1);
+        recordKeywordPush(userId, 1);
+      }
+    }
+    keywordPushedIds.add(article.id);
+  }
+
+  if (keywordJobs.length) {
+    await runWithConcurrency(keywordJobs, FCM_CONCURRENCY, async ({ article, record, keyword }) => {
+      const result = await sendFcmMessage(
+        account.project_id,
+        accessToken,
+        buildFcmMessage(article, record.token, { keyword }),
+        fetcher,
+      );
+      if (result === 'dead') removeDeadToken(record.token);
+    });
+  }
+
   return delivered;
 }
 
 /** Reset the in-process dedupe set (tests only). */
 export function _resetPushedIds(): void {
   pushedArticleIds.clear();
+  keywordPushedIds.clear();
 }

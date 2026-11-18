@@ -14,6 +14,8 @@ import type { Theme } from '../constants/colors';
 import { PublisherAvatar, PublisherMeta } from './Publisher';
 import { ReactionsCapsule, ReactionPicker } from './Reactions';
 import { shareArticle } from '../lib/share';
+import { useAuth } from '../lib/auth';
+import { mute } from '../lib/api';
 import { VerificationGate } from './VerificationGate';
 
 /** Full-width vertical feed card: publisher header → headline → cover image → footer. */
@@ -32,6 +34,9 @@ export function FeedCard({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [gateOpen, setGateOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const { token, emailVerified } = useAuth();
 
   return (
     <TouchableOpacity
@@ -60,9 +65,17 @@ export function FeedCard({
           {typeof rank === 'number' ? (
             <Text style={[styles.rank, { color: t.breaking }]}>{`#${rank}`}</Text>
           ) : null}
-          <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
+          <TouchableOpacity
+            style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}
+            onPress={(e) => {
+              e.stopPropagation?.();
+              setMenuOpen(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="خيارات الخبر"
+          >
             <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -125,6 +138,49 @@ export function FeedCard({
         </TouchableOpacity>
       </Modal>
 
+      {/* Source/card options — the design puts mute here rather than on long-press,
+          because the deck's pan gesture would fight a long-press. */}
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <TouchableOpacity style={styles.pickerBackdrop} activeOpacity={1} onPress={() => setMenuOpen(false)}>
+          <View style={[styles.pickerSheet, { backgroundColor: t.surface }]}>
+            <TouchableOpacity
+              style={styles.menuRow}
+              onPress={() => {
+                setMenuOpen(false);
+                shareArticle(article).catch(() => {});
+              }}
+              accessibilityRole="button"
+            >
+              <Ionicons name="share-social-outline" size={18} color={t.textSecondary} />
+              <Text style={[styles.menuText, { color: t.textPrimary }]}>مشاركة الرابط</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuRow}
+              onPress={async () => {
+                setMenuOpen(false);
+                if (!token || !emailVerified) {
+                  setGateOpen(true);
+                  return;
+                }
+                try {
+                  await mute(token, { sourceId: article.sourceId });
+                  setMuted(true);
+                } catch {
+                  setGateOpen(true);
+                }
+              }}
+              accessibilityRole="button"
+            >
+              <Ionicons name="ban-outline" size={18} color={t.breaking} />
+              <Text style={[styles.menuText, { color: t.breaking }]}>
+                {muted ? 'تم كتم هذا المصدر' : 'كتم هذا المصدر'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <Modal visible={gateOpen} transparent animationType="fade" onRequestClose={() => setGateOpen(false)}>
         <View style={styles.pickerBackdrop}>
           <View style={[styles.pickerSheet, { backgroundColor: t.surface }]}>
@@ -154,6 +210,14 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     paddingHorizontal: 16,
   },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    minHeight: 44,
+  },
+  menuText: { fontFamily: 'Cairo_600SemiBold', fontSize: 14 },
   pickerTitle: {
     fontFamily: 'Cairo_700Bold',
     fontSize: 15,
