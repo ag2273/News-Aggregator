@@ -5,6 +5,7 @@ import { cors } from 'hono/cors';
 import {
   refreshAll,
   getArticles,
+  getBalancedFeed,
   getArticleById,
   getSources,
   getCategories,
@@ -508,8 +509,12 @@ app.get('/api/feed', async (c) => {
   await refreshAll();
   const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
   const offset = Number(c.req.query('offset') ?? 0);
-  const articles = getArticles(limit, offset);
-  return c.json({ data: articles, total: articles.length });
+  // Balanced across sources: one high-volume outlet could otherwise fill the
+  // whole page. `max` is opt-in for callers that want the raw ceiling.
+  const maxParam = Number(c.req.query('max'));
+  const maxPerSource = Number.isFinite(maxParam) && maxParam > 0 ? maxParam : undefined;
+  const { articles, total } = getBalancedFeed(limit, offset, maxPerSource);
+  return c.json({ data: articles, total });
 });
 
 app.get('/api/sources', (c) => {

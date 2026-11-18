@@ -10,6 +10,7 @@ import { SOURCES } from './types.js';
 import type { Article } from './types.js';
 import { CATEGORIES, normalizeCategory } from './categorize.js';
 import { sendPushNotifications } from './push.js';
+import { balancedPage } from './balance.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 let lastFetchTime = 0;
@@ -61,6 +62,21 @@ export function getArticles(limit = 50, offset = 0): Article[] {
   return getAllArticles()
     .slice(offset, offset + limit)
     .map(toArticle);
+}
+
+/**
+ * The public feed: newest-first but balanced across sources, so one
+ * high-volume outlet cannot fill the page. `total` stays the size of the
+ * underlying store so clients can keep paging.
+ */
+export function getBalancedFeed(
+  limit = 50,
+  offset = 0,
+  maxPerSource?: number,
+): { articles: Article[]; total: number } {
+  const rows = getAllArticles();
+  const page = balancedPage(rows, offset, limit, maxPerSource);
+  return { articles: page.map(toArticle), total: rows.length };
 }
 
 export function getArticleById(id: string): Article | null {

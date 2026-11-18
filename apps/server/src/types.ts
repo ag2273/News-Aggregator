@@ -29,9 +29,13 @@ export const SOURCES: Source[] = [
     name: 'Youm7',
     nameAr: 'اليوم السابع',
     url: 'https://www.youm7.com',
-    rssUrl: 'https://www.youm7.com/rss/SectionRss?SectionID=1',
+    // The direct SectionRss feed still answers 200 but ships an EMPTY channel
+    // (538 bytes, no <item>), so it contributed nothing for months while looking
+    // healthy. Google News RSS for the site works, so use that instead.
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:youm7.com&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
-    type: 'direct',
+    type: 'google-news',
   },
   {
     id: 'aljazeera',

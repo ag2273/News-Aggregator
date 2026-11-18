@@ -437,6 +437,30 @@ describe('push: end-to-end sending', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('never pushes a re-flagged OLD article (the 15-minute window guards backfills)', async () => {
+    registerPushToken('user-1', 'dev-1', 'android');
+    // An article that a backfill re-classified as breaking, published hours ago,
+    // must not produce a notification: the rule is on publishedAt, not on when
+    // the flag changed.
+    const reflagged = {
+      ...article(true, 'old-but-now-breaking'),
+      publishedAt: Date.now() - 3 * 60 * 60 * 1000,
+    };
+    const { fetchImpl, calls } = stubFetch([{ status: 200, body: {} }]);
+    expect(await sendPushNotifications([reflagged], fetchImpl)).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('still pushes a genuinely fresh breaking article', async () => {
+    registerPushToken('user-1', 'dev-urgent', 'android');
+    const fresh = { ...article(true, 'fresh-breaking'), publishedAt: Date.now() - 60 * 1000 };
+    const { fetchImpl } = stubFetch([
+      { status: 200, body: { access_token: 'ya29.test', expires_in: 3600 } },
+      { status: 200, body: { name: 'ok' } },
+    ]);
+    expect(await sendPushNotifications([fresh], fetchImpl)).toEqual(['fresh-breaking']);
+  });
+
   it('never pushes the same article twice in one process', async () => {
     registerPushToken('user-1', 'dev-1', 'android');
     const { fetchImpl, calls } = stubFetch([

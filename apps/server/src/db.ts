@@ -18,6 +18,11 @@ export interface StoredArticle extends Article {
 
 let cache: StoredArticle[] | null = null;
 
+/** Reset cache (for test suites) */
+export function _resetDbCache(): void {
+  cache = null;
+}
+
 /** Lazy migration: re-classify legacy 'general' categories and decode leftover HTML entities. */
 function migrate(rows: StoredArticle[]): { rows: StoredArticle[]; changed: boolean } {
   let changed = false;
