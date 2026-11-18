@@ -85,11 +85,18 @@ export const EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED';
  */
 function requireVerified(c: {
   req: { header: (name: string) => string | undefined };
-  json: (body: unknown, status: 403) => Response;
+  json: (body: unknown, status: 401 | 403) => Response;
 }): Response | null {
   const userId = extractUserId(c.req.header('Authorization'));
   const user = userId ? findUserById(userId) : null;
-  if (!user) return null; // the route's own 401 handles this
+
+  // A valid signature for an account that no longer exists (deleted account) must
+  // be rejected here. The route's own check only tests whether the token parsed,
+  // so returning null for "no such user" let a deleted account keep reading
+  // gated endpoints until its 30-day token expired.
+  if (!user) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
   if (user.emailVerified) return null;
   return c.json(
     {

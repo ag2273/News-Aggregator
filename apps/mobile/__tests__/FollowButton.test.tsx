@@ -8,9 +8,8 @@
  *    NO follow request (the gate added in e5a56bc),
  *  - the public article list renders in both states.
  *
- * Note: the spec text says "+ متابعة" / "مُتابَع ✓"; the shipped UI reads
- * "متابعة" / "إلغاء المتابعة". These tests pin what the app actually renders.
- * Changing the wording would be an app-behaviour change, which this task forbids.
+ * The copy is "متابعة" / "إلغاء المتابعة" (the user confirmed this wording and
+ * the docs were aligned to it), so these tests pin the shipped labels.
  *
  * Only the network/auth boundary is mocked; the screen and its button are real.
  */

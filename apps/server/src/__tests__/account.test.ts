@@ -13,7 +13,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app } from '../index.js';
 import { createToken } from '../auth.js';
-import { createUser, findUserById, _resetUsersCache, type StoredUser } from '../users.js';
+import {
+  createUser,
+  findUserById,
+  markUserVerified,
+  _resetUsersCache,
+  type StoredUser,
+} from '../users.js';
+
+/** Sign-ups start unverified; gated-route tests need a verified account. */
+function markVerifiedForTest(userId: string): void {
+  markUserVerified(userId);
+}
 import { followSource, getFollowedSources, _resetFollowsCache } from '../follows.js';
 import { saveArticle, getSavedArticleIds, _resetSavedCache } from '../saved.js';
 import { registerPushToken, getAllPushRecords, _resetPushCache } from '../push.js';
@@ -192,6 +203,36 @@ describe('DELETE /api/auth/account', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(me.status).toBe(401);
+  });
+
+  it('rejects a deleted account on every gated route, not just /me', async () => {
+    // Regression: requireVerified treated "no such user" as allowed, so a valid
+    // token for a deleted account kept reading gated endpoints (empty arrays)
+    // until it expired 30 days later.
+    const { token, id } = await signUp(`gated${Date.now()}@example.com`);
+    markVerifiedForTest(id);
+
+    // Works while the account exists.
+    expect((await app.request('/api/follows', { headers: { Authorization: `Bearer ${token}` } })).status).toBe(200);
+
+    await app.request('/api/auth/account', {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'password123' }),
+    });
+
+    for (const [method, url] of [
+      ['GET', '/api/follows'],
+      ['GET', '/api/saved'],
+      ['GET', '/api/feed/following'],
+      ['GET', '/api/push/preferences?token=x'],
+    ] as Array<[string, string]>) {
+      const res = await app.request(url, {
+        method,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status, `${method} ${url}`).toBe(401);
+    }
   });
 });
 
