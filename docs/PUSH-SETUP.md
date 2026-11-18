@@ -16,17 +16,14 @@ The APK cannot mint an FCM token without it: `expo-notifications` calls
 `FirebaseMessaging.getInstance()`, which throws when the Firebase config is
 missing.
 
-**Where it goes in CI:** repository secret `GOOGLE_SERVICES_JSON_B64`, holding
-the base64 of the file:
+**Where it goes in CI:** repository secret `GOOGLE_SERVICES_JSON`.
 
-```bash
-base64 -w0 google-services.json | pbcopy   # or your clipboard tool
-```
+GitHub → Settings → Secrets and variables → Actions → New repository secret,
+name `GOOGLE_SERVICES_JSON`, and **paste the file contents as-is** — no base64
+step. The workflow detects whether the value is raw JSON or base64 and decodes
+accordingly, so the older base64 form still works if that is easier for you.
 
-Then add it at GitHub → Settings → Secrets and variables → Actions → New
-repository secret, name `GOOGLE_SERVICES_JSON_B64`.
-
-`.github/workflows/build-android.yml` decodes it to
+`.github/workflows/build-android.yml` writes it to
 `apps/mobile/google-services.json` before prebuild, then **fails the build** if
 the secret is missing, if the file has no client for `com.nileorbit.newsrator`,
 or if prebuild did not copy it to `android/app/`. Shipping an APK that silently

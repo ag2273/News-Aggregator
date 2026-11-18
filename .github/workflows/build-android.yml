@@ -56,20 +56,30 @@ jobs:
       # Push notifications are FCM-direct: the device registers a native FCM
       # token, so the APK must be built with google-services.json for
       # com.nileorbit.newsrator. The file holds project keys and is therefore not
-      # in git; CI writes it from the GOOGLE_SERVICES_JSON_B64 secret.
+      # in git; CI writes it from the GOOGLE_SERVICES_JSON secret (raw JSON or base64).
       #
       # A missing secret fails the job on purpose: shipping an APK that cannot
       # receive push is worse than no APK, and a silent warning here is exactly
       # how the previous build reached users with push broken.
       - name: Add Firebase config (google-services.json)
         env:
-          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          if [ -z "$GOOGLE_SERVICES_JSON_B64" ]; then
-            echo "::error::GOOGLE_SERVICES_JSON_B64 is not set. Push notifications are FCM-direct, so the APK cannot be built without google-services.json. Add the base64 of google-services.json (package com.nileorbit.newsrator) as a repository secret."
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "::error::GOOGLE_SERVICES_JSON is not set. Push notifications are FCM-direct, so the APK cannot be built without google-services.json. Add the file contents (package com.nileorbit.newsrator) as a repository secret named GOOGLE_SERVICES_JSON."
             exit 1
           fi
-          echo "$GOOGLE_SERVICES_JSON_B64" | base64 -d > apps/mobile/google-services.json
+          # The secret may hold the raw JSON or its base64. Detect instead of
+          # asking the user to encode; never echo the value either way.
+          TRIMMED=$(printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '[:space:]')
+          FIRST=${TRIMMED:0:1}
+          if [ "$FIRST" = "{" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > apps/mobile/google-services.json
+            echo "secret is raw JSON"
+          else
+            printf '%s' "$TRIMMED" | base64 -d > apps/mobile/google-services.json
+            echo "secret is base64"
+          fi
           python3 -c "import json,sys; c=json.load(open('apps/mobile/google-services.json')); p=[x.get('client_info',{}).get('android_client_info',{}).get('package_name') for x in c.get('client',[])]; sys.exit('google-services.json has no client for com.nileorbit.newsrator (found: %s)' % p) if 'com.nileorbit.newsrator' not in p else print('google-services.json ok - project %s, package com.nileorbit.newsrator' % c.get('project_info',{}).get('project_id'))"
 
       - name: Prebuild Android
