@@ -383,3 +383,41 @@ export function formatReactionCount(n: number): string {
 
 /** Counts are shown only from this threshold, per the design. */
 export const REACTION_DISPLAY_THRESHOLD = 3;
+
+
+/** One row of the grouped feed: a single article, or a same-story cluster. */
+export type FeedRow =
+  | { kind: 'article'; article: Article }
+  | {
+      kind: 'cluster';
+      lead: Article;
+      members: Article[];
+      /** Number of distinct outlets covering the story. */
+      sourceCount: number;
+      isBreaking: boolean;
+    };
+
+/**
+ * Grouped feed. Keeps the default /api/feed shape untouched; this is opt-in.
+ * `total` is the article count, `totalRows` the number of pageable rows.
+ */
+export async function fetchGroupedFeed(
+  limit = 50,
+  offset = 0,
+  token?: string | null,
+): Promise<{ rows: FeedRow[]; total: number; totalRows: number }> {
+  const res = await fetch(`${API_BASE}/api/feed?grouped=1&limit=${limit}&offset=${offset}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as {
+    data: FeedRow[];
+    total?: number;
+    totalRows?: number;
+  };
+  return {
+    rows: json.data,
+    total: json.total ?? 0,
+    totalRows: json.totalRows ?? json.data.length,
+  };
+}
