@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { fetchFeed, fetchGroupedFeed, isNetworkFailure } from '../lib/api';
 import { ClusterSheetHost } from '../components/ClusterCard';
 import { useAuth } from '../lib/auth';
+import { useDoubleBackToExit, EXIT_MESSAGE } from '../lib/doubleBack';
 import type { Article } from '../lib/api';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
@@ -47,12 +48,17 @@ function todayLabel(): string {
 
 export default function FeedScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
-  const { open: openSheet } = useArticleSheet();
+  const { open: openSheet, isOpen: sheetOpen } = useArticleSheet();
   const { token } = useAuth();
 
   const [articles, setArticles] = useState<Article[]>([]);
   /** articleId -> distinct outlet count, and the members, for the deck CTA. */
   const [clusterArticle, setClusterArticle] = useState<Article | null>(null);
+  // Double-back on the home screen only. While the sheet/reader is up, back
+  // closes that instead — the handler consumes nothing in that case.
+  const { showHint: showExitHint } = useDoubleBackToExit({
+    isOverlayOpen: sheetOpen || clusterArticle !== null,
+  });
   const [clusters, setClusters] = useState<
     Record<string, { sourceCount: number; members: Article[] }>
   >({});
@@ -241,6 +247,14 @@ export default function FeedScreen() {
           )}
         </View>
 
+        {showExitHint ? (
+          <View pointerEvents="none" style={styles.exitHintWrap}>
+            <View style={[styles.exitHint, { backgroundColor: t.surface }]}>
+              <Text style={[styles.exitHintText, { color: t.textSecondary }]}>{EXIT_MESSAGE}</Text>
+            </View>
+          </View>
+        ) : null}
+
         <FloatingDock t={t} active="home" />
       </SafeAreaView>
     </LinearGradient>
@@ -259,6 +273,24 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   headerDate: { fontFamily: 'Cairo_400Regular', fontSize: 13, marginBottom: 2 },
+  exitHintWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 108,
+    alignItems: 'center',
+  },
+  exitHint: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  exitHintText: { fontFamily: 'Cairo_600SemiBold', fontSize: 12 },
   /**
    * The title shares the row with two 44dp buttons. The app name measures 197dp
    * at 26sp and 393dp at 2x font scale — wider than the ~263dp available — so the

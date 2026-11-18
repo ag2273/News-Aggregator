@@ -30,6 +30,12 @@ const SPRING = { damping: 20, stiffness: 200 };
 interface ArticleSheetApi {
   open: (article: Article) => void;
   close: () => void;
+  /**
+   * True while the sheet (or its full-article WebView) covers the screen.
+   * Screens use this to defer to the sheet: the home screen must let back close
+   * the sheet before it considers exiting the app.
+   */
+  isOpen: boolean;
 }
 
 const ArticleSheetContext = createContext<ArticleSheetApi | null>(null);
@@ -91,7 +97,10 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
     });
   }, [finishClose, isClosing, sheetHeight, ty]);
 
-  const api = useMemo<ArticleSheetApi>(() => ({ open, close }), [open, close]);
+  const api = useMemo<ArticleSheetApi>(
+    () => ({ open, close, isOpen: visible || showWeb }),
+    [open, close, visible, showWeb],
+  );
 
   const pan = useMemo(
     () =>
