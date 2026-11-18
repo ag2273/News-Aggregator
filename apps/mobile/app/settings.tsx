@@ -206,10 +206,10 @@ export default function SettingsScreen() {
                   <Ionicons name="notifications-off-outline" size={22} color={t.textMuted} />
                   <View style={styles.rowText}>
                     <Text style={[styles.rowTitle, { color: t.textPrimary }]}>
-                      الإشعارات غير متاحة في هذه النسخة
+                      تعذّر تفعيل الإشعارات
                     </Text>
                     <Text style={[styles.rowSub, { color: t.textMuted }]}>
-                      سيتم تفعيلها في تحديث قادم. لا حاجة لتغيير أي إعداد.
+                      الخطوة التي فشلت: الحصول على رمز Firebase للجهاز.
                     </Text>
                   </View>
                 </View>

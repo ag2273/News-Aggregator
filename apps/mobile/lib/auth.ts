@@ -2,7 +2,12 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE } from './api';
-import { registerDevice, unregisterDevice } from './notifications';
+import {
+  ensureNotificationChannels,
+  getPermissionStatus,
+  registerDevice,
+  unregisterDevice,
+} from './notifications';
 
 export interface User {
   id: string;
@@ -128,6 +133,7 @@ export async function logout(token: string): Promise<void> {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
@@ -184,11 +190,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Auto-register this device for push once a session exists (fresh sign-in,
   // sign-up, or a restore). Best effort and fire-and-forget: registration must
   // never block or fail app startup.
+  //
+  // Only devices that already allowed notifications are registered; a device
+  // that never granted permission has no business being in the registry.
   useEffect(() => {
     if (loading || !token) return;
-    registerDevice(token).catch(() => {
+    let cancelled = false;
+    (async () => {
+      const { granted } = await getPermissionStatus();
+      if (!granted || cancelled) return;
+      await ensureNotificationChannels();
+      if (cancelled) return;
+      await registerDevice(token);
+    })().catch(() => {
       /* already logged inside notifications.ts */
     });
+    return () => {
+      cancelled = true;
+    };
   }, [loading, token]);
 
   const signOut = useCallback(async () => {

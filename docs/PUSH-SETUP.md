@@ -1,46 +1,91 @@
-# Push notifications — what the app still needs
+# Push notifications (FCM direct) — setup
 
-The app side is finished: the settings screen, the server registry, the sender,
-and the error messages. What is missing is the Google/Firebase wiring that
-Android needs before an Expo push token can exist at all.
+The app sends push through **Firebase Cloud Messaging HTTP v1** directly.
+There is no Expo push service, no Expo push token and no dependency on an Expo
+account: the device registers its native FCM token, and the server signs a JWT
+with a service account to call FCM.
 
-## Why it is needed
+Two files make it work. Neither belongs in git.
 
-On Android, `expo-notifications` gets its Expo push token from an FCM token
-(`PushTokenModule.getDevicePushTokenAsync` → `FirebaseMessaging.getInstance()`).
-Without Firebase config that call throws:
+## 1. `google-services.json` (mobile, build time)
 
+Firebase → Project settings → your Android app (`com.nileorbit.newsrator`) →
+download `google-services.json`.
+
+The APK cannot mint an FCM token without it: `expo-notifications` calls
+`FirebaseMessaging.getInstance()`, which throws when the Firebase config is
+missing.
+
+**Where it goes in CI:** repository secret `GOOGLE_SERVICES_JSON_B64`, holding
+the base64 of the file:
+
+```bash
+base64 -w0 google-services.json | pbcopy   # or your clipboard tool
 ```
-Unable to get Firebase Messaging instance. Did you configure `googleServicesFile` path in app config?
+
+Then add it at GitHub → Settings → Secrets and variables → Actions → New
+repository secret, name `GOOGLE_SERVICES_JSON_B64`.
+
+`.github/workflows/build-android.yml` decodes it to
+`apps/mobile/google-services.json` before prebuild, then **fails the build** if
+the secret is missing, if the file has no client for `com.nileorbit.newsrator`,
+or if prebuild did not copy it to `android/app/`. Shipping an APK that silently
+cannot receive push is worse than failing the build.
+
+`apps/mobile/app.config.js` adds `android.googleServicesFile` only when the file
+is present, so a local build without the secret still runs (just without push).
+
+## 2. Service-account key (server, runtime)
+
+Firebase → Project settings → Service accounts → **Generate new private key**.
+
+**Where it goes on the VM:** `~/news-aggregator/deploy/secrets/fcm-service-account.json`
+on the host. `docker-compose.yml` mounts that directory read-only at
+`/data/secrets`, and the server reads
+`/data/secrets/fcm-service-account.json`.
+
+```bash
+# on the VM
+cd ~/news-aggregator
+mkdir -p deploy/secrets
+chmod 700 deploy/secrets
+# paste the JSON into the file, then:
+chmod 600 deploy/secrets/fcm-service-account.json
+docker compose up -d server
+docker compose logs server | grep '\[push\]'
 ```
 
-So the switch could never turn on, and the old toast blamed the network. The
-settings screen now says the truth instead («الإشعارات غير مهيّأة في هذه النسخة»).
+`FCM_SERVICE_ACCOUNT_FILE` overrides the path. A missing key logs one warning at
+boot and disables sending — the server stays up and keeps serving the news feed.
 
-Two separate things are required, and both are needed:
+## What the server sends
 
-1. **`google-services.json` in the app** — Firebase project config, baked in at
-   build time. Without it the app cannot even ask Firebase for a token.
-2. **An FCM V1 service-account key on the EAS project** — lets Expo's push
-   service authenticate to Google when it sends. `pushSecurityEnabled` is false
-   and no FCM V1 key is uploaded for `@zorro_tmh/news-aggregator` today.
+One FCM v1 request per token, at most 10 in flight:
 
-## Steps (the account owner must do these)
+```json
+{
+  "message": {
+    "token": "<device FCM token>",
+    "notification": { "title": "خبر عاجل", "body": "<article title>" },
+    "data": { "articleId": "<id>" },
+    "android": {
+      "priority": "high",
+      "notification": { "channel_id": "breaking", "color": "#22C55E" }
+    }
+  }
+}
+```
 
-1. Create a Firebase project (any name), add an **Android app** with package
-   `com.nileorbit.newsrator`.
-2. Download its `google-services.json`.
-3. Add it to the repo as a secret: **Settings → Secrets and variables → Actions
-   → New repository secret**, name `GOOGLE_SERVICES_JSON_B64`, value
-   `base64 -w0 google-services.json`.
-   (`.github/workflows/build-android.yml` writes the file before prebuild; a
-   missing secret only produces a warning, the build still succeeds.)
-4. In Firebase → Project settings → **Service accounts**, generate a new private
-   key (JSON).
-5. Upload that key to Expo: `eas credentials` → Android →
-   `com.nileorbit.newsrator` → **FCM V1**, or the Expo dashboard's Android
-   credentials page. This is the key Expo uses to send through FCM.
-6. Rebuild the APK. Push should then register on first launch.
+Breaking news uses the `breaking` channel and `high` priority; everything else
+uses `news` and `normal`. Those two channels are created by the app on launch.
 
-Nothing above can be done from this machine: it needs a Google account and it
-creates cloud resources.
+Rules that still apply: matches the device preference (`urgent` = breaking only,
+`all` = everything), only articles published in the last 15 minutes, never on the
+first refresh after boot, one push per article per process. A token FCM reports
+as `UNREGISTERED` / `NOT_FOUND` / `INVALID_ARGUMENT` is deleted from the registry.
+
+## Tokens from the old Expo setup
+
+`ExponentPushToken[...]` records cannot be delivered by FCM and are dropped when
+`push-tokens.json` is loaded. Devices re-register their FCM token the next time
+the app starts with notifications allowed.

@@ -29,7 +29,7 @@ export class PushError extends Error {
 
 /** Arabic copy for each failure kind, shown as-is by the settings screen. */
 export const PUSH_ERROR_MESSAGES: Record<PushFailureKind, string> = {
-  config: 'الإشعارات غير مهيّأة في هذه النسخة من التطبيق. ستُفعّل في تحديث قادم.',
+  config: 'تعذّر الحصول على رمز الإشعارات: إعدادات Firebase غير مكتملة في هذا الإصدار.',
   permission: 'إذن الإشعارات مرفوض. فعّله من إعدادات النظام.',
   network: 'تعذّر الاتصال بالخادم. تحقق من الإنترنت وحاول مرة أخرى.',
   auth: 'انتهت صلاحية الجلسة. سجّل الدخول من جديد.',
@@ -38,20 +38,18 @@ export const PUSH_ERROR_MESSAGES: Record<PushFailureKind, string> = {
 };
 
 /**
- * Classify anything thrown while minting a push token.
+ * Classify anything thrown while minting an FCM token.
  *
  * expo-notifications surfaces the native Firebase failure as a plain Error whose
  * message is "Unable to get Firebase Messaging instance. Did you configure
  * `googleServicesFile` path in app config? ..." (PushTokenModule.kt), i.e. the
- * build has no google-services.json. A missing projectId throws
- * ERR_NOTIFICATIONS_NO_EXPERIENCE_ID. A failed request to exp.host throws
- * ERR_NOTIFICATIONS_NETWORK_ERROR.
+ * build has no google-services.json. Network-shaped failures keep their own kind
+ * so the user is told the right step.
  */
 export function classifyPushTokenError(err: unknown): PushFailureKind {
   const code = (err as { code?: unknown })?.code;
   const message = err instanceof Error ? err.message : String(err ?? '');
 
-  if (code === 'ERR_NOTIFICATIONS_NO_EXPERIENCE_ID') return 'config';
   if (
     /Firebase|googleServicesFile|FirebaseApp|Messaging instance|default FirebaseApp|FIS_AUTH/i.test(
       message,

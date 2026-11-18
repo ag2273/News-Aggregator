@@ -12,3 +12,7 @@ data/
 apps/mobile/android/
 apps/mobile/ios/
 apps/mobile/.expo/
+
+# Firebase service-account keys and google-services.json (never committed)
+deploy/secrets/
+apps/mobile/google-services.json

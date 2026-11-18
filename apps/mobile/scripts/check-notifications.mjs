@@ -68,15 +68,19 @@ console.log('— copy —');
 const kinds = ['config', 'permission', 'network', 'auth', 'server', 'unknown'];
 check('every failure kind has Arabic copy', kinds.every((k) => typeof PUSH_ERROR_MESSAGES[k] === 'string' && PUSH_ERROR_MESSAGES[k].length > 0), true);
 check(
-  'the config message does not blame the connection',
-  /اتصال/.test(PUSH_ERROR_MESSAGES.config),
-  false,
+  'the config message names the token/Firebase step, not the connection',
+  /رمز الإشعارات|Firebase/.test(PUSH_ERROR_MESSAGES.config),
+  true,
 );
+check('the config message does not blame the connection', /اتصال/.test(PUSH_ERROR_MESSAGES.config), false);
 check(
   'the network message does mention the connection',
   /الإنترنت/.test(PUSH_ERROR_MESSAGES.network),
   true,
 );
+check('the permission message points at the system settings', /إعدادات النظام/.test(PUSH_ERROR_MESSAGES.permission), true);
+check('the auth message asks for a new sign-in', /سجّل الدخول/.test(PUSH_ERROR_MESSAGES.auth), true);
+check('every message is distinct', new Set(Object.values(PUSH_ERROR_MESSAGES)).size, kinds.length);
 
 console.log(failed === 0 ? '\nall checks passed' : `\n${failed} check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);

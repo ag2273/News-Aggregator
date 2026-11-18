@@ -1,16 +1,15 @@
-// Push notifications for the news app.
+// Push notifications for the news app — FCM-direct.
 //
-// Flow: ask permission -> get the Expo push token -> register it with our server
-// (Bearer auth) so the server can target this device. Tapping a notification
-// opens the article it refers to.
+// Flow: ask permission -> create the Android channels -> read the device's
+// native FCM token -> register it with our server (Bearer auth). The server
+// talks to Firebase Cloud Messaging itself; there is no Expo push service and no
+// Expo push token anywhere in this flow.
 //
-// Failures carry a typed reason (see pushErrors.ts) so the UI can tell the truth:
-// a build with no Firebase config cannot mint a token at all, and saying "check
-// your connection" for it sends the user chasing the wrong thing.
+// Failures carry a typed reason (see pushErrors.ts) so the UI can name the step
+// that failed: permission, token (Firebase not configured), network, auth.
 
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { API_BASE } from './api';
 import {
@@ -30,6 +29,7 @@ export interface PushPrefs {
   token: string;
   enabled: boolean;
   mode: PushMode;
+  provider?: string;
 }
 
 export interface PermissionStatus {
@@ -39,6 +39,10 @@ export interface PermissionStatus {
   /** True when the user denied and the system will not prompt again. */
   denied: boolean;
 }
+
+/** Android channels, mirrored by the server's channel_id values. */
+export const CHANNEL_BREAKING = 'breaking';
+export const CHANNEL_NEWS = 'news';
 
 // Foreground presentation: show the banner and play the sound.
 Notifications.setNotificationHandler({
@@ -51,24 +55,34 @@ Notifications.setNotificationHandler({
 });
 
 /**
- * The EAS project id is required to mint an Expo push token. It comes from
- * app.json extra.eas.projectId.
+ * Create the two notification channels. Breaking news arrives on a
+ * high-importance channel so it can heads-up; everything else is default.
+ * Safe to call repeatedly.
  */
-function getProjectId(): string | null {
-  const id = (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas
-    ?.projectId;
-  if (typeof id !== 'string' || id.length === 0 || id.startsWith('TODO')) return null;
-  return id;
+export async function ensureNotificationChannels(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await Notifications.setNotificationChannelAsync(CHANNEL_BREAKING, {
+      name: 'أخبار عاجلة',
+      description: 'إشعارات الأخبار العاجلة',
+      importance: Notifications.AndroidImportance.HIGH,
+      lightColor: '#22C55E',
+      vibrationPattern: [0, 250, 250, 250],
+    });
+    await Notifications.setNotificationChannelAsync(CHANNEL_NEWS, {
+      name: 'الأخبار',
+      description: 'إشعارات الأخبار الجديدة',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      lightColor: '#22C55E',
+    });
+  } catch (err) {
+    // Channels are an Android nicety; never block registration on them.
+    console.warn('[notifications] could not create channels:', err);
+  }
 }
 
-function wrap(err: unknown, fallback: PushFailureKind = 'unknown'): PushError {
-  if (err instanceof PushError) return err;
-  const kind = classifyPushTokenError(err);
-  return new PushError(kind === 'unknown' ? fallback : kind, PUSH_ERROR_MESSAGES[kind]);
-}
-
-// A push token is stable for the life of the install; minting it hits Firebase
-// and Expo, so keep it for the session instead of repeating the work.
+// An FCM token is stable for a long time; minting it hits Firebase, so keep it
+// for the session instead of repeating the work.
 let cachedPushToken: string | null = null;
 
 export function clearCachedPushToken(): void {
@@ -76,26 +90,22 @@ export function clearCachedPushToken(): void {
 }
 
 /**
- * Resolve this device's Expo push token.
+ * Read this device's native FCM token.
  *
- * Throws PushError('config') when this build has no Firebase/FCM wiring: on
- * Android the Expo token is derived from an FCM token, and without
- * google-services.json `FirebaseMessaging.getInstance()` throws natively.
+ * On Android this is the Firebase registration token, which the server sends
+ * through the FCM HTTP v1 API. It requires the app to be built with
+ * google-services.json: without it `FirebaseMessaging.getInstance()` throws
+ * inside expo-notifications and no token can exist.
  */
 export async function getDevicePushToken(): Promise<string> {
   if (cachedPushToken) return cachedPushToken;
 
-  const projectId = getProjectId();
-  if (!projectId) {
-    throw new PushError('config', PUSH_ERROR_MESSAGES.config);
-  }
-
   let token: string;
   try {
-    const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
-    token = data;
+    const result = await Notifications.getDevicePushTokenAsync();
+    token = typeof result.data === 'string' ? result.data : '';
   } catch (err) {
-    console.warn('[notifications] could not obtain an Expo push token:', err);
+    console.warn('[notifications] could not obtain an FCM token:', err);
     throw wrap(err, 'config');
   }
   if (!token) throw new PushError('config', PUSH_ERROR_MESSAGES.config);
@@ -123,6 +133,18 @@ export async function requestPermissions(): Promise<boolean> {
   if (!existing.canAskAgain) return false;
   const asked = await Notifications.requestPermissionsAsync();
   return asked.granted;
+}
+
+export async function ensurePermission(): Promise<boolean> {
+  const granted = await requestPermissions();
+  if (granted) await ensureNotificationChannels();
+  return granted;
+}
+
+function wrap(err: unknown, fallback: PushFailureKind = 'unknown'): PushError {
+  if (err instanceof PushError) return err;
+  const kind = classifyPushTokenError(err);
+  return new PushError(kind === 'unknown' ? fallback : kind, PUSH_ERROR_MESSAGES[kind]);
 }
 
 function authHeaders(authToken: string): Record<string, string> {
@@ -160,6 +182,7 @@ export async function registerDevice(authToken: string): Promise<PushPrefs> {
   const res = await postJson('/api/push/register', authToken, {
     token: pushToken,
     platform: Platform.OS,
+    provider: 'fcm',
   });
   if (!res.ok) {
     const kind = classifyHttpStatus(res.status);
@@ -241,8 +264,28 @@ export async function updatePrefs(
 }
 
 /**
+ * FCM can rotate a device token while the app is running; the old one silently
+ * stops working. Re-register the new token as soon as it appears.
+ */
+export function addPushTokenRefreshListener(
+  getAuthToken: () => string | null,
+): () => void {
+  const sub = Notifications.addPushTokenListener((deviceToken) => {
+    const token = typeof deviceToken.data === 'string' ? deviceToken.data : '';
+    if (!token) return;
+    cachedPushToken = token;
+    const authToken = getAuthToken();
+    if (!authToken) return;
+    registerDevice(authToken).catch((err) => {
+      console.warn('[notifications] re-registering a rotated token failed:', err);
+    });
+  });
+  return () => sub.remove();
+}
+
+/**
  * Navigate to the article a notification refers to.
- * The server sends data { articleId, url }; prefer the id.
+ * The server sends data { articleId }.
  */
 export function openNotificationArticle(data: Record<string, unknown> | undefined): void {
   const articleId = data?.['articleId'];

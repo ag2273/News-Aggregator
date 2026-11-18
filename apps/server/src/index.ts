@@ -38,6 +38,8 @@ import {
   unregisterPushToken,
   getPushPrefs,
   isValidMode,
+  isLegacyExpoToken,
+  loadServiceAccount,
   type PushMode,
 } from './push.js';
 import type { Article } from './types.js';
@@ -56,6 +58,9 @@ export { authMiddleware };
 export const app = new Hono();
 
 app.use('*', cors());
+
+// Push needs the Firebase service-account key. Warn once at boot; never crash.
+loadServiceAccount();
 
 // Trigger a refresh on startup
 refreshAll().catch(console.error);
@@ -236,7 +241,7 @@ app.post('/api/push/register', async (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
 
-  let body: { token?: unknown; platform?: unknown };
+  let body: { token?: unknown; platform?: unknown; provider?: unknown };
   try {
     body = await c.req.json();
   } catch {
@@ -245,11 +250,24 @@ app.post('/api/push/register', async (c) => {
 
   const token = typeof body.token === 'string' ? body.token.trim() : '';
   const platform = typeof body.platform === 'string' ? body.platform.trim() : '';
+  const provider = typeof body.provider === 'string' ? body.provider.trim() : 'fcm';
   if (!token) return c.json({ error: 'token is required' }, 400);
+  // Expo push tokens belong to a service this server no longer uses.
+  if (isLegacyExpoToken(token)) {
+    return c.json({ error: 'Expo push tokens are not supported; send the FCM token' }, 400);
+  }
+  if (provider !== 'fcm') {
+    return c.json({ error: "provider must be 'fcm'" }, 400);
+  }
 
-  const record = registerPushToken(userId, token, platform || 'unknown');
+  const record = registerPushToken(userId, token, platform || 'unknown', provider);
   return c.json({
-    data: { token: record.token, enabled: record.enabled, mode: record.mode },
+    data: {
+      token: record.token,
+      enabled: record.enabled,
+      mode: record.mode,
+      provider: record.provider,
+    },
   });
 });
 
@@ -278,7 +296,9 @@ app.put('/api/push/preferences', async (c) => {
     mode: body.mode as PushMode | undefined,
   });
   if (!record) return c.json({ error: 'not found' }, 404);
-  return c.json({ data: { token: record.token, enabled: record.enabled, mode: record.mode } });
+  return c.json({
+    data: { token: record.token, enabled: record.enabled, mode: record.mode, provider: record.provider },
+  });
 });
 
 app.get('/api/push/preferences', (c) => {
@@ -290,7 +310,9 @@ app.get('/api/push/preferences', (c) => {
 
   const record = getPushPrefs(userId, token);
   if (!record) return c.json({ error: 'not found' }, 404);
-  return c.json({ data: { token: record.token, enabled: record.enabled, mode: record.mode } });
+  return c.json({
+    data: { token: record.token, enabled: record.enabled, mode: record.mode, provider: record.provider },
+  });
 });
 
 app.delete('/api/push/register', async (c) => {
