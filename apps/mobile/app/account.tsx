@@ -235,7 +235,7 @@ export default function AccountScreen() {
               </View>
 
               <Text style={[styles.cardTitle, { color: t.textPrimary }]}>
-                مركز الأخبار - الحساب الشخصي
+                رئيس التحرير - الحساب الشخصي
               </Text>
               <Text style={[styles.cardSub, { color: t.textMuted }]}>
                 سجّل الدخول للوصول إلى تفضيلاتك وحسابك الشخصي

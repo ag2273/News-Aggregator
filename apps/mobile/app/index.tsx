@@ -176,9 +176,16 @@ export default function FeedScreen() {
     >
       <SafeAreaView style={styles.root} edges={['top']}>
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerTitleWrap}>
             <Text style={[styles.headerDate, { color: t.textMuted }]}>{todayLabel()}</Text>
-            <Text style={[styles.headerTitle, { color: t.textPrimary }]}>مركز الأخبار</Text>
+            <Text
+              style={[styles.headerTitle, { color: t.textPrimary }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+            >
+              رئيس التحرير
+            </Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
@@ -252,6 +259,12 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   headerDate: { fontFamily: 'Cairo_400Regular', fontSize: 13, marginBottom: 2 },
+  /**
+   * The title shares the row with two 44dp buttons. The app name measures 197dp
+   * at 26sp and 393dp at 2x font scale — wider than the ~263dp available — so the
+   * wrapper is allowed to shrink and the text scales down instead of clipping.
+   */
+  headerTitleWrap: { flex: 1, minWidth: 0, paddingEnd: 8 },
   headerTitle: { fontFamily: 'Cairo_700Bold', fontSize: 26 },
   headerActions: { flexDirection: 'row', gap: 10 },
   circleBtn: {

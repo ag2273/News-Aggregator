@@ -59,5 +59,19 @@ check(
   /accessibilityLabel="تسجيل الخروج"/.test(signOutJsx),
 );
 
+console.log('— the app name is used as the home title —');
+const home = fs.readFileSync(path.join(__dirname, '../app/index.tsx'), 'utf8');
+check('home header no longer says مركز الأخبار', home.includes('مركز الأخبار'), false);
+check('home header says رئيس التحرير', /<Text[\s\S]{0,220}رئيس التحرير/.test(home));
+check('the title can shrink instead of clipping', /adjustsFontSizeToFit/.test(home));
+check('the title is limited to one line', /numberOfLines=\{1\}/.test(home));
+check('its wrapper may shrink in the row', /headerTitleWrap:\s*\{[^}]*flex:\s*1/.test(home));
+
+check(
+  'the account card uses the app name too',
+  account.includes('رئيس التحرير - الحساب الشخصي'),
+);
+check('no leftover مركز الأخبار in the account screen', account.includes('مركز الأخبار'), false);
+
 console.log(failed === 0 ? '\nall checks passed' : `\n${failed} check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);
