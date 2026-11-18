@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
-import { I18nManager, ActivityIndicator, View } from 'react-native';
+import { AppState, I18nManager, ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ArticleSheetProvider } from '../components/ArticleSheet';
@@ -26,11 +26,22 @@ I18nManager.forceRTL(true);
  * created once, and a rotated token is re-registered immediately.
  */
 function PushTokenSync() {
-  const { token } = useAuth();
+  const { token, refreshSession } = useAuth();
   useEffect(() => {
     ensureNotificationChannels();
   }, []);
   useEffect(() => addPushTokenRefreshListener(() => token), [token]);
+
+  // Verification happens in the browser, so re-read the session whenever the
+  // app comes back to the foreground: the user taps the link, returns, and the
+  // banner disappears without a restart.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshSession().catch(() => {});
+    });
+    return () => sub.remove();
+  }, [refreshSession]);
+
   return null;
 }
 

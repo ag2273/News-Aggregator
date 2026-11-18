@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { palette } from '../constants/colors';
+import { VerifyBanner } from '../components/VerifyBanner';
 import type { Theme } from '../constants/colors';
 import { fetchFollowingFeed, type Article } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -140,6 +141,8 @@ export default function FollowingScreen() {
             <Ionicons name="newspaper-outline" size={18} color={t.textPrimary} />
           </TouchableOpacity>
         </View>
+
+        <VerifyBanner t={t} />
 
         {loading ? (
           <View style={styles.center}>

@@ -67,6 +67,7 @@ describe('T6 saved articles store and endpoints', () => {
       email: 'saver@example.com',
       passwordHash: 'dummy',
       createdAt: Date.now(),
+      emailVerified: true,
     });
     token = createToken(testUserId);
   });

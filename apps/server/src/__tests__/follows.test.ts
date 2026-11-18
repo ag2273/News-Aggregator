@@ -37,6 +37,7 @@ describe('T5 follows store and endpoints', () => {
       email: 'follower@example.com',
       passwordHash: 'dummy',
       createdAt: Date.now(),
+      emailVerified: true,
     });
     token = createToken(testUserId);
   });

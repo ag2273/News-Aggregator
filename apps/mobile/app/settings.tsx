@@ -16,6 +16,7 @@ import { router } from 'expo-router';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import { useAuth } from '../lib/auth';
+import { VerifyBanner } from '../components/VerifyBanner';
 import {
   PushError,
   getPermissionStatus,
@@ -38,7 +39,7 @@ type DeviceState =
 
 export default function SettingsScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
-  const { user, token, loading: authLoading } = useAuth();
+  const { user, token, loading: authLoading, emailVerified } = useAuth();
 
   const [enabled, setEnabled] = useState(false);
   const [mode, setMode] = useState<PushMode>('urgent');
@@ -62,6 +63,11 @@ export default function SettingsScreen() {
    */
   const loadPrefs = useCallback(async () => {
     if (!token) return;
+    if (!emailVerified) {
+      // The server would answer 403; show the reason instead of an error.
+      setDevice({ status: 'ready' });
+      return;
+    }
     setError(null);
     setDevice({ status: 'loading' });
     try {
@@ -79,7 +85,7 @@ export default function SettingsScreen() {
         setError(pushErr?.message ?? 'تعذّر تحميل إعدادات الإشعارات.');
       }
     }
-  }, [token]);
+  }, [token, emailVerified]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -194,7 +200,25 @@ export default function SettingsScreen() {
           <View style={styles.circleSpacer} />
         </View>
 
-        {loadingPrefs && !unavailable ? (
+        <VerifyBanner t={t} />
+
+        {!emailVerified ? (
+          <View style={styles.content}>
+            <View style={[styles.card, { backgroundColor: t.surface }]}>
+              <View style={styles.row}>
+                <Ionicons name="lock-closed-outline" size={22} color={t.textMuted} />
+                <View style={styles.rowText}>
+                  <Text style={[styles.rowTitle, { color: t.textPrimary }]}>
+                    الإشعارات متاحة بعد توثيق بريدك
+                  </Text>
+                  <Text style={[styles.rowSub, { color: t.textMuted }]}>
+                    وثّق بريدك من الأعلى، ثم ستُفعَّل الإشعارات تلقائيًا.
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        ) : loadingPrefs && !unavailable ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={t.accent} />
           </View>

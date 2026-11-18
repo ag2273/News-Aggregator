@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { MiddlewareHandler } from 'hono';
-import { findUserById, type SafeUser } from './users.js';
+import { findUserById, toSafeUser, type SafeUser } from './users.js';
 
 const AUTH_SECRET =
   process.env['AUTH_SECRET'] ||
@@ -107,6 +107,6 @@ export const authMiddleware: MiddlewareHandler<{ Variables: AuthContextVariables
     return c.json({ error: 'Unauthorized' }, 401);
   }
   c.set('userId', user.id);
-  c.set('user', { id: user.id, email: user.email, name: user.name });
+  c.set('user', toSafeUser(user));
   await next();
 };

@@ -86,9 +86,15 @@ export default function AccountScreen() {
                   await signOut();
                 }}
                 accessibilityRole="button"
+                accessibilityLabel="تسجيل الخروج"
               >
                 <Ionicons name="log-out-outline" size={18} color={t.breaking} />
-                <Text style={[styles.signOutText, { color: t.breaking }]}>تسجيل الخروج</Text>
+                <Text
+                  style={[styles.signOutText, { color: t.breaking }]}
+                  numberOfLines={1}
+                >
+                  تسجيل الخروج
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -199,7 +205,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     width: '100%',
-    height: 48,
+    // Was a fixed 48: the Arabic label wraps at large font scales and the second
+    // line was clipped away, leaving only "تسجيل". Grow with the content instead.
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 14,
     borderWidth: 1,
   },
@@ -215,7 +225,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Cairo_600SemiBold',
     fontSize: 15,
   },
-  signOutText: { fontFamily: 'Cairo_700Bold', fontSize: 14 },
+  signOutText: {
+    fontFamily: 'Cairo_700Bold',
+    fontSize: 14,
+    // Never let the label shrink or wrap inside the row.
+    flexShrink: 0,
+    textAlign: 'center',
+  },
   cardTitle: { fontFamily: 'Cairo_700Bold', fontSize: 20, marginBottom: 8, textAlign: 'center' },
   cardSub: {
     fontFamily: 'Cairo_400Regular',

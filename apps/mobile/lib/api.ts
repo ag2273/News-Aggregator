@@ -29,6 +29,62 @@ export async function fetchArticle(id: string): Promise<Article> {
   return json.data;
 }
 
+/** The server's 403 for "signed in but email not proven yet". */
+export const EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED';
+
+/** Raised when the server refuses a resend because of the cooldown/daily cap. */
+export class ResendRateLimited extends Error {
+  retryAfterSeconds: number;
+  remainingToday?: number;
+
+  constructor(retryAfterSeconds: number, remainingToday?: number) {
+    super(`resend limited for ${retryAfterSeconds}s`);
+    this.name = 'ResendRateLimited';
+    this.retryAfterSeconds = retryAfterSeconds;
+    this.remainingToday = remainingToday;
+  }
+}
+
+/** True when an API error means "verify your email first". */
+export function isEmailNotVerified(err: unknown): boolean {
+  return err instanceof Error && err.message.includes(EMAIL_NOT_VERIFIED);
+}
+
+export interface ResendResult {
+  sent: boolean;
+  alreadyVerified: boolean;
+  remainingToday?: number;
+}
+
+/**
+ * Ask the server for a fresh verification link.
+ * Throws ResendRateLimited when the cooldown or the daily cap applies.
+ */
+export async function resendVerification(token: string): Promise<ResendResult> {
+  const res = await fetch(`${API_BASE}/api/auth/resend-verification`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (res.status === 429) {
+    const json = (await res.json().catch(() => ({}))) as {
+      retryAfterSeconds?: number;
+      remainingToday?: number;
+    };
+    throw new ResendRateLimited(json.retryAfterSeconds ?? 60, json.remainingToday);
+  }
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+
+  const json = (await res.json()) as {
+    data?: { sent?: boolean; alreadyVerified?: boolean; remainingToday?: number };
+  };
+  return {
+    sent: json.data?.sent === true,
+    alreadyVerified: json.data?.alreadyVerified === true,
+    remainingToday: json.data?.remainingToday,
+  };
+}
+
 export interface Category {
   id: string;
   name: string;

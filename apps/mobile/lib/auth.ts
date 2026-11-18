@@ -13,6 +13,8 @@ export interface User {
   id: string;
   email: string;
   name?: string;
+  /** Proven by the emailed link. Unverified accounts can browse only. */
+  emailVerified: boolean;
 }
 
 export interface AuthResponse {
@@ -24,9 +26,13 @@ export interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
+  /** False for a signed-in account that has not proven its email yet. */
+  emailVerified: boolean;
   signIn: (email: string, pass: string) => Promise<void>;
   signUp: (email: string, pass: string, name?: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Re-read the session (used by the "تحققت" button and on foreground). */
+  refreshSession: () => Promise<void>;
 }
 
 const TOKEN_KEY = 'news_aggregator_auth_token';
@@ -173,6 +179,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  /**
+   * Re-read /api/auth/me so a verification done in the browser reaches the app
+   * without a restart. Silent on network failure: the last known state stays.
+   */
+  const refreshSession = useCallback(async () => {
+    const current = token ?? (await getStoredToken());
+    if (!current) return;
+    try {
+      const profile = await getMe(current);
+      setUser(profile);
+      setToken(current);
+    } catch (err) {
+      // A dead session should sign the user out; a flaky network should not.
+      const message = err instanceof Error ? err.message : '';
+      if (/صلاحية|Unauthorized/i.test(message)) {
+        await removeStoredToken();
+        setToken(null);
+        setUser(null);
+      }
+    }
+  }, [token]);
+
   const signIn = useCallback(async (email: string, pass: string) => {
     const res = await login(email, pass);
     await setStoredToken(res.token);
@@ -195,6 +223,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // that never granted permission has no business being in the registry.
   useEffect(() => {
     if (loading || !token) return;
+    // Unverified accounts cannot use account-bound endpoints; registering would
+    // only produce a 403. This runs automatically once verification lands.
+    if (!user?.emailVerified) return;
     let cancelled = false;
     (async () => {
       const { granted } = await getPermissionStatus();
@@ -208,7 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [loading, token]);
+  }, [loading, token, user?.emailVerified]);
 
   const signOut = useCallback(async () => {
     // Remove this device's push token before the session goes away, otherwise the
@@ -223,8 +254,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   const value = useMemo<AuthContextType>(
-    () => ({ user, token, loading, signIn, signUp, signOut }),
-    [user, token, loading, signIn, signUp, signOut],
+    () => ({
+      user,
+      token,
+      loading,
+      emailVerified: user?.emailVerified === true,
+      signIn,
+      signUp,
+      signOut,
+      refreshSession,
+    }),
+    [user, token, loading, signIn, signUp, signOut, refreshSession],
   );
 
   return React.createElement(AuthContext.Provider, { value }, children);

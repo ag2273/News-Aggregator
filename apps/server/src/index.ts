@@ -17,9 +17,21 @@ import {
   findUserByEmail,
   findUserById,
   createUser,
+  markUserVerified,
+  normalizeEmail,
   toSafeUser,
   type StoredUser,
 } from './users.js';
+import {
+  consumeToken,
+  loadResendKey,
+  maskEmail,
+  peekToken,
+  resendAllowance,
+  sendVerificationForUser,
+  sentTimes,
+  VERIFY_ERRORS,
+} from './verify.js';
 import {
   getFollowedSources,
   followSource,
@@ -57,6 +69,32 @@ export { authMiddleware };
 
 export const app = new Hono();
 
+/** Error code the app matches on to show the verification banner. */
+export const EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED';
+
+/**
+ * Gate for account-bound routes: the caller must be signed in AND have proven
+ * the email address. Browsing stays public; anything that writes to an account
+ * requires verification. Returns a 403 response to send, or null when allowed.
+ */
+function requireVerified(c: {
+  req: { header: (name: string) => string | undefined };
+  json: (body: unknown, status: 403) => Response;
+}): Response | null {
+  const userId = extractUserId(c.req.header('Authorization'));
+  const user = userId ? findUserById(userId) : null;
+  if (!user) return null; // the route's own 401 handles this
+  if (user.emailVerified) return null;
+  return c.json(
+    {
+      error: 'Email verification required',
+      code: EMAIL_NOT_VERIFIED,
+      emailVerified: false,
+    },
+    403,
+  );
+}
+
 app.use('*', cors());
 
 // Push needs the Firebase service-account key. Log the outcome once at boot
@@ -64,6 +102,11 @@ app.use('*', cors());
 const pushAccount = loadServiceAccount();
 if (pushAccount) {
   console.log(`[push] FCM credentials loaded (project ${pushAccount.project_id})`);
+}
+
+// Email verification needs the Resend key. Warn once at boot; never crash.
+if (loadResendKey()) {
+  console.log('[email] Resend API key loaded — verification emails enabled');
 }
 
 // Trigger a refresh on startup
@@ -89,7 +132,7 @@ app.post('/api/auth/register', async (c) => {
     return c.json({ error: 'password must be at least 8 characters' }, 400);
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
   const existing = findUserByEmail(normalizedEmail);
   if (existing) {
     return c.json({ error: 'email already registered' }, 409);
@@ -102,11 +145,109 @@ app.post('/api/auth/register', async (c) => {
     passwordHash,
     name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
     createdAt: Date.now(),
+    emailVerified: false,
   };
 
   createUser(user);
+
+  // Send the link without making the user wait: sign-up returns a session even
+  // if the mail cannot be sent (the app can resend).
+  try {
+    await sendVerificationForUser(user);
+  } catch (err) {
+    console.error('[email] verification send failed at sign-up:', err);
+  }
+
   const token = createToken(user.id);
   return c.json({ data: { token, user: toSafeUser(user) } });
+});
+
+/**
+ * GET /verify?token=... — the link in the email.
+ * Renders a small RTL Arabic page; no JS, works in any browser.
+ */
+app.get('/verify', (c) => {
+  const raw = (c.req.query('token') ?? '').trim();
+  const outcome = raw ? consumeToken(raw) : ({ status: 'invalid' } as const);
+
+  if (outcome.status === 'verified') {
+    const user = findUserById(outcome.userId);
+    if (user) markUserVerified(user.id);
+  }
+
+  const success = outcome.status === 'verified';
+  const message = success
+    ? 'تم توثيق بريدك ✅ ارجع للتطبيق'
+    : outcome.status === 'expired'
+      ? VERIFY_ERRORS.expired
+      : outcome.status === 'used'
+        ? VERIFY_ERRORS.used
+        : VERIFY_ERRORS.invalid;
+  const hint = success
+    ? 'يمكنك الآن استخدام كل مميزات حسابك.'
+    : 'افتح التطبيق واضغط «إعادة إرسال الرابط» للحصول على رابط جديد.';
+
+  const accent = success ? '#10B981' : '#EF4444';
+  const title = success ? 'تم التوثيق' : 'تعذّر التوثيق';
+
+  return c.html(`<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title} — رئيس التحرير</title>
+  </head>
+  <body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0B1511;font-family:system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;text-align:center;padding:24px;">
+    <div style="max-width:420px;background:#182721;border-radius:20px;padding:32px 24px;">
+      <div style="width:64px;height:64px;margin:0 auto 20px;border-radius:32px;background:${accent};display:flex;align-items:center;justify-content:center;font-size:32px;line-height:64px;color:#FFFFFF;">
+        ${success ? '✓' : '!'}
+      </div>
+      <h1 style="margin:0 0 12px;font-size:20px;color:#F8FAFC;">${message}</h1>
+      <p style="margin:0;font-size:14px;line-height:24px;color:#94A3B8;">${hint}</p>
+      <p style="margin:24px 0 0;font-size:13px;color:#34D399;font-weight:700;">رئيس التحرير</p>
+    </div>
+  </body>
+</html>`, success ? 200 : 400);
+});
+
+/**
+ * POST /api/auth/resend-verification — Bearer.
+ * 60s cooldown, max 5 per rolling day; already-verified is a 200 no-op.
+ */
+app.post('/api/auth/resend-verification', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+
+  const user = findUserById(userId);
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+
+  if (user.emailVerified) {
+    return c.json({ data: { ok: true, alreadyVerified: true } });
+  }
+
+  const allowance = resendAllowance(sentTimes(user.id));
+  if (!allowance.allowed) {
+    return c.json(
+      {
+        error: 'too many requests',
+        code: 'RESEND_RATE_LIMITED',
+        retryAfterSeconds: Math.ceil(allowance.retryAfterMs / 1000),
+        remainingToday: allowance.remainingToday,
+      },
+      429,
+    );
+  }
+
+  const result = await sendVerificationForUser(user);
+  return c.json({
+    data: {
+      ok: true,
+      sent: result.ok,
+      // Not the token: it only ever travels by email.
+      message: result.ok ? 'sent' : 'send-failed',
+      remainingToday: resendAllowance(sentTimes(user.id)).remainingToday,
+    },
+  });
 });
 
 app.post('/api/auth/login', async (c) => {
@@ -164,6 +305,8 @@ app.post('/api/auth/logout', (c) => {
 app.get('/api/follows', (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
   const sourceIds = getFollowedSources(userId);
   return c.json({ data: { sourceIds } });
 });
@@ -171,6 +314,8 @@ app.get('/api/follows', (c) => {
 app.put('/api/follows/:sourceId', (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
   const sourceId = c.req.param('sourceId');
   const meta = getSourceMeta(sourceId);
   if (!meta) return c.json({ error: 'source not found' }, 404);
@@ -181,6 +326,8 @@ app.put('/api/follows/:sourceId', (c) => {
 app.delete('/api/follows/:sourceId', (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
   const sourceId = c.req.param('sourceId');
   const sourceIds = unfollowSource(userId, sourceId);
   return c.json({ data: { sourceIds } });
@@ -189,6 +336,8 @@ app.delete('/api/follows/:sourceId', (c) => {
 app.get('/api/feed/following', (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
   const sourceIds = getFollowedSources(userId);
   const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
   const offset = Number(c.req.query('offset') ?? 0);
@@ -201,6 +350,8 @@ app.get('/api/feed/following', (c) => {
 app.get('/api/saved', (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
   const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
   const offset = Number(c.req.query('offset') ?? 0);
   const savedIds = getSavedArticleIds(userId);
@@ -216,6 +367,8 @@ app.get('/api/saved', (c) => {
 app.get('/api/saved/:articleId', (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
   const articleId = c.req.param('articleId');
   const saved = isArticleSaved(userId, articleId);
   return c.json({ data: { saved } });
@@ -224,6 +377,8 @@ app.get('/api/saved/:articleId', (c) => {
 app.put('/api/saved/:articleId', (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
   const articleId = c.req.param('articleId');
   const article = getArticleById(articleId);
   if (!article) return c.json({ error: 'article not found' }, 404);
@@ -234,6 +389,8 @@ app.put('/api/saved/:articleId', (c) => {
 app.delete('/api/saved/:articleId', (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
   const articleId = c.req.param('articleId');
   const articleIds = unsaveArticle(userId, articleId);
   return c.json({ data: { ok: true, saved: false, articleIds } });
@@ -244,6 +401,8 @@ app.delete('/api/saved/:articleId', (c) => {
 app.post('/api/push/register', async (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
 
   let body: { token?: unknown; platform?: unknown; provider?: unknown };
   try {
@@ -278,6 +437,8 @@ app.post('/api/push/register', async (c) => {
 app.put('/api/push/preferences', async (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
 
   let body: { token?: unknown; enabled?: unknown; mode?: unknown };
   try {
@@ -308,6 +469,8 @@ app.put('/api/push/preferences', async (c) => {
 app.get('/api/push/preferences', (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
 
   const token = (c.req.query('token') ?? '').trim();
   if (!token) return c.json({ error: 'token is required' }, 400);
@@ -322,6 +485,8 @@ app.get('/api/push/preferences', (c) => {
 app.delete('/api/push/register', async (c) => {
   const userId = extractUserId(c.req.header('Authorization'));
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
 
   let body: { token?: unknown };
   try {

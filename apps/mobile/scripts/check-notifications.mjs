@@ -32,14 +32,16 @@ check(
   ),
   'config',
 );
+// Push is FCM-direct: no EAS projectId is involved any more, so that code is
+// no longer a failure mode. An unknown code must stay "unknown", not "config".
 check(
-  'missing projectId is a config problem',
+  'a stale Expo projectId error is not treated as a config failure',
   classifyPushTokenError(
     Object.assign(new Error('No "projectId" found.'), {
       code: 'ERR_NOTIFICATIONS_NO_EXPERIENCE_ID',
     }),
   ),
-  'config',
+  'unknown',
 );
 check(
   'expo network error is a network problem',

@@ -18,6 +18,7 @@ import type { Theme } from '../constants/colors';
 import { HeroDeck } from '../components/HeroDeck';
 import { CategoryPills } from '../components/Pills';
 import { FloatingDock } from '../components/FloatingDock';
+import { VerifyBanner } from '../components/VerifyBanner';
 import { useArticleSheet } from '../components/ArticleSheet';
 
 const PAGE_SIZE = 30;
@@ -170,6 +171,8 @@ export default function FeedScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        <VerifyBanner t={t} />
 
         <CategoryPills t={t} active={activeCategory} onChange={setActiveCategory} />
 
