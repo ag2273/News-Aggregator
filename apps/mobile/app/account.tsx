@@ -15,9 +15,14 @@ import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import { useAuth } from '../lib/auth';
 
+/** Amber for "waiting on you" states; the palette has no warning token. */
+const AMBER = '#F59E0B';
+import { useVerificationActions } from '../components/VerificationGate';
+
 export default function AccountScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, emailVerified } = useAuth();
+  const verify = useVerificationActions();
 
   return (
     <LinearGradient
@@ -58,10 +63,72 @@ export default function AccountScreen() {
               </Text>
               <Text style={[styles.userEmail, { color: t.textMuted }]}>{user.email}</Text>
 
-              <View style={[styles.badgeRow, { backgroundColor: t.surfaceSubtle }]}>
-                <Ionicons name="checkmark-circle" size={16} color={t.accent} />
-                <Text style={[styles.badgeText, { color: t.textSecondary }]}>حساب موثّق محليًا</Text>
-              </View>
+              {emailVerified ? (
+                <View style={[styles.badgeRow, { backgroundColor: t.followedBg }]}>
+                  <Ionicons name="checkmark-circle" size={16} color={t.followedText} />
+                  <Text style={[styles.badgeText, { color: t.followedText }]}>موثّق ✓</Text>
+                </View>
+              ) : (
+                <View style={[styles.pendingCard, { backgroundColor: t.breakingBg }]}>
+                  <View style={styles.pendingHeader}>
+                    <Ionicons name="alert-circle" size={16} color={AMBER} />
+                    <Text style={[styles.pendingTitle, { color: AMBER }]}>في انتظار التوثيق</Text>
+                  </View>
+                  <Text style={[styles.pendingSub, { color: t.textSecondary }]}>
+                    افتح الرابط اللي بعتناه على {user.email}
+                  </Text>
+
+                  <View style={styles.pendingActions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.pendingBtn,
+                        { borderColor: AMBER },
+                        (verify.sending || verify.secondsLeft > 0) && styles.pendingBtnDisabled,
+                      ]}
+                      onPress={verify.resend}
+                      disabled={verify.sending || verify.secondsLeft > 0}
+                      accessibilityRole="button"
+                      accessibilityLabel="إعادة إرسال الرابط"
+                    >
+                      {verify.sending ? (
+                        <ActivityIndicator size="small" color={AMBER} />
+                      ) : (
+                        <Text style={[styles.pendingBtnText, { color: AMBER }]}>
+                          {verify.secondsLeft > 0
+                            ? `إعادة الإرسال بعد ${verify.secondsLeft}ث`
+                            : 'إعادة إرسال الرابط'}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.pendingBtn,
+                        { borderColor: t.borderLight },
+                        verify.checking && styles.pendingBtnDisabled,
+                      ]}
+                      onPress={verify.check}
+                      disabled={verify.checking}
+                      accessibilityRole="button"
+                      accessibilityLabel="تحققت"
+                    >
+                      {verify.checking ? (
+                        <ActivityIndicator size="small" color={t.textSecondary} />
+                      ) : (
+                        <Text style={[styles.pendingBtnText, { color: t.textSecondary }]}>
+                          تحققت
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  {verify.notice ? (
+                    <Text style={[styles.pendingNotice, { color: t.textMuted }]}>
+                      {verify.notice}
+                    </Text>
+                  ) : null}
+                </View>
+              )}
 
               <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
 
@@ -198,6 +265,29 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   badgeText: { fontFamily: 'Cairo_600SemiBold', fontSize: 12 },
+  pendingCard: {
+    width: '100%',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+    gap: 8,
+  },
+  pendingHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pendingTitle: { fontFamily: 'Cairo_700Bold', fontSize: 13 },
+  pendingSub: { fontFamily: 'Cairo_400Regular', fontSize: 12, lineHeight: 20 },
+  pendingActions: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  pendingBtn: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  pendingBtnText: { fontFamily: 'Cairo_600SemiBold', fontSize: 12 },
+  pendingBtnDisabled: { opacity: 0.55 },
+  pendingNotice: { fontFamily: 'Cairo_400Regular', fontSize: 11, lineHeight: 18 },
   divider: { height: StyleSheet.hairlineWidth, width: '100%', marginBottom: 20 },
   signOutBtn: {
     flexDirection: 'row',

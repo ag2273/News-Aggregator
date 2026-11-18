@@ -12,7 +12,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { fetchFollows, fetchSourceArticles, followSource, unfollowSource } from '../../lib/api';
+import {
+  fetchFollows,
+  fetchSourceArticles,
+  followSource,
+  isEmailNotVerified,
+  isNetworkFailure,
+  unfollowSource,
+} from '../../lib/api';
 import type { Article, SourceMeta } from '../../lib/api';
 import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
@@ -40,8 +47,12 @@ export default function SourceScreen() {
       setSource(res.source);
       setArticles(res.articles);
       setError(null);
-    } catch {
-      setError('تعذّر تحميل أخبار المصدر. تحقق من الاتصال بالسيرفر.');
+    } catch (err) {
+      setError(
+        isNetworkFailure(err)
+          ? 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت.'
+          : 'تعذّر تحميل أخبار المصدر. حاول مرة أخرى.',
+      );
     }
   }, [id]);
 

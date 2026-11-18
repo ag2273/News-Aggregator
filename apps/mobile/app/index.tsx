@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { fetchFeed } from '../lib/api';
+import { fetchFeed, isNetworkFailure } from '../lib/api';
 import type { Article } from '../lib/api';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
@@ -74,8 +74,12 @@ export default function FeedScreen() {
       }
       hasMoreRef.current = data.length === PAGE_SIZE;
       setError(null);
-    } catch {
-      setError('تعذّر تحميل الأخبار. تحقق من الاتصال بالسيرفر.');
+    } catch (err) {
+      setError(
+        isNetworkFailure(err)
+          ? 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت.'
+          : 'تعذّر تحميل الأخبار. حاول مرة أخرى.',
+      );
     }
   }, []);
 

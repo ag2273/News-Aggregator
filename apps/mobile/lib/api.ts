@@ -1,5 +1,55 @@
 export const API_BASE = process.env['EXPO_PUBLIC_API_URL'] ?? 'https://news.nileorbit.com';
 
+/** The server's 403 for "signed in but email not proven yet". */
+export const EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED';
+
+/**
+ * A failed API call that keeps the HTTP status and the server's error code, so
+ * callers can tell "you need to verify your email" (403) apart from a real
+ * network failure instead of guessing from a string.
+ */
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(status: number, message: string, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/** True when the failure is the email-verification gate, not the network. */
+export function isEmailNotVerified(err: unknown): boolean {
+  return err instanceof ApiError && (err.code === EMAIL_NOT_VERIFIED || err.status === 403);
+}
+
+/** True when the request never reached the server (offline, timeout, DNS). */
+export function isNetworkFailure(err: unknown): boolean {
+  return err instanceof TypeError || (err instanceof Error && /Network request failed|Failed to fetch|timeout/i.test(err.message));
+}
+
+/**
+ * Build the right error for a non-2xx response.
+ * Reads the JSON body when it carries a `code` (the 403 gate does); otherwise
+ * falls back to the plain status.
+ */
+export async function apiError(res: Response): Promise<ApiError> {
+  let code: string | undefined;
+  let message: string | undefined;
+  try {
+    const body = (await res.json()) as { code?: string; error?: string };
+    code = typeof body.code === 'string' ? body.code : undefined;
+    message = typeof body.error === 'string' ? body.error : undefined;
+  } catch {
+    /* not JSON, or already consumed */
+  }
+  return new ApiError(res.status, message ?? `API error ${res.status}`, code);
+}
+
+/** Replace every `if (!res.ok) throw new Error(...)` with the typed version. */
+
 export interface Article {
   id: string;
   title: string;
@@ -17,20 +67,17 @@ export interface Article {
 export async function fetchFeed(limit = 50, offset = 0): Promise<Article[]> {
   const url = `${API_BASE}/api/feed?limit=${limit}&offset=${offset}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Article[] };
   return json.data;
 }
 
 export async function fetchArticle(id: string): Promise<Article> {
   const res = await fetch(`${API_BASE}/api/articles/${encodeURIComponent(id)}`);
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Article };
   return json.data;
 }
-
-/** The server's 403 for "signed in but email not proven yet". */
-export const EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED';
 
 /** Raised when the server refuses a resend because of the cooldown/daily cap. */
 export class ResendRateLimited extends Error {
@@ -43,11 +90,6 @@ export class ResendRateLimited extends Error {
     this.retryAfterSeconds = retryAfterSeconds;
     this.remainingToday = remainingToday;
   }
-}
-
-/** True when an API error means "verify your email first". */
-export function isEmailNotVerified(err: unknown): boolean {
-  return err instanceof Error && err.message.includes(EMAIL_NOT_VERIFIED);
 }
 
 export interface ResendResult {
@@ -73,7 +115,7 @@ export async function resendVerification(token: string): Promise<ResendResult> {
     };
     throw new ResendRateLimited(json.retryAfterSeconds ?? 60, json.remainingToday);
   }
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
 
   const json = (await res.json()) as {
     data?: { sent?: boolean; alreadyVerified?: boolean; remainingToday?: number };
@@ -97,14 +139,14 @@ export interface SourceMeta {
 
 export async function fetchCategories(): Promise<Category[]> {
   const res = await fetch(`${API_BASE}/api/categories`);
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Category[] };
   return json.data;
 }
 
 export async function fetchTrending(limit = 20): Promise<Article[]> {
   const res = await fetch(`${API_BASE}/api/trending?limit=${limit}`);
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Article[] };
   return json.data;
 }
@@ -117,7 +159,7 @@ export async function fetchSourceArticles(
   const res = await fetch(
     `${API_BASE}/api/sources/${encodeURIComponent(sourceId)}/articles?limit=${limit}&offset=${offset}`,
   );
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { source: SourceMeta; data: Article[] };
   return { source: json.source, articles: json.data };
 }
@@ -130,7 +172,7 @@ export interface Source {
 
 export async function fetchSources(): Promise<Source[]> {
   const res = await fetch(`${API_BASE}/api/sources`);
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Source[] };
   return json.data;
 }
@@ -139,7 +181,7 @@ export async function fetchFollows(token: string): Promise<string[]> {
   const res = await fetch(`${API_BASE}/api/follows`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: { sourceIds: string[] } };
   return json.data.sourceIds;
 }
@@ -149,7 +191,7 @@ export async function followSource(sourceId: string, token: string): Promise<str
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: { sourceIds: string[] } };
   return json.data.sourceIds;
 }
@@ -159,7 +201,7 @@ export async function unfollowSource(sourceId: string, token: string): Promise<s
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: { sourceIds: string[] } };
   return json.data.sourceIds;
 }
@@ -168,7 +210,7 @@ export async function fetchFollowingFeed(token: string, limit = 50, offset = 0):
   const res = await fetch(`${API_BASE}/api/feed/following?limit=${limit}&offset=${offset}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Article[] };
   return json.data;
 }
@@ -177,7 +219,7 @@ export async function fetchSavedArticles(token: string, limit = 50, offset = 0):
   const res = await fetch(`${API_BASE}/api/saved?limit=${limit}&offset=${offset}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Article[] };
   return json.data;
 }
@@ -194,7 +236,7 @@ export async function searchArticles(
   const res = await fetch(
     `${API_BASE}/api/search?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`,
   );
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Article[]; total?: number };
   return { articles: json.data, total: json.total ?? json.data.length };
 }
@@ -203,7 +245,7 @@ export async function fetchIsArticleSaved(articleId: string, token: string): Pro
   const res = await fetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: { saved: boolean } };
   return json.data.saved;
 }
@@ -213,7 +255,7 @@ export async function saveArticle(articleId: string, token: string): Promise<voi
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
 }
 
 export async function unsaveArticle(articleId: string, token: string): Promise<void> {
@@ -221,7 +263,7 @@ export async function unsaveArticle(articleId: string, token: string): Promise<v
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw await apiError(res);
 }
 
 export function relativeTime(ts: number): string {

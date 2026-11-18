@@ -14,9 +14,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { palette } from '../constants/colors';
-import { VerifyBanner } from '../components/VerifyBanner';
+import { VerificationGate } from '../components/VerificationGate';
 import type { Theme } from '../constants/colors';
-import { fetchFollowingFeed, type Article } from '../lib/api';
+import { fetchFollowingFeed, isEmailNotVerified, isNetworkFailure, type Article } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { FeedCard } from '../components/FeedCard';
 import { FloatingDock } from '../components/FloatingDock';
@@ -24,7 +24,7 @@ import { useArticleSheet } from '../components/ArticleSheet';
 
 export default function FollowingScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
-  const { user, token, loading: authLoading } = useAuth();
+  const { user, token, loading: authLoading, emailVerified } = useAuth();
   const { open: openSheet } = useArticleSheet();
 
   const [articles, setArticles] = useState<Article[]>([]);
@@ -34,14 +34,29 @@ export default function FollowingScreen() {
 
   const loadFollowing = useCallback(async () => {
     if (!token) return;
+    // Gated endpoint: not called at all until the account is verified.
+    if (!emailVerified) {
+      setArticles([]);
+      setError(null);
+      return;
+    }
     try {
       setError(null);
       const feed = await fetchFollowingFeed(token, 50, 0);
       setArticles(feed);
-    } catch {
-      setError('تعذّر تحميل أخباري. تحقق من الاتصال.');
+    } catch (err) {
+      if (isEmailNotVerified(err)) {
+        setArticles([]);
+        setError(null);
+        return;
+      }
+      setError(
+        isNetworkFailure(err)
+          ? 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت.'
+          : 'تعذّر تحميل أخباري. حاول مرة أخرى.',
+      );
     }
-  }, [token]);
+  }, [token, emailVerified]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -49,8 +64,13 @@ export default function FollowingScreen() {
       setLoading(false);
       return;
     }
+    if (!emailVerified) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     loadFollowing().finally(() => setLoading(false));
-  }, [authLoading, token, loadFollowing]);
+  }, [authLoading, token, emailVerified, loadFollowing]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -142,9 +162,14 @@ export default function FollowingScreen() {
           </TouchableOpacity>
         </View>
 
-        <VerifyBanner t={t} />
-
-        {loading ? (
+        {!emailVerified ? (
+          <VerificationGate
+            t={t}
+            icon="sparkles-outline"
+            title="وثّق بريدك أولاً"
+            subtitle="أخباري متاح بعد توثيق بريدك. افتح الرابط اللي وصلك على الإيميل."
+          />
+        ) : loading ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={t.accent} />
           </View>

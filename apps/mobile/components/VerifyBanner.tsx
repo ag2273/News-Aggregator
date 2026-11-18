@@ -68,7 +68,7 @@ export function VerifyBanner({ t }: { t: Theme }) {
         setCooldown(Math.max(1, err.retryAfterSeconds));
         setNotice(`انتظر ${err.retryAfterSeconds} ثانية قبل إعادة الإرسال`);
       } else {
-        setNotice('تعذّر إرسال الرابط. تحقق من الاتصال.');
+        setNotice('تعذّر إرسال الرابط. تحقّق من الإنترنت.');
       }
     } finally {
       if (mounted.current) setSending(false);

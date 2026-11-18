@@ -20,6 +20,8 @@ import {
   fetchFollowingFeed,
   fetchFollows,
   fetchSources,
+  isEmailNotVerified,
+  isNetworkFailure,
   unfollowSource,
   type Article,
   type Source,
@@ -29,10 +31,11 @@ import { FeedCard } from '../components/FeedCard';
 import { PublisherAvatar } from '../components/Publisher';
 import { FloatingDock } from '../components/FloatingDock';
 import { useArticleSheet } from '../components/ArticleSheet';
+import { VerificationGate } from '../components/VerificationGate';
 
 export default function SourcesScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
-  const { user, token, loading: authLoading } = useAuth();
+  const { user, token, loading: authLoading, emailVerified } = useAuth();
   const { open: openSheet } = useArticleSheet();
 
   const [followedIds, setFollowedIds] = useState<string[]>([]);
@@ -44,6 +47,19 @@ export default function SourcesScreen() {
 
   const loadData = useCallback(async () => {
     if (!token) return;
+    // The public source list is fine unverified; the two follow/feed calls are
+    // gated, so they are not attempted until the email is proven.
+    if (!emailVerified) {
+      try {
+        setAllSources(await fetchSources().catch(() => []));
+      } catch {
+        /* the list is decoration here */
+      }
+      setFollowedIds([]);
+      setArticles([]);
+      setError(null);
+      return;
+    }
     try {
       setError(null);
       const [sourcesList, ids, feedArticles] = await Promise.all([
@@ -54,10 +70,20 @@ export default function SourcesScreen() {
       setAllSources(sourcesList);
       setFollowedIds(ids);
       setArticles(feedArticles);
-    } catch {
-      setError('تعذّر تحميل الأخبار المتابعة. تحقق من الاتصال.');
+    } catch (err) {
+      if (isEmailNotVerified(err)) {
+        setFollowedIds([]);
+        setArticles([]);
+        setError(null);
+        return;
+      }
+      setError(
+        isNetworkFailure(err)
+          ? 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت.'
+          : 'تعذّر تحميل الأخبار المتابعة. حاول مرة أخرى.',
+      );
     }
-  }, [token]);
+  }, [token, emailVerified]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -65,8 +91,9 @@ export default function SourcesScreen() {
       setLoading(false);
       return;
     }
+    setLoading(true);
     loadData().finally(() => setLoading(false));
-  }, [authLoading, token, loadData]);
+  }, [authLoading, token, emailVerified, loadData]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -167,7 +194,14 @@ export default function SourcesScreen() {
           </TouchableOpacity>
         </View>
 
-        {loading ? (
+        {!emailVerified ? (
+          <VerificationGate
+            t={t}
+            icon="newspaper-outline"
+            title="وثّق بريدك أولاً"
+            subtitle="متابعة المصادر متاحة بعد توثيق بريدك. افتح الرابط اللي وصلك على الإيميل."
+          />
+        ) : loading ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={t.accent} />
           </View>

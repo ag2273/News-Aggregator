@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { fetchTrending } from '../lib/api';
+import { fetchTrending, isNetworkFailure } from '../lib/api';
 import type { Article } from '../lib/api';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
@@ -30,8 +30,12 @@ export default function TrendingScreen() {
     try {
       setArticles(await fetchTrending(20));
       setError(null);
-    } catch {
-      setError('تعذّر تحميل الترند. تحقق من الاتصال بالسيرفر.');
+    } catch (err) {
+      setError(
+        isNetworkFailure(err)
+          ? 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت.'
+          : 'تعذّر تحميل الترند. حاول مرة أخرى.',
+      );
     }
   }, []);
 

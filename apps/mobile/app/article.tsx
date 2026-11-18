@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { fetchArticle } from '../lib/api';
+import { fetchArticle, isNetworkFailure } from '../lib/api';
 import type { Article } from '../lib/api';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
@@ -28,8 +28,12 @@ export default function ArticleScreen() {
     try {
       setArticle(await fetchArticle(id));
       setError(null);
-    } catch {
-      setError('تعذّر تحميل الخبر. تحقق من الاتصال بالسيرفر.');
+    } catch (err) {
+      setError(
+        isNetworkFailure(err)
+          ? 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت.'
+          : 'تعذّر تحميل الخبر. حاول مرة أخرى.',
+      );
     }
   }, [id]);
 

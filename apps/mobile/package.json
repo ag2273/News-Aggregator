@@ -10,7 +10,8 @@
     "test:preload": "node --experimental-strip-types scripts/check-preload.mjs",
     "test:notifications": "node --experimental-strip-types scripts/check-notifications.mjs",
     "test:keyboard": "node --experimental-strip-types scripts/check-keyboard.mjs",
-    "test:account": "node --experimental-strip-types scripts/check-account.mjs"
+    "test:account": "node --experimental-strip-types scripts/check-account.mjs",
+    "test:verification": "node --experimental-strip-types scripts/check-verification.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/cairo": "^0.4.2",

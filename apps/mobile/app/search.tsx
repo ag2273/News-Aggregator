@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
-import { searchArticles, type Article } from '../lib/api';
+import { searchArticles, isNetworkFailure, type Article } from '../lib/api';
 import { FeedCard } from '../components/FeedCard';
 import { useArticleSheet } from '../components/ArticleSheet';
 
@@ -55,11 +55,15 @@ export default function SearchScreen() {
       setArticles(found);
       setTotal(count);
       setError(null);
-    } catch {
+    } catch (err) {
       if (requestId !== requestIdRef.current) return;
       setArticles([]);
       setTotal(0);
-      setError('تعذّر البحث. تحقق من الاتصال.');
+      setError(
+        isNetworkFailure(err)
+          ? 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت.'
+          : 'تعذّر البحث. حاول مرة أخرى.',
+      );
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
