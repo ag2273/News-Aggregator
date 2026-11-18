@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -28,17 +29,19 @@ import { PublisherAvatar } from '../../components/Publisher';
 import { FloatingDock } from '../../components/FloatingDock';
 import { useArticleSheet } from '../../components/ArticleSheet';
 import { useAuth } from '../../lib/auth';
+import { VerificationGate } from '../../components/VerificationGate';
 
 export default function SourceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
-  const { user, token } = useAuth();
+  const { user, token, emailVerified } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [source, setSource] = useState<SourceMeta | null>(null);
   const [followed, setFollowed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verifySheetOpen, setVerifySheetOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -60,9 +63,11 @@ export default function SourceScreen() {
     load().finally(() => setLoading(false));
   }, [load]);
 
-  // Sync follow state if user is logged in
+  // Sync follow state if user is logged in. /api/follows is gated, so it is not
+  // called at all until the email is proven; once verified this effect re-runs
+  // and the real state appears without a restart.
   useEffect(() => {
-    if (!token || !id) {
+    if (!token || !id || !emailVerified) {
       setFollowed(false);
       return;
     }
@@ -71,15 +76,24 @@ export default function SourceScreen() {
       .then((ids) => {
         if (!cancelled) setFollowed(ids.includes(id));
       })
-      .catch(() => {});
+      .catch((err) => {
+        // A gate answer or a network blip must not claim the source is unfollowed
+        // in a way the user can act on; the button just stays in its default state.
+        if (isEmailNotVerified(err)) setFollowed(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [token, id]);
+  }, [token, id, emailVerified]);
 
   const handleToggleFollow = async () => {
     if (!user || !token) {
       router.push('/login');
+      return;
+    }
+    // Not verified: explain, never fire a request that would 403.
+    if (!emailVerified) {
+      setVerifySheetOpen(true);
       return;
     }
     if (!id || toggling) return;
@@ -92,8 +106,12 @@ export default function SourceScreen() {
         await followSource(id, token);
         setFollowed(true);
       }
-    } catch {
-      // Keep optimistic or current state
+    } catch (err) {
+      // The state may have changed on the server; a gate answer explains itself.
+      if (isEmailNotVerified(err)) {
+        setFollowed(false);
+        setVerifySheetOpen(true);
+      }
     } finally {
       setToggling(false);
     }
@@ -187,12 +205,55 @@ export default function SourceScreen() {
 
         <FloatingDock t={t} active="profile" />
       </SafeAreaView>
+
+      {/* Tapping متابعة while unverified explains why instead of failing silently. */}
+      <Modal
+        visible={verifySheetOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setVerifySheetOpen(false)}
+      >
+        <View style={styles.sheetBackdrop}>
+          <View style={[styles.sheet, { backgroundColor: t.surface }]}>
+            <TouchableOpacity
+              onPress={() => setVerifySheetOpen(false)}
+              style={styles.sheetClose}
+              accessibilityRole="button"
+              accessibilityLabel="إغلاق"
+            >
+              <Ionicons name="close" size={20} color={t.textMuted} />
+            </TouchableOpacity>
+            <VerificationGate
+              t={t}
+              icon="bookmark-outline"
+              title="وثّق بريدك أولاً"
+              subtitle="متابعة المصادر متاحة بعد توثيق بريدك. افتح الرابط اللي وصلك على الإيميل."
+            />
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    minHeight: 340,
+    paddingBottom: 28,
+    paddingTop: 8,
+  },
+  sheetClose: {
+    alignSelf: 'flex-start',
+    padding: 12,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

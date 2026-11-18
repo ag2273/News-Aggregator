@@ -67,6 +67,32 @@ for (const [file, fn] of gatedScreens) {
   );
 }
 
+console.log('— (a2) source screen: follow is gated, articles are not —');
+const sourceScreen = read('app/source/[id].tsx');
+check('reads emailVerified', /emailVerified\s*\}\s*=\s*useAuth\(\)/.test(sourceScreen));
+// The follow-state sync must not call the gated endpoint while unverified.
+const syncGuard = sourceScreen.indexOf('if (!token || !id || !emailVerified)');
+const syncCall = sourceScreen.indexOf('fetchFollows(token)', syncGuard === -1 ? 0 : syncGuard);
+check(
+  'does not fetch /api/follows while unverified',
+  syncGuard !== -1 && syncCall !== -1 && syncGuard < syncCall,
+);
+check('re-syncs when verification lands', /\[token, id, emailVerified\]/.test(sourceScreen));
+// Tapping متابعة must open the explanation, before any follow/unfollow request.
+const toggleIdx = sourceScreen.indexOf('const handleToggleFollow');
+const gateInHandler = sourceScreen.indexOf('if (!emailVerified)', toggleIdx);
+const followCall = sourceScreen.indexOf('followSource(id, token)', toggleIdx);
+check(
+  'tapping متابعة is gated before the request',
+  gateInHandler !== -1 && followCall !== -1 && gateInHandler < followCall,
+);
+check('opens the calm sheet', /setVerifySheetOpen\(true\)/.test(sourceScreen));
+check('renders the gate in a sheet', /<Modal[\s\S]{0,1200}<VerificationGate/.test(sourceScreen));
+check('classifies a gate answer in the toggle catch', /isEmailNotVerified\(err\)/.test(sourceScreen));
+check('public article list still loads without the gate', /fetchSourceArticles\(id/.test(sourceScreen));
+// The articles list must not be replaced by the locked state.
+check('article list is not hidden behind the gate', /<VerificationGate/.test(sourceScreen) && /data=\{articles\}/.test(sourceScreen));
+
 console.log('— (b) 403 never produces connection wording —');
 const connectionWording = /تحقق من الاتصال|تحقّق من الاتصال|من الإنترنت/;
 const forbidden = /تحقق من الاتصال|تحقّق من الاتصال/; // the exact phrase the user objected to
