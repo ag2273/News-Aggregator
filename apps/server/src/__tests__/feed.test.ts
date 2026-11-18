@@ -122,6 +122,39 @@ describe('GET /api/feed: source balance', () => {
     expect(seen.size).toBe(64); // 40 + 8*3
   });
 
+  it('GET /api/feed returns valid articles from multiple sources (spec integration test)', async () => {
+    const res = await app.request('/api/feed?limit=50');
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: Article[]; total: number };
+
+    // More than one source, or the product promise is unmet.
+    expect(json.data.length).toBeGreaterThan(0);
+    expect(distinct(json.data)).toBeGreaterThan(1);
+
+    // Every item is a complete Article: the mobile card renders title, source,
+    // relative time from publishedAt, image and the breaking flag, so a missing
+    // or wrong-typed field is a user-visible bug.
+    for (const a of json.data) {
+      expect(typeof a.id).toBe('string');
+      expect(a.id.length).toBeGreaterThan(0);
+      expect(typeof a.title).toBe('string');
+      expect(a.title.length).toBeGreaterThan(0);
+      expect(typeof a.url).toBe('string');
+      expect(a.url.startsWith('http')).toBe(true);
+      expect(typeof a.sourceId).toBe('string');
+      expect(typeof a.sourceName).toBe('string');
+      expect(a.sourceName.length).toBeGreaterThan(0);
+      expect(typeof a.publishedAt).toBe('number');
+      expect(a.publishedAt).toBeGreaterThan(0);
+      expect(typeof a.isBreaking).toBe('boolean');
+      expect(a.summary === null || typeof a.summary === 'string').toBe(true);
+      expect(a.imageUrl === null || typeof a.imageUrl === 'string').toBe(true);
+    }
+
+    // No duplicate ids on a page.
+    expect(new Set(json.data.map((a) => a.id)).size).toBe(json.data.length);
+  });
+
   it('keeps total equal to the store size', async () => {
     const res = await app.request('/api/feed?limit=5');
     const json = (await res.json()) as { total: number };
