@@ -6,6 +6,7 @@ import {
   refreshAll,
   getArticles,
   getBalancedFeed,
+  withReactions,
   getArticleById,
   getSources,
   getCategories,
@@ -45,6 +46,17 @@ import {
   unsaveArticle,
 } from './saved.js';
 import { searchArticles } from './search.js';
+import {
+  isValidReaction,
+  setReaction,
+  removeReaction,
+  countsFor,
+  myReaction,
+  checkReactionRate,
+  recordReaction,
+  REACTION_TYPES,
+  REACTION_EMOJI,
+} from './reactions.js';
 import {
   deleteAccount,
   checkDeleteRateLimit,
@@ -691,8 +703,9 @@ app.get('/api/feed', async (c) => {
   // whole page. `max` is opt-in for callers that want the raw ceiling.
   const maxParam = Number(c.req.query('max'));
   const maxPerSource = Number.isFinite(maxParam) && maxParam > 0 ? maxParam : undefined;
+  const viewerId = extractUserId(c.req.header('Authorization'));
   const { articles, total } = getBalancedFeed(limit, offset, maxPerSource);
-  return c.json({ data: articles, total });
+  return c.json({ data: articles.map((a) => withReactions(a, viewerId)), total });
 });
 
 app.get('/api/sources', (c) => {
@@ -719,14 +732,80 @@ app.get('/api/sources/:id/articles', (c) => {
   return c.json({ data: articles, source });
 });
 
+// Search across title, summary and source name (Arabic-normalized).
 app.get('/api/articles/:id', (c) => {
-  const id = c.req.param('id');
-  const article = getArticleById(id);
-  if (!article) return c.json({ error: 'not found' }, 404);
-  return c.json({ data: article });
+  const article = getArticleById(c.req.param('id'));
+  if (!article) return c.json({ error: 'article not found' }, 404);
+  const viewerId = extractUserId(c.req.header('Authorization'));
+  return c.json({ data: withReactions(article, viewerId) });
 });
 
-// Search across title, summary and source name (Arabic-normalized).
+/**
+ * PUT /api/articles/:id/reaction — set or replace the caller's reaction.
+ * Verified accounts only: reacting is account-bound (403 EMAIL_NOT_VERIFIED).
+ * Tapping the same reaction again removes it, which the app expresses by
+ * calling DELETE, so this endpoint always sets.
+ */
+app.put('/api/articles/:id/reaction', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+
+  const articleId = c.req.param('id');
+  if (!getArticleById(articleId)) return c.json({ error: 'article not found' }, 404);
+
+  let body: { type?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (!isValidReaction(body.type)) {
+    return c.json({ error: `type must be one of: ${REACTION_TYPES.join(', ')}` }, 400);
+  }
+
+  const rate = checkReactionRate(userId);
+  if (!rate.allowed) {
+    return c.json(
+      { error: 'too many reactions', retryAfterSeconds: Math.ceil(rate.retryAfterMs / 1000) },
+      429,
+    );
+  }
+
+  const result = setReaction(articleId, userId, body.type);
+  recordReaction(userId);
+  return c.json({ data: result });
+});
+
+/** DELETE /api/articles/:id/reaction — remove the caller's reaction. */
+app.delete('/api/articles/:id/reaction', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+
+  const articleId = c.req.param('id');
+  if (!getArticleById(articleId)) return c.json({ error: 'article not found' }, 404);
+
+  const result = removeReaction(articleId, userId);
+  return c.json({ data: result });
+});
+
+/** Public counts, allowed for everyone including guests. */
+app.get('/api/articles/:id/reactions', (c) => {
+  const articleId = c.req.param('id');
+  if (!getArticleById(articleId)) return c.json({ error: 'article not found' }, 404);
+  const viewerId = extractUserId(c.req.header('Authorization'));
+  return c.json({
+    data: {
+      counts: countsFor(articleId),
+      myReaction: myReaction(articleId, viewerId),
+      emoji: REACTION_EMOJI,
+    },
+  });
+});
+
 app.get('/api/search', (c) => {
   const q = c.req.query('q') ?? '';
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50), 1), 200);

@@ -23,11 +23,20 @@ const mockUnfollowSource = jest.fn();
 const mockFetchSourceArticles = jest.fn();
 
 jest.mock('../lib/api', () => ({
+  // The screen renders FeedCard, which now contains the reactions capsule, so the
+  // reaction constants and helpers must exist. Keep the real values.
+  REACTION_EMOJI: jest.requireActual('../lib/api').REACTION_EMOJI,
+  REACTION_LABEL: jest.requireActual('../lib/api').REACTION_LABEL,
+  REACTION_ORDER: jest.requireActual('../lib/api').REACTION_ORDER,
+  REACTION_DISPLAY_THRESHOLD: jest.requireActual('../lib/api').REACTION_DISPLAY_THRESHOLD,
+  formatReactionCount: jest.requireActual('../lib/api').formatReactionCount,
+  putReaction: jest.fn(),
+  deleteReaction: jest.fn(),
+  isEmailNotVerified: jest.requireActual('../lib/api').isEmailNotVerified,
   fetchFollows: (...args: unknown[]) => mockFetchFollows(...args),
   followSource: (...args: unknown[]) => mockFollowSource(...args),
   unfollowSource: (...args: unknown[]) => mockUnfollowSource(...args),
   fetchSourceArticles: (...args: unknown[]) => mockFetchSourceArticles(...args),
-  isEmailNotVerified: (e: any) => e?.status === 403,
   isNetworkFailure: () => false,
   relativeTime: () => 'قبل ساعتين',
 }));

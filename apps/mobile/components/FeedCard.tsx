@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Image,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -11,6 +12,8 @@ import { relativeTime } from '../lib/api';
 import type { Article } from '../lib/api';
 import type { Theme } from '../constants/colors';
 import { PublisherAvatar, PublisherMeta } from './Publisher';
+import { ReactionsCapsule, ReactionPicker } from './Reactions';
+import { VerificationGate } from './VerificationGate';
 
 /** Full-width vertical feed card: publisher header → headline → cover image → footer. */
 export function FeedCard({
@@ -26,6 +29,9 @@ export function FeedCard({
   onPressSource?: () => void;
   rank?: number;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [gateOpen, setGateOpen] = useState(false);
+
   return (
     <TouchableOpacity
       activeOpacity={0.9}
@@ -75,15 +81,82 @@ export function FeedCard({
         <Text style={[styles.footerText, { color: t.textMuted }]}>
           {relativeTime(article.publishedAt)}
         </Text>
-        <TouchableOpacity style={styles.shareBtn} accessibilityLabel="مشاركة">
+
+        <ReactionsCapsule
+          t={t}
+          article={article}
+          onPress={() => setPickerOpen(true)}
+          onNeedVerification={() => setGateOpen(true)}
+        />
+
+        <TouchableOpacity
+          style={styles.shareBtn}
+          accessibilityLabel="مشاركة"
+          onPress={(e) => {
+            // Do not open the article when sharing.
+            e.stopPropagation?.();
+          }}
+        >
           <Ionicons name="share-outline" size={16} color={t.textMuted} />
         </TouchableOpacity>
       </View>
+
+      {/* Quick reaction picker for this card */}
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <TouchableOpacity
+          style={styles.pickerBackdrop}
+          activeOpacity={1}
+          onPress={() => setPickerOpen(false)}
+        >
+          <View style={[styles.pickerSheet, { backgroundColor: t.surface }]}>
+            <Text style={[styles.pickerTitle, { color: t.textPrimary }]}>تفاعل مع الخبر</Text>
+            <ReactionPicker
+              t={t}
+              article={article}
+              onNeedVerification={() => {
+                setPickerOpen(false);
+                setGateOpen(true);
+              }}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={gateOpen} transparent animationType="fade" onRequestClose={() => setGateOpen(false)}>
+        <View style={styles.pickerBackdrop}>
+          <View style={[styles.pickerSheet, { backgroundColor: t.surface }]}>
+            <VerificationGate
+              t={t}
+              icon="chatbubble-ellipses-outline"
+              title="وثّق بريدك أولاً"
+              subtitle="التفاعل مع الأخبار متاح بعد توثيق بريدك الإلكتروني. افتح الرابط الذي وصلك على بريدك."
+            />
+          </View>
+        </View>
+      </Modal>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 20,
+    paddingBottom: 32,
+    paddingHorizontal: 16,
+  },
+  pickerTitle: {
+    fontFamily: 'Cairo_700Bold',
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
   card: {
     borderRadius: 26,
     padding: 16,

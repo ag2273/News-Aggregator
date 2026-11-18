@@ -10,6 +10,12 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
+// The card now hosts a reactions capsule, which reads auth. Mock the boundary so
+// this test stays about rendering (the reactions rules have their own suite).
+jest.mock('../lib/auth', () => ({
+  useAuth: () => ({ token: null, user: null, emailVerified: false, loading: false }),
+}));
+
 import { FeedCard } from '../components/FeedCard';
 import { palette } from '../constants/colors';
 import type { Article } from '../lib/api';

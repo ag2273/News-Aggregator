@@ -11,6 +11,8 @@ import type { Article } from './types.js';
 import { CATEGORIES, normalizeCategory } from './categorize.js';
 import { sendPushNotifications } from './push.js';
 import { balancedPage } from './balance.js';
+import { rankTrending } from './trending.js';
+import { countsFor, myReaction, reactionWeight } from './reactions.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 let lastFetchTime = 0;
@@ -104,12 +106,14 @@ export function getCategories(): Array<{ id: string; name: string }> {
 }
 
 /** Recent articles (last 48h) ordered newest-first. */
+/**
+ * Trending: ranked by recency + a capped reaction weight (see trending.ts).
+ * The ranking is over recent articles only, so the log-weighted reaction term
+ * can never lift an old story over a fresh one.
+ */
 export function getTrending(limit = 20): Article[] {
-  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
-  return getAllArticles()
-    .filter((a) => a.publishedAt >= cutoff)
-    .slice(0, limit)
-    .map(toArticle);
+  const ranked = rankTrending(getAllArticles(), (id) => reactionWeight(id));
+  return ranked.slice(0, limit).map(toArticle);
 }
 
 /** Articles for one source, newest-first, with limit/offset. */
@@ -134,6 +138,18 @@ export function getArticlesByFollowedSources(sourceIds: string[], limit = 50, of
 export function getSourceMeta(sourceId: string): { id: string; name: string } | null {
   const s = SOURCES.find((x) => x.id === sourceId);
   return s ? { id: s.id, name: s.nameAr } : null;
+}
+
+/**
+ * Attach reaction data to an article for the caller.
+ * Counts always ship (the UI hides small ones); myReaction is null for guests.
+ */
+export function withReactions(article: Article, userId: string | null): Article {
+  return {
+    ...article,
+    reactions: countsFor(article.id),
+    myReaction: myReaction(article.id, userId),
+  };
 }
 
 function toArticle(row: StoredArticle): Article {

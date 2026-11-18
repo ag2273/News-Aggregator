@@ -10,6 +10,17 @@ export interface Article {
   country: string;
   publishedAt: number; // unix ms
   isBreaking: boolean;
+  /** Reaction tally; always present on API responses, absent on stored rows. */
+  reactions?: {
+    like: number;
+    love: number;
+    wow: number;
+    sad: number;
+    angry: number;
+    total: number;
+  };
+  /** The caller's own reaction, or null for guests and when they have not reacted. */
+  myReaction?: 'like' | 'love' | 'wow' | 'sad' | 'angry' | null;
 }
 
 export interface Source {

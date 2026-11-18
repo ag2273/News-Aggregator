@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { ReactionsBar } from './Reactions';
+import { VerificationGate } from './VerificationGate';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import {
@@ -102,6 +105,8 @@ export function ArticleReader({
       setTogglingSaved(false);
     }
   }, [user, token, article.id, togglingSaved, saved]);
+
+  const [verifySheetOpen, setVerifySheetOpen] = useState(false);
 
   const handleScroll = useCallback(
     (e: { nativeEvent: { contentOffset: { y: number } } }) => {
@@ -254,6 +259,9 @@ export function ArticleReader({
           </Text>
         )}
 
+        {/* تفاعلات القراء — تحت النص وقبل زر القراءة الكاملة */}
+        <ReactionsBar t={t} article={article} onNeedVerification={() => setVerifySheetOpen(true)} />
+
         {inSheet ? (
           <SafeAreaView
             edges={['bottom']}
@@ -266,11 +274,51 @@ export function ArticleReader({
         )}
         </ScrollView>
       </View>
+
+      {/* بوابة التوثيق لغير الموثّقين */}
+      <Modal
+        visible={verifySheetOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setVerifySheetOpen(false)}
+      >
+        <View style={styles.gateBackdrop}>
+          <View style={[styles.gateSheet, { backgroundColor: t.surface }]}>
+            <TouchableOpacity
+              onPress={() => setVerifySheetOpen(false)}
+              style={styles.gateClose}
+              accessibilityRole="button"
+              accessibilityLabel="إغلاق"
+            >
+              <Ionicons name="close" size={20} color={t.textMuted} />
+            </TouchableOpacity>
+            <VerificationGate
+              t={t}
+              icon="chatbubble-ellipses-outline"
+              title="وثّق بريدك أولاً"
+              subtitle="التفاعل مع الأخبار متاح بعد توثيق بريدك الإلكتروني. افتح الرابط الذي وصلك على بريدك."
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  gateBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  gateSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    minHeight: 340,
+    paddingTop: 8,
+    paddingBottom: 28,
+  },
+  gateClose: { alignSelf: 'flex-start', padding: 12 },
   articleRoot: { flex: 1, backgroundColor: '#000000' },
   sheetRoot: { backgroundColor: 'transparent' },
   heroWrap: { height: '46%', width: '100%', position: 'relative' },

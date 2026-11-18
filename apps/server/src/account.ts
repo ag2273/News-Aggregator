@@ -18,6 +18,7 @@ import { deleteFollowsForUser } from './follows.js';
 import { deleteSavedForUser } from './saved.js';
 import { deletePushTokensForUser } from './push.js';
 import { deleteVerifyDataForUser } from './verify.js';
+import { deleteReactionsForUser } from './reactions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rawDataDir = process.env['DATA_DIR'] || process.env['RAILWAY_VOLUME_MOUNT_PATH'];
@@ -31,6 +32,7 @@ export interface DeletionReport {
   saved: number;
   pushTokens: number;
   verifyRecords: number;
+  reactions: number;
 }
 
 /**
@@ -49,11 +51,12 @@ export function deleteAccount(userId: string): DeletionReport | null {
   const saved = deleteSavedForUser(userId);
   const pushTokens = deletePushTokensForUser(userId);
   const verifyRecords = deleteVerifyDataForUser(userId);
+  const reactions = deleteReactionsForUser(userId);
   const removed = deleteUser(userId);
 
   // Explicit log line so a deletion is visible in the deploy log without PII.
   console.log(
-    `[account] deleted account ${maskEmail(user.email)} — follows ${follows}, saved ${saved}, push ${pushTokens}, verify ${verifyRecords}, user row ${removed}`,
+    `[account] deleted account ${maskEmail(user.email)} — follows ${follows}, saved ${saved}, push ${pushTokens}, verify ${verifyRecords}, reactions ${reactions}, user row ${removed}`,
   );
 
   return {
@@ -63,6 +66,7 @@ export function deleteAccount(userId: string): DeletionReport | null {
     saved,
     pushTokens,
     verifyRecords,
+    reactions,
   };
 }
 

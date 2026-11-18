@@ -50,6 +50,37 @@ export async function apiError(res: Response): Promise<ApiError> {
 
 /** Replace every `if (!res.ok) throw new Error(...)` with the typed version. */
 
+export type ReactionType = 'like' | 'love' | 'wow' | 'sad' | 'angry';
+
+export interface ReactionCounts {
+  like: number;
+  love: number;
+  wow: number;
+  sad: number;
+  angry: number;
+  total: number;
+}
+
+/** Emoji per type, matching the server's REACTION_EMOJI. */
+export const REACTION_EMOJI: Record<ReactionType, string> = {
+  like: '👍',
+  love: '❤️',
+  wow: '😮',
+  sad: '😢',
+  angry: '😡',
+};
+
+/** Arabic labels for accessibility and the picker. */
+export const REACTION_LABEL: Record<ReactionType, string> = {
+  like: 'إعجاب',
+  love: 'حب',
+  wow: 'اندهاش',
+  sad: 'حزن',
+  angry: 'غضب',
+};
+
+export const REACTION_ORDER: ReactionType[] = ['like', 'love', 'wow', 'sad', 'angry'];
+
 export interface Article {
   id: string;
   title: string;
@@ -62,6 +93,8 @@ export interface Article {
   country: string;
   publishedAt: number;
   isBreaking: boolean;
+  reactions?: ReactionCounts;
+  myReaction?: ReactionType | null;
 }
 
 export async function fetchFeed(limit = 50, offset = 0): Promise<Article[]> {
@@ -304,3 +337,49 @@ export function fullDate(ts: number): string {
   const period = hours < 12 ? 'ص' : 'م';
   return `${d.getDate()} ${AR_MONTHS[d.getMonth()]} ${d.getFullYear()}، ${h12}:${mins} ${period}`;
 }
+
+
+/**
+ * Set or replace the caller's reaction. Throws ApiError (403 when unverified)
+ * so callers can show the verification gate rather than a network message.
+ */
+export async function putReaction(
+  articleId: string,
+  type: ReactionType,
+  token: string,
+): Promise<{ counts: ReactionCounts; myReaction: ReactionType }> {
+  const res = await fetch(`${API_BASE}/api/articles/${encodeURIComponent(articleId)}/reaction`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ type }),
+  });
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as {
+    data: { counts: ReactionCounts; myReaction: ReactionType };
+  };
+  return json.data;
+}
+
+/** Remove the caller's reaction. */
+export async function deleteReaction(
+  articleId: string,
+  token: string,
+): Promise<{ counts: ReactionCounts; myReaction: null }> {
+  const res = await fetch(`${API_BASE}/api/articles/${encodeURIComponent(articleId)}/reaction`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as { data: { counts: ReactionCounts; myReaction: null } };
+  return json.data;
+}
+
+/** Compact count for display: numbers under 1000 verbatim, else 1.2k. */
+export function formatReactionCount(n: number): string {
+  if (n < 1000) return String(n);
+  const thousands = n / 1000;
+  return `${thousands >= 10 ? Math.round(thousands) : thousands.toFixed(1).replace(/\.0$/, '')}k`;
+}
+
+/** Counts are shown only from this threshold, per the design. */
+export const REACTION_DISPLAY_THRESHOLD = 3;
