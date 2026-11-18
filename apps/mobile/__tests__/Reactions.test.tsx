@@ -125,12 +125,22 @@ describe('reaction interaction', () => {
 });
 
 describe('gate: no request for guests or unverified accounts', () => {
-  it('opens the gate and sends nothing when signed out', () => {
+  it('sends nothing and asks for sign-in when the user is a guest', () => {
     mockAuth = { token: null, user: null, emailVerified: false };
-    const onNeed = jest.fn();
-    render(<ReactionsBar t={t} article={article()} onNeedVerification={onNeed} />);
+    const onNeedVerify = jest.fn();
+    const onNeedSignIn = jest.fn();
+    render(
+      <ReactionsBar
+        t={t}
+        article={article()}
+        onNeedVerification={onNeedVerify}
+        onNeedSignIn={onNeedSignIn}
+      />,
+    );
     fireEvent.press(screen.getByLabelText(/إعجاب/));
-    expect(onNeed).toHaveBeenCalled();
+    // A guest has no email to verify, so the sign-in path is the correct one.
+    expect(onNeedSignIn).toHaveBeenCalled();
+    expect(onNeedVerify).not.toHaveBeenCalled();
     expect(mockPut).not.toHaveBeenCalled();
   });
 
@@ -174,6 +184,17 @@ describe('capsule on feed cards', () => {
     );
     fireEvent.press(screen.getByLabelText(/تفاعلات القراء/));
     expect(onPress).toHaveBeenCalled();
+  });
+});
+
+describe('counts come from the server', () => {
+  it('replaces the optimistic count with the server response', async () => {
+    // The server says someone else also reacted, so the truth is 5 not 1.
+    mockPut.mockResolvedValue({ counts: counts({ like: 5, total: 5 }), myReaction: 'like' });
+    render(<ReactionsBar t={t} article={article()} onNeedVerification={jest.fn()} />);
+    fireEvent.press(screen.getByLabelText(/إعجاب/));
+    await waitFor(() => expect(screen.getByText('5')).toBeTruthy());
+    expect(screen.queryByText('1')).toBeNull();
   });
 });
 

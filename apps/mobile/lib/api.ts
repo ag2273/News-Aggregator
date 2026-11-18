@@ -499,3 +499,19 @@ export async function unmute(
   });
   if (!res.ok) throw await apiError(res);
 }
+
+
+/** Fresh reaction counts for one article (public; myReaction when signed in). */
+export async function fetchReactions(
+  articleId: string,
+  token?: string | null,
+): Promise<{ counts: ReactionCounts; myReaction: ReactionType | null }> {
+  const res = await fetch(`${API_BASE}/api/articles/${encodeURIComponent(articleId)}/reactions`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as {
+    data: { counts: ReactionCounts; myReaction: ReactionType | null };
+  };
+  return json.data;
+}

@@ -11,7 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ReactionsBar } from './Reactions';
+import { useAccountGate, AccountGateSheet } from './AccountGate';
 import { shareArticle } from '../lib/share';
+import { fetchReactions, isEmailNotVerified } from '../lib/api';
 import { VerificationGate } from './VerificationGate';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -65,7 +67,8 @@ export function ArticleReader({
 }) {
   const inSheet = variant === 'sheet';
   const isAtTopRef = useRef(true);
-  const { user, token } = useAuth();
+  const { user, token, emailVerified } = useAuth();
+  const gate = useAccountGate();
   const [saved, setSaved] = useState(false);
   const [togglingSaved, setTogglingSaved] = useState(false);
 
@@ -86,8 +89,13 @@ export function ArticleReader({
   }, [token, article.id]);
 
   const handleToggleBookmark = useCallback(async () => {
+    // Guest → sign-in sheet (not the verification one); unverified → verify.
     if (!user || !token) {
-      router.push('/login');
+      gate.openWith('signin');
+      return;
+    }
+    if (!emailVerified) {
+      gate.openWith('verify');
       return;
     }
     if (!article.id || togglingSaved) return;
@@ -100,14 +108,41 @@ export function ArticleReader({
         await saveArticle(article.id, token);
         setSaved(true);
       }
-    } catch {
-      // Keep optimistic or current state
+    } catch (err) {
+      if (isEmailNotVerified(err)) {
+        setSaved(false);
+        gate.openWith('verify');
+      }
+      // Otherwise keep the current state.
     } finally {
       setTogglingSaved(false);
     }
-  }, [user, token, article.id, togglingSaved, saved]);
+  }, [user, token, emailVerified, gate, article.id, togglingSaved, saved]);
 
-  const [verifySheetOpen, setVerifySheetOpen] = useState(false);
+  // Counts shown in the reader come from a fresh fetch, never from the feed
+  // payload the card was rendered with: that payload is a snapshot from when the
+  // feed loaded, possibly fetched as a different account.
+  const [liveArticle, setLiveArticle] = useState(article);
+  useEffect(() => {
+    setLiveArticle(article);
+    if (!article.id) return;
+    let cancelled = false;
+    fetchReactions(article.id, token)
+      .then((r) => {
+        if (cancelled) return;
+        setLiveArticle((current) => ({
+          ...current,
+          reactions: r.counts,
+          myReaction: r.myReaction,
+        }));
+      })
+      .catch(() => {
+        /* keep the snapshot; the bar still works with the server response */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [article, token]);
 
   const handleScroll = useCallback(
     (e: { nativeEvent: { contentOffset: { y: number } } }) => {
@@ -268,7 +303,12 @@ export function ArticleReader({
         )}
 
         {/* تفاعلات القراء — تحت النص وقبل زر القراءة الكاملة */}
-        <ReactionsBar t={t} article={article} onNeedVerification={() => setVerifySheetOpen(true)} />
+        <ReactionsBar
+          t={t}
+          article={liveArticle}
+          onNeedVerification={() => gate.openWith('verify')}
+          onNeedSignIn={() => gate.openWith('signin')}
+        />
 
         {inSheet ? (
           <SafeAreaView
@@ -283,32 +323,7 @@ export function ArticleReader({
         </ScrollView>
       </View>
 
-      {/* بوابة التوثيق لغير الموثّقين */}
-      <Modal
-        visible={verifySheetOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setVerifySheetOpen(false)}
-      >
-        <View style={styles.gateBackdrop}>
-          <View style={[styles.gateSheet, { backgroundColor: t.surface }]}>
-            <TouchableOpacity
-              onPress={() => setVerifySheetOpen(false)}
-              style={styles.gateClose}
-              accessibilityRole="button"
-              accessibilityLabel="إغلاق"
-            >
-              <Ionicons name="close" size={20} color={t.textMuted} />
-            </TouchableOpacity>
-            <VerificationGate
-              t={t}
-              icon="chatbubble-ellipses-outline"
-              title="وثّق بريدك أولاً"
-              subtitle="التفاعل مع الأخبار متاح بعد توثيق بريدك الإلكتروني. افتح الرابط الذي وصلك على بريدك."
-            />
-          </View>
-        </View>
-      </Modal>
+      <AccountGateSheet t={t} gate={gate} />
     </View>
   );
 }

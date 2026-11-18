@@ -16,7 +16,7 @@ import { ReactionsCapsule, ReactionPicker } from './Reactions';
 import { shareArticle } from '../lib/share';
 import { useAuth } from '../lib/auth';
 import { mute } from '../lib/api';
-import { VerificationGate } from './VerificationGate';
+import { useAccountGate, AccountGateSheet } from './AccountGate';
 
 /** Full-width vertical feed card: publisher header → headline → cover image → footer. */
 export function FeedCard({
@@ -33,10 +33,11 @@ export function FeedCard({
   rank?: number;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [gateOpen, setGateOpen] = useState(false);
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [muted, setMuted] = useState(false);
   const { token, emailVerified } = useAuth();
+  const gate = useAccountGate();
 
   return (
     <TouchableOpacity
@@ -100,7 +101,8 @@ export function FeedCard({
           t={t}
           article={article}
           onPress={() => setPickerOpen(true)}
-          onNeedVerification={() => setGateOpen(true)}
+          onNeedVerification={() => gate.openWith('verify')}
+          onNeedSignIn={() => gate.openWith('signin')}
         />
 
         <TouchableOpacity
@@ -131,7 +133,11 @@ export function FeedCard({
               article={article}
               onNeedVerification={() => {
                 setPickerOpen(false);
-                setGateOpen(true);
+                gate.openWith('verify');
+              }}
+              onNeedSignIn={() => {
+                setPickerOpen(false);
+                gate.openWith('signin');
               }}
             />
           </View>
@@ -159,15 +165,19 @@ export function FeedCard({
               style={styles.menuRow}
               onPress={async () => {
                 setMenuOpen(false);
-                if (!token || !emailVerified) {
-                  setGateOpen(true);
+                if (!token) {
+                  gate.openWith('signin');
+                  return;
+                }
+                if (!emailVerified) {
+                  gate.openWith('verify');
                   return;
                 }
                 try {
                   await mute(token, { sourceId: article.sourceId });
                   setMuted(true);
                 } catch {
-                  setGateOpen(true);
+                  gate.open();
                 }
               }}
               accessibilityRole="button"
@@ -181,18 +191,7 @@ export function FeedCard({
         </TouchableOpacity>
       </Modal>
 
-      <Modal visible={gateOpen} transparent animationType="fade" onRequestClose={() => setGateOpen(false)}>
-        <View style={styles.pickerBackdrop}>
-          <View style={[styles.pickerSheet, { backgroundColor: t.surface }]}>
-            <VerificationGate
-              t={t}
-              icon="chatbubble-ellipses-outline"
-              title="وثّق بريدك أولاً"
-              subtitle="التفاعل مع الأخبار متاح بعد توثيق بريدك الإلكتروني. افتح الرابط الذي وصلك على بريدك."
-            />
-          </View>
-        </View>
-      </Modal>
+      <AccountGateSheet t={t} gate={gate} />
     </TouchableOpacity>
   );
 }

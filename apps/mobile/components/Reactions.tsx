@@ -16,10 +16,12 @@
 
 import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useAccountGate } from './AccountGate';
 import type { Theme } from '../constants/colors';
 import { useAuth } from '../lib/auth';
 import {
   deleteReaction,
+  fetchReactions,
   putReaction,
   isEmailNotVerified,
   REACTION_EMOJI,
@@ -46,6 +48,7 @@ export interface ReactionState {
 export function useArticleReactions(
   article: Article,
   onNeedVerification: () => void,
+  onNeedSignIn?: () => void,
 ): {
   state: ReactionState;
   pending: boolean;
@@ -62,9 +65,11 @@ export function useArticleReactions(
 
   const toggle = useCallback(
     (type: ReactionType) => {
-      // No request at all for guests or unverified accounts.
+      // Three states, and no request in either of the first two: a guest has no
+      // account to verify, so the verification sheet (with its resend button)
+      // would be nonsense for them.
       if (!token || !user) {
-        onNeedVerification();
+        (onNeedSignIn ?? onNeedVerification)();
         return;
       }
       if (!emailVerified) {
@@ -89,6 +94,9 @@ export function useArticleReactions(
 
       const call = removing ? deleteReaction(article.id, token) : putReaction(article.id, type, token);
       call
+        // Always trust the server's numbers over the optimistic guess: another
+        // user may have reacted in between, and a stale feed payload must never
+        // become the displayed count.
         .then((result) => setState({ counts: result.counts, myReaction: result.myReaction }))
         .catch((err) => {
           setState(previous); // roll back
@@ -111,12 +119,14 @@ export function ReactionsBar({
   t,
   article,
   onNeedVerification,
+  onNeedSignIn,
 }: {
   t: Theme;
   article: Article;
   onNeedVerification: () => void;
+  onNeedSignIn?: () => void;
 }) {
-  const { state, toast, toggle } = useArticleReactions(article, onNeedVerification);
+  const { state, toast, toggle } = useArticleReactions(article, onNeedVerification, onNeedSignIn);
 
   return (
     <View style={[styles.bar, { borderColor: t.borderLight }]}>
@@ -175,11 +185,13 @@ export function ReactionsCapsule({
   article,
   onPress,
   onNeedVerification,
+  onNeedSignIn,
 }: {
   t: Theme;
   article: Article;
   onPress: () => void;
   onNeedVerification: () => void;
+  onNeedSignIn?: () => void;
 }) {
   const counts = article.reactions ?? EMPTY;
   const mine = article.myReaction ?? null;
@@ -196,7 +208,7 @@ export function ReactionsCapsule({
 
   return (
     <TouchableOpacity
-      onPress={article.myReaction || total > 0 ? onPress : onNeedVerification}
+      onPress={article.myReaction || total > 0 ? onPress : (onNeedSignIn ?? onNeedVerification)}
       style={[
         styles.capsule,
         {
@@ -231,12 +243,14 @@ export function ReactionPicker({
   t,
   article,
   onNeedVerification,
+  onNeedSignIn,
 }: {
   t: Theme;
   article: Article;
   onNeedVerification: () => void;
+  onNeedSignIn?: () => void;
 }) {
-  const { state, toast, toggle } = useArticleReactions(article, onNeedVerification);
+  const { state, toast, toggle } = useArticleReactions(article, onNeedVerification, onNeedSignIn);
 
   return (
     <View>

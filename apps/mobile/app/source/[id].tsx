@@ -29,7 +29,7 @@ import { PublisherAvatar } from '../../components/Publisher';
 import { FloatingDock } from '../../components/FloatingDock';
 import { useArticleSheet } from '../../components/ArticleSheet';
 import { useAuth } from '../../lib/auth';
-import { VerificationGate } from '../../components/VerificationGate';
+import { useAccountGate, AccountGateSheet } from '../../components/AccountGate';
 
 export default function SourceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -41,7 +41,7 @@ export default function SourceScreen() {
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [verifySheetOpen, setVerifySheetOpen] = useState(false);
+  const gate = useAccountGate();
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -87,13 +87,13 @@ export default function SourceScreen() {
   }, [token, id, emailVerified]);
 
   const handleToggleFollow = async () => {
+    // Guest → sign-in sheet; signed in but unverified → verification sheet.
     if (!user || !token) {
-      router.push('/login');
+      gate.openWith('signin');
       return;
     }
-    // Not verified: explain, never fire a request that would 403.
     if (!emailVerified) {
-      setVerifySheetOpen(true);
+      gate.openWith('verify');
       return;
     }
     if (!id || toggling) return;
@@ -110,7 +110,7 @@ export default function SourceScreen() {
       // The state may have changed on the server; a gate answer explains itself.
       if (isEmailNotVerified(err)) {
         setFollowed(false);
-        setVerifySheetOpen(true);
+        gate.openWith('verify');
       }
     } finally {
       setToggling(false);
@@ -206,32 +206,7 @@ export default function SourceScreen() {
         <FloatingDock t={t} active="profile" />
       </SafeAreaView>
 
-      {/* Tapping متابعة while unverified explains why instead of failing silently. */}
-      <Modal
-        visible={verifySheetOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setVerifySheetOpen(false)}
-      >
-        <View style={styles.sheetBackdrop}>
-          <View style={[styles.sheet, { backgroundColor: t.surface }]}>
-            <TouchableOpacity
-              onPress={() => setVerifySheetOpen(false)}
-              style={styles.sheetClose}
-              accessibilityRole="button"
-              accessibilityLabel="إغلاق"
-            >
-              <Ionicons name="close" size={20} color={t.textMuted} />
-            </TouchableOpacity>
-            <VerificationGate
-              t={t}
-              icon="bookmark-outline"
-              title="وثّق بريدك أولاً"
-              subtitle="متابعة المصادر متاحة بعد توثيق بريدك. افتح الرابط اللي وصلك على الإيميل."
-            />
-          </View>
-        </View>
-      </Modal>
+      <AccountGateSheet t={t} gate={gate} />
     </LinearGradient>
   );
 }
