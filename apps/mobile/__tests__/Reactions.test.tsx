@@ -74,22 +74,59 @@ beforeEach(() => {
   mockDelete.mockResolvedValue({ counts: counts({}), myReaction: null });
 });
 
-describe('reaction counts visibility', () => {
-  it('hides the number below 3', () => {
+describe('reader shows every count from 1 (user decision 2026-11-19)', () => {
+  it('shows a count of 1', () => {
+    render(<ReactionsBar t={t} article={article({ reactions: counts({ love: 1, total: 1 }) })} onNeedVerification={jest.fn()} />);
+    expect(screen.getByText('1')).toBeTruthy();
+  });
+
+  it('shows a count of 2 (the old rule hid this)', () => {
     render(<ReactionsBar t={t} article={article({ reactions: counts({ love: 2, total: 2 }) })} onNeedVerification={jest.fn()} />);
-    // No numeric label for love (2 < 3).
-    expect(screen.queryByText('2')).toBeNull();
+    expect(screen.getByText('2')).toBeTruthy();
   });
 
-  it('shows the number at 3 or more', () => {
-    render(<ReactionsBar t={t} article={article({ reactions: counts({ love: 3, total: 3 }) })} onNeedVerification={jest.fn()} />);
-    expect(screen.getByText('3')).toBeTruthy();
+  it('shows larger counts as before', () => {
+    render(<ReactionsBar t={t} article={article({ reactions: counts({ love: 24, total: 24 }) })} onNeedVerification={jest.fn()} />);
+    expect(screen.getByText('24')).toBeTruthy();
   });
 
-  it('shows the total in the header', () => {
-    render(<ReactionsBar t={t} article={article({ reactions: counts({ love: 24, like: 18, total: 42 }) })} onNeedVerification={jest.fn()} />);
-    expect(screen.getByText('42 تفاعل')).toBeTruthy();
+  it('still hides a zero count', () => {
+    render(<ReactionsBar t={t} article={article({ reactions: counts({ love: 0, total: 0 }) })} onNeedVerification={jest.fn()} />);
+    expect(screen.queryByText('0')).toBeNull();
   });
+
+  it('shows no total line when there are no reactions', () => {
+    render(<ReactionsBar t={t} article={article()} onNeedVerification={jest.fn()} />);
+    // The section heading «تفاعلات القراء» is always there; the total line is not.
+    expect(screen.getByText('تفاعلات القراء')).toBeTruthy();
+    expect(screen.queryByText(/تفاعل واحد|تفاعلان|تفاعلات$/)).toBeNull();
+    expect(screen.queryByText(/تفاعلاً/)).toBeNull();
+  });
+});
+
+describe('total line uses correct Arabic plural', () => {
+  const cases: Array<[number, string]> = [
+    [1, 'تفاعل واحد'],
+    [2, 'تفاعلان'],
+    [3, '٣ تفاعلات'],
+    [10, '١٠ تفاعلات'],
+    [11, '١١ تفاعلاً'],
+    [42, '٤٢ تفاعلاً'],
+    [103, '١٠٣ تفاعلات'],
+  ];
+
+  for (const [n, expected] of cases) {
+    it(`renders ${n} as ${expected}`, () => {
+      render(
+        <ReactionsBar
+          t={t}
+          article={article({ reactions: counts({ like: n, total: n }) })}
+          onNeedVerification={jest.fn()}
+        />,
+      );
+      expect(screen.getByText(expected)).toBeTruthy();
+    });
+  }
 });
 
 describe('reaction interaction', () => {
@@ -158,6 +195,32 @@ describe('gate: no request for guests or unverified accounts', () => {
   });
 });
 
+describe('capsule keeps the >= 3 threshold', () => {
+  it('shows no number below 3', () => {
+    render(
+      <ReactionsCapsule
+        t={t}
+        article={article({ reactions: counts({ love: 2, total: 2 }) })}
+        onPress={jest.fn()}
+        onNeedVerification={jest.fn()}
+      />,
+    );
+    expect(screen.queryByText('2')).toBeNull();
+  });
+
+  it('shows the number at 3', () => {
+    render(
+      <ReactionsCapsule
+        t={t}
+        article={article({ reactions: counts({ love: 3, total: 3 }) })}
+        onPress={jest.fn()}
+        onNeedVerification={jest.fn()}
+      />,
+    );
+    expect(screen.getByText('3')).toBeTruthy();
+  });
+});
+
 describe('capsule on feed cards', () => {
   it('shows only the top two reactions', () => {
     render(
@@ -206,7 +269,7 @@ describe('props updating after mount (the reader bug)', () => {
     );
 
     expect(screen.getByText('3')).toBeTruthy();
-    expect(screen.getByText('3 تفاعل')).toBeTruthy();
+    expect(screen.getByText('٣ تفاعلات')).toBeTruthy();
   });
 
   it('shows the NEW article counts when a different article reuses the same bar', () => {

@@ -381,8 +381,38 @@ export function formatReactionCount(n: number): string {
   return `${thousands >= 10 ? Math.round(thousands) : thousands.toFixed(1).replace(/\.0$/, '')}k`;
 }
 
-/** Counts are shown only from this threshold, per the design. */
+/**
+ * The feed-card capsule hides small counts to avoid clutter. The article reader
+ * does NOT use this: it shows every count from 1 (see formatReactionTotal).
+ */
 export const REACTION_DISPLAY_THRESHOLD = 3;
+
+/**
+ * Arabic counted-noun form for reactions, which the user asked to be correct:
+ *   1        -> «تفاعل واحد»
+ *   2        -> «تفاعلان»
+ *   3..10    -> «N تفاعلات»
+ *   11+      -> «N تفاعلاً»   (the accusative singular after 11-99)
+ *
+ * Note the 3-10 range uses the plural تفاعلات and 11+ the singular تفاعلاً, per
+ * standard Arabic; 100+ follows the same rule on its last two digits.
+ */
+export function formatReactionTotal(n: number): string | null {
+  if (n <= 0) return null;
+  if (n === 1) return 'تفاعل واحد';
+  if (n === 2) return 'تفاعلان';
+
+  // The counted form depends on the last two digits: 103 behaves like 3.
+  const lastTwo = n % 100;
+  const arabicNumber = toArabicDigits(n);
+  if (lastTwo >= 3 && lastTwo <= 10) return `${arabicNumber} تفاعلات`;
+  return `${arabicNumber} تفاعلاً`;
+}
+
+/** Western digits to Arabic-Indic, matching the rest of the UI. */
+export function toArabicDigits(n: number): string {
+  return String(n).replace(/[0-9]/g, (d) => String.fromCharCode(0x0660 + Number(d)));
+}
 
 
 /** One row of the grouped feed: a single article, or a same-story cluster. */

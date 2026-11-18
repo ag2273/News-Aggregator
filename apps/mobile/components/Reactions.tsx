@@ -29,6 +29,7 @@ import {
   REACTION_ORDER,
   REACTION_DISPLAY_THRESHOLD,
   formatReactionCount,
+  formatReactionTotal,
   type Article,
   type ReactionCounts,
   type ReactionType,
@@ -159,15 +160,16 @@ export function ReactionsBar({
   onNeedSignIn?: () => void;
 }) {
   const { state, toast, toggle } = useArticleReactions(article, onNeedVerification, onNeedSignIn);
+  // Reader rule (user decision): every count from 1, never a bare emoji, plus a
+  // grammatically correct total line. The capsule keeps its own ≥3 threshold.
+  const totalLabel = formatReactionTotal(state.counts.total);
 
   return (
     <View style={[styles.bar, { borderColor: t.borderLight }]}>
       <View style={styles.barHeader}>
         <Text style={[styles.barTitle, { color: t.textSecondary }]}>تفاعلات القراء</Text>
-        {state.counts.total > 0 ? (
-          <Text style={[styles.barTotal, { color: t.textMuted }]}>
-            {`${formatReactionCount(state.counts.total)} تفاعل`}
-          </Text>
+        {totalLabel ? (
+          <Text style={[styles.barTotal, { color: t.textMuted }]}>{totalLabel}</Text>
         ) : null}
       </View>
 
@@ -175,7 +177,8 @@ export function ReactionsBar({
         {REACTION_ORDER.map((type) => {
           const active = state.myReaction === type;
           const count = state.counts[type];
-          const showCount = count >= REACTION_DISPLAY_THRESHOLD;
+          // Reader: show from 1 up (hide only zero).
+          const showCount = count >= 1;
           return (
             <TouchableOpacity
               key={type}
