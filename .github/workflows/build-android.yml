@@ -98,6 +98,19 @@ jobs:
         working-directory: apps/mobile/android
         run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a -Pexpo.useLegacyPackaging=true
 
+      # minifyEnabled is on for release, so without the mapping file Crashlytics
+      # shows obfuscated frames. assembleRelease does not trigger the upload, so
+      # call it explicitly. It needs the google-services config (present) and is
+      # allowed to fail without failing the build: an APK with a less readable
+      # stack trace still beats no APK.
+      - name: Upload Crashlytics mapping (readable stack traces)
+        continue-on-error: true
+        working-directory: apps/mobile/android
+        run: |
+          ./gradlew uploadCrashlyticsMappingFileRelease --no-daemon \
+            -PreactNativeArchitectures=arm64-v8a -Pexpo.useLegacyPackaging=true \
+            || echo "::warning::mapping upload failed — crash stacks may be obfuscated"
+
       - name: Check APK size
         run: |
           APK=apps/mobile/android/app/build/outputs/apk/release/app-release.apk
