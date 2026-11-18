@@ -66,6 +66,11 @@ export function getArticles(limit = 50, offset = 0): Article[] {
     .map(toArticle);
 }
 
+/** Every stored article as an API Article, newest-first (for the grouped feed). */
+export function getFeedArticles(): Article[] {
+  return getAllArticles().map(toArticle);
+}
+
 /**
  * The public feed: newest-first but balanced across sources, so one
  * high-volume outlet cannot fill the page. `total` stays the size of the

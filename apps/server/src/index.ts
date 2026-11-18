@@ -6,6 +6,7 @@ import {
   refreshAll,
   getArticles,
   getBalancedFeed,
+  getFeedArticles,
   withReactions,
   getArticleById,
   getSources,
@@ -46,6 +47,7 @@ import {
   unsaveArticle,
 } from './saved.js';
 import { searchArticles } from './search.js';
+import { groupedFeedPage } from './groupedFeed.js';
 import {
   isValidReaction,
   setReaction,
@@ -704,6 +706,31 @@ app.get('/api/feed', async (c) => {
   const maxParam = Number(c.req.query('max'));
   const maxPerSource = Number.isFinite(maxParam) && maxParam > 0 ? maxParam : undefined;
   const viewerId = extractUserId(c.req.header('Authorization'));
+  const grouped = c.req.query('grouped');
+
+  if (grouped === '1' || grouped === 'true') {
+    // Grouped shape: /api/feed?grouped=1 returns rows that are either an article
+    // or a same-story cluster. The default shape is untouched for compatibility.
+    const ordered = getFeedArticles();
+    const page = groupedFeedPage(ordered, offset, limit, maxPerSource);
+    return c.json({
+      data: page.rows.map((row) =>
+        row.kind === 'article'
+          ? { kind: 'article' as const, article: withReactions(row.article, viewerId) }
+          : {
+              kind: 'cluster' as const,
+              lead: withReactions(row.lead, viewerId),
+              members: row.members.map((m) => withReactions(m, viewerId)),
+              sourceCount: new Set(row.members.map((m) => m.sourceId)).size,
+              isBreaking: row.members.some((m) => m.isBreaking),
+            },
+      ),
+      total: page.totalArticles,
+      totalRows: page.totalRows,
+      grouped: true,
+    });
+  }
+
   const { articles, total } = getBalancedFeed(limit, offset, maxPerSource);
   return c.json({ data: articles.map((a) => withReactions(a, viewerId)), total });
 });
