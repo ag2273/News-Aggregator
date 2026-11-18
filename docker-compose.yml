@@ -19,9 +19,9 @@ services:
       NODE_ENV: production
     volumes:
       - server-data:/data
-      # Firebase service-account key (never in git). Create it on the host at
-      # ./deploy/secrets/fcm-service-account.json; the server reads it from
-      # /data/secrets/fcm-service-account.json and disables push if absent.
+      # Secrets (never in git): the Firebase service-account key and the Resend
+      # API key live in ./deploy/secrets on the host and are mounted read-only.
+      # Missing files disable push / verification email but never crash.
       - ./deploy/secrets:/data/secrets:ro
     restart: unless-stopped
     healthcheck:
