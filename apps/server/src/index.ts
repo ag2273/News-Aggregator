@@ -49,6 +49,20 @@ import {
 import { searchArticles } from './search.js';
 import { groupedFeedPage } from './groupedFeed.js';
 import {
+  ADMIN_USERNAME,
+  aggregateReactions,
+  adminRateState,
+  formatCairo,
+  isPeriod,
+  loadAdminHash,
+  parseBasicAuth,
+  recordAdminFailure,
+  renderAdminCsv,
+  renderAdminPage,
+  verifyAdminPassword,
+  _resetAdminRateLimit,
+} from './adminReactions.js';
+import {
   getPreferences,
   addKeyword,
   removeKeyword,
@@ -71,6 +85,7 @@ import {
   recordReaction,
   REACTION_TYPES,
   REACTION_EMOJI,
+  getAllReactions,
 } from './reactions.js';
 import {
   deleteAccount,
@@ -970,6 +985,104 @@ app.get('/api/search', (c) => {
   const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
   const { articles, total } = searchArticles(q, limit, offset);
   return c.json({ data: articles, total });
+});
+
+// --- Admin: reaction statistics (aggregate counts only) ---
+
+/**
+ * Shared guard for /admin/*: 503 when no hash is configured, 401 with a
+ * WWW-Authenticate challenge when credentials are missing or wrong, 429 after too
+ * many failures. Returns a response to send, or null when the request may proceed.
+ */
+function guardAdmin(c: {
+  req: { header: (n: string) => string | undefined };
+  json: (b: unknown, s: 401 | 429 | 503) => Response;
+}): Response | null {
+  const hash = loadAdminHash();
+  if (!hash) return c.json({ error: 'admin disabled' }, 503);
+
+  const ip =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown';
+  const rate = adminRateState(ip);
+  if (!rate.allowed) {
+    return c.json(
+      { error: 'too many attempts', retryAfterSeconds: Math.ceil(rate.retryAfterMs / 1000) },
+      429,
+    );
+  }
+
+  const creds = parseBasicAuth(c.req.header('authorization'));
+  if (!creds || creds.username !== ADMIN_USERNAME || !verifyAdminPassword(creds.password, hash)) {
+    recordAdminFailure(ip);
+    return c.json({ error: 'unauthorized' }, 401);
+  }
+  return null;
+}
+
+/** The challenge header, needed so browsers prompt. */
+function adminChallenge(c: { header: (n: string, v: string) => void }): void {
+  c.header('WWW-Authenticate', 'Basic realm="admin", charset="UTF-8"');
+  c.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
+}
+
+/** Build the aggregate for the current query string. */
+function adminDataFromQuery(q: Record<string, string | undefined>): ReturnType<typeof aggregateReactions> {
+  const period = isPeriod(q['period']) ? q['period'] : '7d';
+  const sortParam = q['sort'];
+  const sort =
+    sortParam && (REACTION_TYPES as readonly string[]).includes(sortParam)
+      ? (sortParam as (typeof REACTION_TYPES)[number])
+      : 'total';
+  const page = Math.max(1, Number(q['page'] ?? 1) || 1);
+  const articles = getFeedArticles().map((a) => ({
+    id: a.id,
+    title: a.title,
+    url: a.url,
+    sourceName: a.sourceName,
+    publishedAt: a.publishedAt,
+  }));
+  return aggregateReactions(getAllReactions(), articles, { period, sort, page });
+}
+
+app.get('/admin/reactions', (c) => {
+  const denied = guardAdmin(c);
+  if (denied) {
+    if (denied.status === 401) adminChallenge(c);
+    return denied;
+  }
+  adminChallenge(c);
+  const data = adminDataFromQuery({
+    period: c.req.query('period'),
+    sort: c.req.query('sort'),
+    page: c.req.query('page'),
+  });
+  return c.html(renderAdminPage(data));
+});
+
+app.get('/admin/reactions.csv', (c) => {
+  const denied = guardAdmin(c);
+  if (denied) {
+    if (denied.status === 401) adminChallenge(c);
+    return denied;
+  }
+  adminChallenge(c);
+  const data = adminDataFromQuery({
+    period: c.req.query('period'),
+    sort: c.req.query('sort'),
+    page: '1',
+  });
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header(
+    'Content-Disposition',
+    `attachment; filename="reactions-${data.period}-${new Date().toISOString().slice(0, 10)}.csv"`,
+  );
+  return c.body(renderAdminCsv(data));
+});
+
+/** Robots: keep crawlers out of /admin entirely. */
+app.get('/robots.txt', (c) => {
+  c.header('Content-Type', 'text/plain; charset=utf-8');
+  return c.body('User-agent: *\nDisallow: /admin\nAllow: /\n');
 });
 
 app.get('/health', (c) => c.json({ ok: true }));

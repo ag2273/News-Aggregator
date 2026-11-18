@@ -33,8 +33,24 @@ export function isValidReaction(type: unknown): type is ReactionType {
   return typeof type === 'string' && (REACTION_TYPES as readonly string[]).includes(type);
 }
 
-/** articleId -> userId -> type */
-export type ReactionMap = Record<string, Record<string, ReactionType>>;
+/**
+ * articleId -> userId -> the reaction.
+ *
+ * Older records stored a bare type string (no timestamp). They are read as
+ * `updatedAt: 0`, which the admin period filter treats as "unknown, so use the
+ * article's publishedAt" — stated explicitly rather than silently mis-filed.
+ */
+export interface ReactionEntry {
+  type: ReactionType;
+  /** When the reaction was set. 0 means "before timestamps existed". */
+  updatedAt: number;
+}
+export type ReactionMap = Record<string, Record<string, ReactionEntry | ReactionType>>;
+
+/** Read one stored entry, tolerating the legacy bare-string shape. */
+export function entryOf(value: ReactionEntry | ReactionType): ReactionEntry {
+  return typeof value === 'string' ? { type: value, updatedAt: 0 } : value;
+}
 
 /** userId -> timestamps of recent changes (rate limiting). */
 export type RateMap = Record<string, number[]>;
@@ -87,7 +103,8 @@ export function countsFor(articleId: string): ReactionCounts {
   const entry = load().reactions[articleId];
   const counts = emptyCounts();
   if (!entry) return counts;
-  for (const type of Object.values(entry)) {
+  for (const value of Object.values(entry)) {
+    const { type } = entryOf(value);
     counts[type] += 1;
     counts.total += 1;
   }
@@ -97,7 +114,8 @@ export function countsFor(articleId: string): ReactionCounts {
 /** The caller's reaction on an article, or null. */
 export function myReaction(articleId: string, userId: string | null): ReactionType | null {
   if (!userId) return null;
-  return load().reactions[articleId]?.[userId] ?? null;
+  const found = load().reactions[articleId]?.[userId];
+  return found ? entryOf(found).type : null;
 }
 
 /**
@@ -109,10 +127,11 @@ export function setReaction(
   articleId: string,
   userId: string,
   type: ReactionType,
+  now: number = Date.now(),
 ): { counts: ReactionCounts; myReaction: ReactionType } {
   const store = load();
   store.reactions[articleId] ??= {};
-  store.reactions[articleId]![userId] = type;
+  store.reactions[articleId]![userId] = { type, updatedAt: now };
   cache = store;
   save();
   return { counts: countsFor(articleId), myReaction: type };
@@ -183,6 +202,11 @@ export function recordReaction(userId: string, now: number = Date.now()): void {
 /** Total reactions for an article, used by the trending score. */
 export function reactionWeight(articleId: string): number {
   return countsFor(articleId).total;
+}
+
+/** The raw reaction map, for the admin aggregation. Identity stays inside. */
+export function getAllReactions(): ReactionMap {
+  return load().reactions;
 }
 
 export function _resetReactionsCache(): void {
