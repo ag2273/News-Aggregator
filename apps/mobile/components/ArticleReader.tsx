@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ReactionsBar } from './Reactions';
+import { shareArticle } from '../lib/share';
 import { VerificationGate } from './VerificationGate';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -230,9 +231,16 @@ export function ArticleReader({
                 color={saved ? '#FFFFFF' : t.textPrimary}
               />
             </TouchableOpacity>
-            <View style={[styles.sheetIconBtn, { backgroundColor: t.pillInactiveBg }]}>
-              <Ionicons name="share-outline" size={18} color={t.textPrimary} />
-            </View>
+            <TouchableOpacity
+              style={[styles.sheetIconBtn, { backgroundColor: t.pillInactiveBg }]}
+              onPress={() => {
+                shareArticle(article).catch(() => {});
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="مشاركة الخبر"
+            >
+              <Ionicons name="share-social-outline" size={18} color={t.textPrimary} />
+            </TouchableOpacity>
           </View>
         </View>
 

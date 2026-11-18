@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -15,6 +15,7 @@ import { relativeTime } from '../lib/api';
 import { deckStep, swipeOutcome } from '../lib/swipe';
 import { PRELOAD_RADIUS, prefetchWindowCovers } from '../lib/preload';
 import type { Article } from '../lib/api';
+import { shareArticle } from '../lib/share';
 import type { Theme } from '../constants/colors';
 import { PublisherAvatar, PublisherMeta } from './Publisher';
 
@@ -113,7 +114,16 @@ function HeroCard({
         </Text>
         <View style={styles.hintRow}>
           {hint ? <Text style={[styles.hint, { color: t.textMuted }]}>{hint}</Text> : null}
-          <Ionicons name="share-outline" size={17} color={t.textMuted} />
+          <TouchableOpacity
+            onPress={() => {
+              shareArticle(article).catch(() => {});
+            }}
+            style={styles.shareHit}
+            accessibilityRole="button"
+            accessibilityLabel="مشاركة الخبر"
+          >
+            <Ionicons name="share-social-outline" size={18} color={t.textMuted} />
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -509,6 +519,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   image: { width: '100%', height: '100%', borderRadius: 20 },
+  shareHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   metricsBar: {
     flexDirection: 'row',
     alignItems: 'center',

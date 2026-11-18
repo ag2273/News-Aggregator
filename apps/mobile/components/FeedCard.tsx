@@ -13,6 +13,7 @@ import type { Article } from '../lib/api';
 import type { Theme } from '../constants/colors';
 import { PublisherAvatar, PublisherMeta } from './Publisher';
 import { ReactionsCapsule, ReactionPicker } from './Reactions';
+import { shareArticle } from '../lib/share';
 import { VerificationGate } from './VerificationGate';
 
 /** Full-width vertical feed card: publisher header → headline → cover image → footer. */
@@ -91,13 +92,15 @@ export function FeedCard({
 
         <TouchableOpacity
           style={styles.shareBtn}
-          accessibilityLabel="مشاركة"
+          accessibilityRole="button"
+          accessibilityLabel="مشاركة الخبر"
           onPress={(e) => {
-            // Do not open the article when sharing.
+            // Sharing must not also open the article.
             e.stopPropagation?.();
+            shareArticle(article).catch(() => {});
           }}
         >
-          <Ionicons name="share-outline" size={16} color={t.textMuted} />
+          <Ionicons name="share-social-outline" size={18} color={t.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -207,5 +210,5 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   footerText: { fontFamily: 'Cairo_400Regular', fontSize: 12 },
-  shareBtn: { padding: 4 },
+  shareBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });
