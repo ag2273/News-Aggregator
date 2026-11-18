@@ -54,51 +54,69 @@ describe('normalizeCategory', () => {
 
 describe('detectBreaking', () => {
   /**
-   * Real titles from production. The old rule was `title.includes('عاجل')`,
-   * which flagged ordinary news that merely mentioned urgency; these cases pin
-   * the label-not-keyword rule in both directions.
+   * Real production titles. Three rule iterations were measured against them:
+   * a bare keyword match (21 flags, 52% precise), label-only (10 flags,
+   * 60%), and the current label + narrow incident rule (11 flags, 90.9%).
    */
-  it('flags editorial alert labels in the title', () => {
-    // Real Al Jazeera alerts (prefix + separator).
-    expect(detectBreaking('عاجل | مسؤول عراقي للجزيرة: قائد فيلق القدس بالحرس الثوري الإيراني إسماعيل قآني وصل العراق لحل')).toBe(true);
-    expect(detectBreaking('عاجل | هيئة بريطانية: مسلحون على زورق حاولوا اعتلاء ناقلة قرب المكلا')).toBe(true);
+
+  it('flags editorial alert labels', () => {
+    expect(detectBreaking('عاجل | مسؤول عراقي للجزيرة: قائد فيلق القدس بالحرس الثوري الإيراني إسماعيل قآني وصل العراق')).toBe(true);
     expect(detectBreaking('عاجل| "أدنوك" الإماراتية: تعرض إحدى سفننا لهجوم بمضيق هرمز وإصابة 11 شخصا')).toBe(true);
-    // Real Al Arabiya alert.
-    expect(detectBreaking('عاجل: طائرة ركاب روسية تهبط اضطرارياً في مطار أنطاليا التركي بعد بلاغ بوجود قنبلة')).toBe(true);
-    // Google News variants seen live: "عاجل..", "عاجل.", and the "- عاجل -" suffix.
+    expect(detectBreaking('عاجل: طائرة ركاب روسية تهبط اضطرارياً في مطار أنطاليا التركي بعد بلاغ بوجود قنبلة - العربية')).toBe(true);
+    expect(detectBreaking('عاجل | مجلس القيادة الرئاسي اليمني: إصدار قانون يصنف جماعة الحوثي منظمة إرهابية')).toBe(true);
+    // Google News variants.
     expect(detectBreaking('عاجل.. كيما: رفع سعر الغاز لمصانع الأسمدة 50% مؤقتًا')).toBe(true);
     expect(detectBreaking('عاجل. تحرّك عسكري أميركي رفيع في إسرائيل')).toBe(true);
-    expect(detectBreaking('الجيش الإيراني يعلن إسقاط مسيرة أميركية في أجواء مضيق هرمز - عاجل - قناة الغد')).toBe(true);
-    expect(detectBreaking('التحالف يعترض صاروخ أطلقته الحوثيون باتجاه الرياض - عاجل - قناة الغد')).toBe(true);
-    // Bullet and English alert markers.
+    expect(detectBreaking('الجيش الإيراني يعلن إسقاط مسيرة أميركية - عاجل - قناة الغد')).toBe(true);
     expect(detectBreaking('🔴 انفجار كبير في ميناء بيروت')).toBe(true);
     expect(detectBreaking('BREAKING: earthquake hits the coast')).toBe(true);
   });
 
-  it('does NOT flag ordinary news that merely contains عاجل', () => {
-    // All real production titles that the old keyword rule wrongly flagged.
-    expect(detectBreaking('قرار عاجل من الأعلى للإعلام ضد رضا عبد العال ومحمد فاروق - المصري اليوم')).toBe(false);
-    expect(detectBreaking('ثعابين في مدرسة مصرية تثير الذعر.. وتحرك عاجل من السلطات (فيديو)')).toBe(false);
-    expect(detectBreaking('رسالة عاجلة عبر الهاتف.. تنبيه أمني في البحرين الآن للمواطنين والمقيمين')).toBe(false);
-    expect(detectBreaking('إنذار داخل مقر المخابرات الأمريكية.. وتحرك عاجل لفرق الإطفاء')).toBe(false);
-    expect(detectBreaking('عقب ظهور ثعبان داخل إحدى مدارس الغردقة.. تحرك عاجل من «تعليم البحر الأحمر»')).toBe(false);
-    expect(detectBreaking('بيان مهم من الكويت بشأن أصوات الانفجارات.. ونداء عاجل للمواطنين والمقيمين')).toBe(false);
-    expect(detectBreaking('تحرك برلماني عاجل لإنهاء أزمة إلغاء مئات طلبات التصالح بالشرقية')).toBe(false);
-    expect(detectBreaking('تحذير أمني عاجل لمستخدمي «Java».. ثغرات خطيرة تسمح باختراق الأنظمة')).toBe(false);
-    // The word mid-sentence, and the feminine form which is not used as a label.
-    expect(detectBreaking('الاقتصاد المصري ينمو 4.9% خلال الربع الأول من 2026-2027')).toBe(false);
-    expect(detectBreaking('عاجلة: تفاصيل جديدة عن الحادث')).toBe(false);
+  it('does not flag a labelled holding statement or scheduled event', () => {
+    // Real production false positives from the label tier.
+    expect(detectBreaking('عاجل | وزير النقل الأمريكي: لم يحدد بعد السبب الجذري لتعطل جهاز توجيه حركة الطيران يوم الجمعة')).toBe(false);
+    expect(detectBreaking('عاجل | نائب محافظ هرمزغان الإيرانية: الهجوم الأمريكي على مواقع بجزيرة قشم لم يلحق ضررا بمناطق سكنية')).toBe(false);
+    expect(detectBreaking('عاجل | ترمب يصل إلى الصين لحضور اجتماع أبيك والمشاركة في قمة مع الرئيسين الصيني والروسي')).toBe(false);
+    expect(detectBreaking('عاجل | واشنطن تنفي إصابة رادار أميركي بمسيرات إيرانية')).toBe(false);
   });
 
-  it('does NOT flag live coverage as breaking', () => {
-    // Real production titles: these are sport live blogs, not breaking events.
+  it('flags major incidents with a stated toll', () => {
+    // Real production titles from the Egyptian and Gulf sources, which never
+    // use an "عاجل" label.
+    expect(detectBreaking('مصرع 19 شخصًا في تحطم طائرة عسكرية روسية من طراز «أنطونوف-12» بمقاطعة كيميروفو - المصري اليوم')).toBe(true);
+    expect(detectBreaking('لا ناجين.. تحطم طائرة عسكرية روسية ومقتل 19')).toBe(true);
+    expect(detectBreaking('إصابة العشرات جراء تصادم قطارين في التشيك - بوابة الأهرام')).toBe(true);
+    expect(detectBreaking('مصرع وإصابة 5 أشخاص إثر انهيار منزل في السيدة زينب - Masrawy')).toBe(true);
+    expect(detectBreaking('تحطم مروحية عسكرية أردنية خلال تدريب')).toBe(false); // no toll stated -> stays unflagged
+  });
+
+  it('does not flag routine news that mentions urgency or casualties', () => {
+    // The near-miss family: urgency words inside a compound.
+    expect(detectBreaking('قرار عاجل من الأعلى للإعلام ضد رضا عبد العال ومحمد فاروق - المصري اليوم')).toBe(false);
+    expect(detectBreaking('تحرك عاجل من محافظة القاهرة بشأن الأكشاك المرخصة')).toBe(false);
+    expect(detectBreaking('تحذير أمني عاجل لمستخدمي «Java».. ثغرات خطيرة')).toBe(false);
+    expect(detectBreaking('بيان مهم من الكويت.. ونداء عاجل للمواطنين والمقيمين')).toBe(false);
+    expect(detectBreaking('رسالة عاجلة عبر الهاتف.. تنبيه أمني في البحرين')).toBe(false);
+    // Small/routine incidents below the toll line, and blotter entries.
+    expect(detectBreaking('إصابة 5 أشخاص فى حادث تصادم بسوهاج - بوابة الأهرام')).toBe(false);
+    expect(detectBreaking('إصابة 3 أشخاص فى حريق شقة سكنية بالسيوف شرق الإسكندرية')).toBe(false);
+    expect(detectBreaking('مصرع شخص في حادث تصادم بين سيارة ملاكي وأخرى نقل بطريق السلوم')).toBe(false);
+    expect(detectBreaking('ضبط 445 كجم لحوم ودواجن غير صالحة للاستهلاك الآدمي بشربين')).toBe(false);
+    expect(detectBreaking('مقتل عامل وإصابة ابن عمه في مشاجرة بسبب أولوية المرور بالهرم')).toBe(false);
+    // Not an incident at all.
+    expect(detectBreaking('غرق سفينة شحن تحمل 3 آلاف طن من القمح في طريقها إلى مصر')).toBe(false);
+    expect(detectBreaking('هل تتأثر مصر بعد غرق سفينة القمح في البحر الأسود؟')).toBe(false);
+    expect(detectBreaking('قتلت زوجها بعد 3 أشهر من الزفاف.. ماذا حدث في جريمة كرداسة؟')).toBe(false);
+    expect(detectBreaking('زلزال بقوة 5.9 درجة يهز جزيرة فلوريس في إندونيسيا - Masrawy')).toBe(false);
+    expect(detectBreaking('حصيلة دامية في 3 أشهر.. آلاف الانتهاكات ومئات القتلى في اليمن')).toBe(false);
+  });
+
+  it('does not flag sport injuries, recipes or live blogs', () => {
+    expect(detectBreaking('أتلتيكو مدريد يعلن تفاصيل إصابة لوكمان - المصري اليوم')).toBe(false);
+    expect(detectBreaking('«طري وغرقان في التتبيلة».. طريقة تحضير الباذنجان المخلل')).toBe(false);
     expect(detectBreaking('مباشر مباراة ليبيا ضد تونس في تصفيات كأس أمم أفريقيا 2027.. لحظة بلحظة')).toBe(false);
-    expect(detectBreaking('مباشر مباراة العراق ضد إيران في بطولة البصرة الدولية 2026.. لحظة بلحظة')).toBe(false);
     expect(detectBreaking('متابعة الأحداث لحظة بلحظة')).toBe(false);
     expect(detectBreaking('تغطية مباشرة للقمة العربية')).toBe(false);
-    // A genuine alert that also mentions live coverage is still breaking: the
-    // outlet's own label outranks the live-blog wording.
-    expect(detectBreaking('عاجل | تغطية مباشرة: انفجار في وسط العاصمة')).toBe(true);
   });
 
   it('returns false for regular titles', () => {

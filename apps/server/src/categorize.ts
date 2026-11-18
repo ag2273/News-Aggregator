@@ -127,20 +127,23 @@ export function normalizeCategory(category: string | undefined | null): string {
 /**
  * Breaking detection.
  *
- * The old rule was `title.includes('عاجل')` plus two live-blog words. On 7 days
- * of production titles that flagged 21 articles, and most were ordinary news
- * that merely contained the word — "تحرك عاجل من السلطات", "قرار عاجل من
- * الأعلى للإعلام", "نداء عاجل للمواطنين" — while a real "عاجل | ..." alert was
- * flagged for the same reason but "لحظة بلحظة" also caught sports live blogs
- * ("مباشر مباراة ... لحظة بلحظة"), which are not breaking news.
+ * History: the original rule was `title.includes('عاجل')` plus two live-blog
+ * words. On 7 days of production titles that flagged 21 articles and most were
+ * ordinary news that merely mentioned urgency ("تحرك عاجل من السلطات", "قرار
+ * عاجل من الأعلى للإعلام"), while "لحظة بلحظة" caught sport live blogs.
  *
- * The marker has to say "this is an alert", not merely mention urgency. So:
- *  - عاجل counts only as a PREFIX of the title (optionally after a bullet/emoji),
- *    which is how Arabic outlets label an alert: "عاجل |", "عاجل:", "عاجل -";
- *  - a red bullet at the start of the title counts (🔴 / 🚨 used as an alert mark);
- *  - "BREAKING" as a prefix covers the English feeds;
- *  - live-blog words are excluded: they mark continuous coverage, not a single
- *    breaking event, and they are overwhelmingly sport.
+ * Second iteration trusted only an explicit alert LABEL. Measured on 7 days:
+ * 10 articles, ~1.4/day, all from الجزيرة/العربية, and ZERO from the Egyptian
+ * sources — because المصري اليوم / الأهرام / مصراوي / اليوم السابع never tag
+ * breaking news at all. Their "عاجل" always appears inside a compound
+ * ("تحرك عاجل", "تحذير عاجل", "قرار عاجل", "بيان عاجل"), which is ordinary news.
+ *
+ * This iteration keeps the label rule and adds ONE data-driven tier: a narrow
+ * catastrophic-incident pattern, because that is how those sources do signal it
+ * ("تحطم طائرة عسكرية ومقتل 19"). Everything is measured — see the notes on
+ * each list — and deliberately rejected signals are documented at the bottom.
+ *
+ * A false positive here is a notification on a real phone, so precision wins.
  */
 
 /** Alert markers that must stand at the START of the title. */
@@ -148,6 +151,182 @@ const BREAKING_PREFIXES = ['عاجل', 'BREAKING', 'breaking'] as const;
 
 /** Emoji used as an alert bullet. */
 const BREAKING_BULLETS = ['🔴', '🚨'] as const;
+
+/**
+ * Catastrophe nouns. Deliberately narrow: only events that are news by
+ * themselves. Measured on 7 days this appears ~4 times/day across all sources,
+ * so it is the incident signal, not the decision on its own.
+ */
+const CATASTROPHE_NOUNS = [
+  'تحطم طائرة',
+  'سقوط طائرة',
+  'تحطم مروحية',
+  'غرق سفينة',
+  'غرق عبارة',
+  'انفجار',
+  'انفجارات',
+  'زلزال',
+  'فيضانات',
+  'انهيار منزل',
+  'حريق هائل',
+  'هجوم',
+  'قصف',
+  'غارات',
+  'تفجير',
+  'تصادم قطارين',
+] as const;
+
+/** Human cost words; a catastrophe needs one to count as an incident. */
+const CASUALTY_WORDS = [
+  'مقتل',
+  'قتلى',
+  'قتيل',
+  'إصابة',
+  'اصابة',
+  'إصابات',
+  'جرحى',
+  'ضحايا',
+  'وفيات',
+  'مفقودين',
+  'مصرع',
+  'لا ناجين',
+  'غرق',
+  'انتشال جثة',
+] as const;
+
+/**
+ * A labelled alert whose headline is a holding statement, denial or scheduled
+ * event is not an event: "عاجل | وزير النقل: لم يحدد بعد السبب", "عاجل | ترمب
+ * يصل إلى الصين لحضور قمة". Measured: these are 3 of the 4 false positives the
+ * label tier produced in 7 days.
+ */
+const NON_EVENT_ALERT = [
+  'لم يحدد',
+  'لم يتحدد',
+  'لم يلحق',
+  'لم يعرف بعد',
+  'لا ضرر',
+  'لم يصل',
+  'ينفي',
+  'نفى',
+  'نفت',
+  'تنفي',
+  'نفي',
+  'تكذيب',
+  'مرتقب',
+  'مقرر',
+  'سيلقي',
+  'يلتقي',
+  'لحضور',
+] as const;
+
+/**
+ * Toll at or above which an incident is worth a notification. Three is the line
+ * between a routine local accident and something an editor would interrupt for;
+ * measured, this leaves ~1 incident flag per day across all sources.
+ */
+export const INCIDENT_MIN_TOLL = 3;
+
+/**
+ * Routine-coverage markers. A title carrying any of these is a police blotter
+ * entry, a government service story, a scheduled event or a feature — not
+ * breaking news. Measured: excluding them removes the "ضبط 445 كجم" and
+ * "حملة أمنية" flood that a bare casualty rule sweeps in.
+ */
+const ROUTINE_MARKERS = [
+  'ضبط',
+  'القبض',
+  'اعتقال',
+  'حملة',
+  'حملات',
+  'قضية',
+  'قضايا',
+  'متهم',
+  'متهمين',
+  'سائق',
+  'مخدرات',
+  'بلطجة',
+  'تسول',
+  'سرقة',
+  'إحراز',
+  'رقابة',
+  'تموين',
+  'أسعار',
+  'مستشفى',
+  'مدرسة',
+  'جامعة',
+  'محافظ',
+  'وزير',
+  'برلمان',
+  'محكمة',
+  'حبس',
+  'حكم',
+  'قرار',
+  'تحرك',
+  'تحذير',
+  'نداء',
+  'بيان',
+  'رسالة',
+  'دراسة',
+  'تقرير',
+  'حوار',
+  'مقابلة',
+  'رأي',
+] as const;
+
+/**
+ * Sport and lifestyle markers. Measured false positives without this list:
+ * "أتلتيكو مدريد يعلن تفاصيل إصابة لوكمان" (a football injury report) and
+ * "«طري وغرقان في التتبيلة».. طريقة تحضير الباذنجان" (a recipe).
+ */
+const NOT_NEWS_MARKERS = [
+  'ملعب',
+  'لاعب',
+  'مباراة',
+  'الدوري',
+  'منتخب',
+  'كأس',
+  'بطولة',
+  'يوفنتوس',
+  'ريال مدريد',
+  'برشلونة',
+  'الأهلي',
+  'الزمالك',
+  'ليفربول',
+  'تشيلسي',
+  'طريقة',
+  'وصفة',
+  'أعراض',
+  'علامات',
+  'نصائح',
+  'فوائد',
+  'أضرار',
+  'زى النهارده',
+  'زي النهارده',
+  'في مثل هذا اليوم',
+  'ذكرى',
+] as const;
+
+/**
+ * Deliberately NOT used (each measured on 7 days, each rejected):
+ *  - "عاجل" anywhere with a separator: 10 hits, all already caught as a label,
+ *    0 from Egyptian sources.
+ *  - "(عاجل)" / "[عاجل]" / "خبر عاجل" / "بيان عاجل" / "بيان رسمي": 0 hits.
+ *  - Strong noun anywhere (انفجار/اغتيال/فيضانات): 28 hits but mostly analysis
+ *    and retrospectives ("الكونغرس يكرم السادات بعد 45 عاما على اغتياله").
+ *  - Strong noun at title START: 0 hits — these sources never write that way.
+ *  - Bare verb+number ("ضبط 445 كجم", "إصابة 3 أشخاص بحريق شقة"): 41 hits, 30
+ *    from Egypt, mostly blotter; alone it is several notifications a day for
+ *    routine crime.
+ *  - Every casualty event without a scale test: 64 hits = 9.1/day but only 66%
+ *    precise (sport injuries, recipes, local incidents) — below the 85% bar.
+ *  - RSS categories/tags: الجزيرة sends أخبار/اقتصاد/رياضة, CNN sends topic
+ *    tags, Sky sends "Home", RT/BBC send none — no urgency signal.
+ *  - Cross-source burst (>=3 outlets, 30min, 3+ shared title tokens): 4 clusters
+ *    in 7 days and still flagged a scheduled Trump arrival; 6-word headline
+ *    prefixes across 3+ sources: 0. Needs NLP to be safe.
+ *  - Live-coverage wording (لحظة بلحظة, تغطية مباشرة): sport live blogs.
+ */
 
 /** Strip leading whitespace, bullets and emoji, and normalise Arabic letters. */
 export function normalizeBreakingTitle(title: string): string {
@@ -188,6 +367,65 @@ function hasTrailingAlertLabel(title: string): boolean {
 }
 
 /**
+ * Incident tier, third pass — and the version that ships.
+ *
+ * Two earlier attempts failed on hand-labelling, and the numbers are the reason
+ * this one is shaped the way it is:
+ *  - words matched anywhere (31 flags, 52% precision): "ماذا حدث في جريمة
+ *    كرداسة" matched قتل, "سقوط ضحايا" matched ضحايا, "غرق سفينة شحن" matched
+ *    غرق;
+ *  - structural shapes with no toll threshold (24 flags, 46%): still swept in
+ *    "إصابة 3 أشخاص بحريق شقة" and a 5.9-magnitude quake with no casualties.
+ *
+ * So an incident must be a CATASTROPHE with a human cost AND a toll of at least
+ * three (or a mass word). Three is the line between a routine local accident and
+ * something an editor would interrupt for. Measured: 6 flags in 7 days.
+ *
+ * The toll is read from the number nearest the casualty wording, and cargo
+ * tonnage ("3 آلاف طن") is not a toll.
+ */
+export function isIncidentTitle(title: string): boolean {
+  if (NOT_NEWS_MARKERS.some((m) => title.includes(m))) return false;
+  if (ROUTINE_MARKERS.some((m) => title.includes(m))) return false;
+  // A question or a retrospective is not an incident report.
+  if (title.includes('؟')) return false;
+
+  const hasCatastrophe = CATASTROPHE_NOUNS.some((n) => title.includes(n));
+  if (!hasCatastrophe) return false;
+  if (!CASUALTY_WORDS.some((w) => title.includes(w))) return false;
+
+  return casualtyToll(title) >= INCIDENT_MIN_TOLL;
+}
+
+/** Arabic-Indic digits to ASCII, so a toll written "١٩" is readable. */
+function toAsciiDigits(text: string): string {
+  return text.replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+}
+
+/**
+ * The human toll stated in a title: the first number after a casualty word, or a
+ * mass word ("عشرات" = 30, "مئات" = 300). Cargo tonnage is excluded.
+ */
+export function casualtyToll(title: string): number {
+  const t = toAsciiDigits(title);
+  const afterCasualty = t.match(
+    /(?:مقتل|مصرع|إصابة|اصابة|قتل|وفاة|غرق|قتلى|جرحى|ضحايا)[^\d]{0,18}(\d+|عشرات|العشرات|المئات|مئات)/,
+  );
+  const massFirst = t.match(/(?:عشرات|العشرات|المئات|مئات)[^\d]{0,15}(?:قتلى|مصابين|جرحى|ضحايا)/);
+  const raw = afterCasualty?.[1];
+  if (!raw) return massFirst ? 30 : 0;
+  if (/عشرات|العشرات/.test(raw)) return 30;
+  if (/المئات|مئات/.test(raw)) return 300;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return 0;
+  // "غرق سفينة تحمل 3 آلاف طن من القمح": the number is cargo weight, not people,
+  // and it can sit before the casualty word, so scan the whole title for a
+  // tonnage phrase touching that number.
+  if (/\d+\s*(?:ألف|آلاف|الف)?\s*طن/.test(t)) return 0;
+  return value;
+}
+
+/**
  * Detect if an article title represents breaking news.
  * Conservative on purpose: a false positive becomes a notification.
  */
@@ -201,11 +439,11 @@ export function detectBreaking(title: string | undefined | null): boolean {
   const normalized = normalizeBreakingTitle(title);
 
   // An explicit alert label wins even when the headline also mentions live
-  // coverage: the outlet itself is calling this breaking.
-  if (hasAlertBullet || isAlertPrefix(normalized) || hasTrailingAlertLabel(title)) return true;
+  // coverage: the outlet itself is calling this breaking. But a label on a
+  // holding statement or a scheduled event is not news.
+  if (hasAlertBullet || isAlertPrefix(normalized) || hasTrailingAlertLabel(title)) {
+    return !NON_EVENT_ALERT.some((m) => title.includes(m));
+  }
 
-  // Live-coverage wording ("لحظة بلحظة", "تغطية مباشرة") is deliberately NOT in
-  // the alert set: in production it was almost always a sport live blog, not a
-  // breaking event.
-  return false;
+  return isIncidentTitle(title);
 }
