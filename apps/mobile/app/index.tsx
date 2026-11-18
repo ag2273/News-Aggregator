@@ -11,7 +11,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { fetchFeed, isNetworkFailure } from '../lib/api';
+import { fetchFeed, fetchGroupedFeed, isNetworkFailure } from '../lib/api';
+import { ClusterSheetHost } from '../components/ClusterCard';
+import { useAuth } from '../lib/auth';
 import type { Article } from '../lib/api';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
@@ -46,8 +48,14 @@ function todayLabel(): string {
 export default function FeedScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
   const { open: openSheet } = useArticleSheet();
+  const { token } = useAuth();
 
   const [articles, setArticles] = useState<Article[]>([]);
+  /** articleId -> distinct outlet count, and the members, for the deck CTA. */
+  const [clusterArticle, setClusterArticle] = useState<Article | null>(null);
+  const [clusters, setClusters] = useState<
+    Record<string, { sourceCount: number; members: Article[] }>
+  >({});
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [deckIndex, setDeckIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -61,6 +69,22 @@ export default function FeedScreen() {
     try {
       const offset = replace ? 0 : offsetRef.current;
       const data = await fetchFeed(PAGE_SIZE, offset);
+      // Cluster membership is a second, additive request: the deck renders the
+      // same articles, and anything that fails here simply means "no badges".
+      fetchGroupedFeed(PAGE_SIZE, offset, token)
+        .then((grouped) => {
+          const next: Record<string, { sourceCount: number; members: Article[] }> = {};
+          for (const row of grouped.rows) {
+            if (row.kind !== 'cluster') continue;
+            next[row.lead.id] = { sourceCount: row.sourceCount, members: row.members };
+            // Members share the badge, so whichever one is front still shows it.
+            for (const m of row.members) {
+              next[m.id] = { sourceCount: row.sourceCount, members: row.members };
+            }
+          }
+          setClusters((prev) => ({ ...prev, ...next }));
+        })
+        .catch(() => {});
       if (replace) {
         setArticles(data);
         offsetRef.current = data.length;
@@ -186,15 +210,27 @@ export default function FeedScreen() {
               لا توجد أخبار في هذا التصنيف
             </Text>
           ) : (
-            <HeroDeck
-              articles={shown}
-              index={Math.min(deckIndex, shown.length - 1)}
-              onIndexChange={setDeckIndex}
-              onNearEnd={loadMore}
-              t={t}
-              onPress={openArticle}
-              onPressSource={openSource}
-            />
+            <>
+              <HeroDeck
+                articles={shown}
+                index={Math.min(deckIndex, shown.length - 1)}
+                onIndexChange={setDeckIndex}
+                onNearEnd={loadMore}
+                t={t}
+                onPress={openArticle}
+                onPressSource={openSource}
+                clusterSources={Object.fromEntries(
+                  Object.entries(clusters).map(([id, c]) => [id, c.sourceCount]),
+                )}
+                onPressCluster={(a) => setClusterArticle(a)}
+              />
+              <ClusterSheetHost
+                t={t}
+                article={clusterArticle}
+                members={clusterArticle ? clusters[clusterArticle.id]?.members : undefined}
+                onClose={() => setClusterArticle(null)}
+              />
+            </>
           )}
         </View>
 

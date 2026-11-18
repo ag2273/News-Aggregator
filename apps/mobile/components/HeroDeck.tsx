@@ -50,6 +50,8 @@ function HeroCard({
   t,
   hint,
   onPressSource,
+  clusterCount,
+  onPressCluster,
 }: {
   article: Article;
   t: Theme;
@@ -57,6 +59,10 @@ function HeroCard({
   hint?: string;
   /** Only the front card is interactive; neighbours stay inert. */
   onPressSource?: () => void;
+  /** Distinct outlets covering this story (>1 means it is a cluster). */
+  clusterCount?: number;
+  /** Opens the comparison sheet. Only the front card is interactive. */
+  onPressCluster?: () => void;
 }) {
   // Stable source object per article: re-renders must not re-key the image.
   const coverSource = useMemo(
@@ -88,6 +94,23 @@ function HeroCard({
               <Text style={styles.breakingText}>عاجل</Text>
             </View>
           ) : null}
+          {clusterCount && clusterCount > 1 ? (
+            <Pressable
+              onPress={onPressCluster}
+              disabled={!onPressCluster}
+              style={[
+                styles.clusterBadge,
+                { backgroundColor: 'rgba(52, 211, 153, 0.15)', borderColor: 'rgba(52, 211, 153, 0.35)' },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`تغطية من ${clusterCount} مصادر`}
+            >
+              <Ionicons name="layers-outline" size={12} color={t.accent} />
+              <Text style={[styles.clusterBadgeText, { color: t.accent }]}>
+                {`من ${clusterCount}`}
+              </Text>
+            </Pressable>
+          ) : null}
           <View style={[styles.moreBtn, { backgroundColor: t.surfaceSubtle }]}>
             <Ionicons name="ellipsis-vertical" size={16} color={t.textMuted} />
           </View>
@@ -113,6 +136,19 @@ function HeroCard({
           {relativeTime(article.publishedAt)}
         </Text>
         <View style={styles.hintRow}>
+          {clusterCount && clusterCount > 1 && onPressCluster ? (
+            <Pressable
+              onPress={onPressCluster}
+              style={styles.clusterCta}
+              accessibilityRole="button"
+              accessibilityLabel={`عرض تغطية ${clusterCount} مصادر مختلفة`}
+            >
+              <Ionicons name="layers-outline" size={14} color={t.accent} />
+              <Text style={[styles.clusterCtaText, { color: t.accent }]}>
+                {`عرض تغطية ${clusterCount} مصادر مختلفة`}
+              </Text>
+            </Pressable>
+          ) : null}
           {hint ? <Text style={[styles.hint, { color: t.textMuted }]}>{hint}</Text> : null}
           <TouchableOpacity
             onPress={() => {
@@ -137,6 +173,8 @@ export function HeroDeck({
   t,
   onPress,
   onPressSource,
+  clusterSources,
+  onPressCluster,
 }: {
   articles: Article[];
   index: number;
@@ -146,6 +184,10 @@ export function HeroDeck({
   t: Theme;
   onPress: (a: Article) => void;
   onPressSource?: (a: Article) => void;
+  /** articleId -> number of distinct outlets covering the same story. */
+  clusterSources?: Record<string, number>;
+  /** Opens the source-comparison sheet for a clustered story. */
+  onPressCluster?: (a: Article) => void;
 }) {
   const { width } = useWindowDimensions();
   const tx = useSharedValue(0);
@@ -431,6 +473,10 @@ export function HeroDeck({
               t={t}
               hint={isFrontRole(role) ? hint : undefined}
               onPressSource={isFrontRole(role) ? handleSourcePress : undefined}
+              clusterCount={clusterSources?.[a.id]}
+              onPressCluster={
+                isFrontRole(role) && onPressCluster ? () => onPressCluster(a) : undefined
+              }
             />
           </Animated.View>
         ))}
@@ -528,6 +574,18 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   meta: { fontFamily: 'Cairo_600SemiBold', fontSize: 12 },
-  hintRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  hintRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  clusterBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  clusterBadgeText: { fontFamily: 'Cairo_700Bold', fontSize: 11 },
+  clusterCta: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  clusterCtaText: { fontFamily: 'Cairo_600SemiBold', fontSize: 11 },
   hint: { fontFamily: 'Cairo_400Regular', fontSize: 11 },
 });

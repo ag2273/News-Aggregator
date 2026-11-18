@@ -10,7 +10,7 @@ jest.mock('../lib/auth', () => ({
   useAuth: () => ({ token: null, user: null, emailVerified: false, loading: false }),
 }));
 
-import { ClusterCard, ClusterBadge } from '../components/ClusterCard';
+import { ClusterCard, ClusterBadge, ClusterSheetHost } from '../components/ClusterCard';
 import { palette } from '../constants/colors';
 
 const t = palette.dark;
@@ -50,6 +50,33 @@ describe('cluster badge', () => {
     render(<ClusterBadge t={t} count={4} onPress={onPress} />);
     fireEvent.press(screen.getByLabelText('تغطية من 4 مصادر'));
     expect(onPress).toHaveBeenCalled();
+  });
+});
+
+describe('deck sheet host', () => {
+  it('renders nothing when there is no clustered article', () => {
+    render(<ClusterSheetHost t={t} article={null} members={undefined} onClose={jest.fn()} />);
+    expect(screen.queryByText('تغطية القصة من عدة مصادر')).toBeNull();
+  });
+
+  it('renders nothing for a single-source "cluster"', () => {
+    render(
+      <ClusterSheetHost
+        t={t}
+        article={members[0]!}
+        members={[members[0]!]}
+        onClose={jest.fn()}
+      />,
+    );
+    expect(screen.queryByText('تغطية القصة من عدة مصادر')).toBeNull();
+  });
+
+  it('lists every version when opened from the deck', () => {
+    render(
+      <ClusterSheetHost t={t} article={members[0]!} members={members} onClose={jest.fn()} />,
+    );
+    expect(screen.getByText('تغطية القصة من عدة مصادر')).toBeTruthy();
+    expect(screen.getAllByText('المصري اليوم').length).toBeGreaterThan(0);
   });
 });
 

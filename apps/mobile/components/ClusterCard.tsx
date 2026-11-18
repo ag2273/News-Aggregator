@@ -188,3 +188,61 @@ const styles = StyleSheet.create({
   memberTitle: { fontFamily: 'Cairo_400Regular', fontSize: 13, lineHeight: 21 },
   memberTime: { fontFamily: 'Cairo_400Regular', fontSize: 11, marginTop: 4 },
 });
+
+
+/**
+ * The comparison sheet on its own, for callers that already render the article
+ * somewhere else (the swipe deck). Renders nothing when `article` is null.
+ */
+export function ClusterSheetHost({
+  t,
+  article,
+  members,
+  onClose,
+}: {
+  t: Theme;
+  article: Article | null;
+  members: Article[] | undefined;
+  onClose: () => void;
+}) {
+  if (!article || !members || members.length < 2) return null;
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.backdrop}>
+        <View style={[styles.sheet, { backgroundColor: t.surface }]}>
+          <View style={styles.sheetHeader}>
+            <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>
+              تغطية القصة من عدة مصادر
+            </Text>
+            <TouchableOpacity
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="إغلاق"
+              style={styles.closeBtn}
+            >
+              <Ionicons name="close" size={20} color={t.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.sheetList}>
+            {members.map((m) => (
+              <View key={m.id} style={[styles.member, { borderColor: t.borderLight }]}>
+                <PublisherAvatar name={m.sourceName} size={32} t={t} />
+                <View style={styles.memberText}>
+                  <Text style={[styles.memberSource, { color: t.textSecondary }]}>
+                    {m.sourceName}
+                  </Text>
+                  <Text style={[styles.memberTitle, { color: t.textPrimary }]} numberOfLines={2}>
+                    {m.title}
+                  </Text>
+                  <Text style={[styles.memberTime, { color: t.textMuted }]}>
+                    {relativeTime(m.publishedAt)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}

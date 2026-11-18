@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Article } from './types.js';
+import { clusterArticles } from './cluster.js';
 import {
   getPreferences,
   matchingFollowedKeywords,
@@ -206,6 +207,27 @@ export function shouldPushTo(record: PushRecord, article: Article): boolean {
 
 /** Article ids already sent as a keyword push this process — one per article. */
 const keywordPushedIds = new Set<string>();
+
+/**
+ * Cluster identity already notified this process.
+ *
+ * Several outlets covering one event must produce ONE notification, not one per
+ * outlet. Articles are grouped with the same clustering the feed uses, so the
+ * dedupe key is the cluster's lead article id — and when an article is not in a
+ * cluster, the key is its own id, so behaviour is unchanged.
+ */
+const pushedClusterKeys = new Set<string>();
+
+/** Build a map from article id to a stable cluster key (lead id, or own id). */
+export function clusterKeysFor(articles: Article[]): Map<string, string> {
+  const keys = new Map<string, string>();
+  for (const a of articles) keys.set(a.id, a.id);
+  for (const cluster of clusterArticles(articles)) {
+    if (cluster.members.length < 2) continue;
+    for (const member of cluster.members) keys.set(member.id, cluster.lead.id);
+  }
+  return keys;
+}
 
 /**
  * Pure rule for a keyword push: the article matches a keyword the user follows
@@ -462,10 +484,22 @@ export async function sendPushNotifications(
 
   const jobs: Array<{ article: Article; record: PushRecord }> = [];
   const delivered: string[] = [];
+  const clusterKeys = clusterKeysFor(pushable);
+  /** Cluster keys already claimed in this run, per device. */
+  const claimed = new Set<string>();
+
   for (const article of pushable) {
     const targets = records.filter((r) => shouldPushTo(r, article));
     if (!targets.length) continue;
-    for (const record of targets) jobs.push({ article, record });
+    const clusterKey = clusterKeys.get(article.id) ?? article.id;
+    for (const record of targets) {
+      const claim = `${record.userId}:${clusterKey}`;
+      // One notification per cluster per device: a second outlet reporting the
+      // same event is dropped here rather than buzzing the phone again.
+      if (claimed.has(claim)) continue;
+      claimed.add(claim);
+      jobs.push({ article, record });
+    }
     pushedArticleIds.add(article.id);
     delivered.push(article.id);
   }
@@ -500,6 +534,9 @@ export async function sendPushNotifications(
 
   for (const article of pushable) {
     if (keywordPushedIds.has(article.id)) continue;
+    // Same cluster already notified for this user? Then the story is already on
+    // their phone; do not buzz again for another outlet's copy.
+    const articleClusterKey = clusterKeys.get(article.id) ?? article.id;
     // Devices belong to users; group by user so preferences are read once.
     const byUser = new Map<string, PushRecord[]>();
     for (const record of records) {
@@ -522,6 +559,7 @@ export async function sendPushNotifications(
 
       let sent = false;
       for (const record of userRecords) {
+        if (claimed.has(`${userId}:${articleClusterKey}`)) continue;
         if (!shouldKeywordPush(record, matched, alreadySent.has(`${article.id}:${record.userId}`))) continue;
         const keyword = matched[0]!.label;
         keywordJobs.push({ article, record, keyword });
@@ -554,4 +592,5 @@ export async function sendPushNotifications(
 export function _resetPushedIds(): void {
   pushedArticleIds.clear();
   keywordPushedIds.clear();
+  pushedClusterKeys.clear();
 }

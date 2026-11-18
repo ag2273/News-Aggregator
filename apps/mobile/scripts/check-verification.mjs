@@ -86,12 +86,20 @@ check(
   'tapping متابعة is gated before the request',
   gateInHandler !== -1 && followCall !== -1 && gateInHandler < followCall,
 );
-check('opens the calm sheet', /setVerifySheetOpen\(true\)/.test(sourceScreen));
-check('renders the gate in a sheet', /<Modal[\s\S]{0,1200}<VerificationGate/.test(sourceScreen));
+// The sheet is now the shared three-state AccountGateSheet, which picks sign-in
+// vs verification from the account state; the screen still opens it.
+check('opens the calm sheet', /gate\.openWith\('verify'\)/.test(sourceScreen));
+check(
+  'renders the gate in a sheet',
+  /<AccountGateSheet[^>]*gate=\{gate\}/.test(sourceScreen),
+);
 check('classifies a gate answer in the toggle catch', /isEmailNotVerified\(err\)/.test(sourceScreen));
 check('public article list still loads without the gate', /fetchSourceArticles\(id/.test(sourceScreen));
 // The articles list must not be replaced by the locked state.
-check('article list is not hidden behind the gate', /<VerificationGate/.test(sourceScreen) && /data=\{articles\}/.test(sourceScreen));
+check(
+  'article list is not hidden behind the gate',
+  /<AccountGateSheet/.test(sourceScreen) && /data=\{articles\}/.test(sourceScreen),
+);
 
 console.log('— (b) 403 never produces connection wording —');
 const connectionWording = /تحقق من الاتصال|تحقّق من الاتصال|من الإنترنت/;

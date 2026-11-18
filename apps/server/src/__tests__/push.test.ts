@@ -461,6 +461,49 @@ describe('push: end-to-end sending', () => {
     expect(await sendPushNotifications([fresh], fetchImpl)).toEqual(['fresh-breaking']);
   });
 
+  it('sends ONE notification for a cluster of outlets covering the same story', async () => {
+    registerPushToken('user-1', 'dev-all', 'android');
+    updatePushPrefs('user-1', 'dev-all', { mode: 'all' });
+    // Two outlets, near-identical headlines: one event from the server's view.
+    const a = {
+      ...article(false, 'c1'),
+      sourceId: 'almasry',
+      sourceName: 'المصري اليوم',
+      title: 'اعتماد 5 منشآت صحية بالمنيا ضمن منظومة الجودة وسلامة المرضى',
+      publishedAt: Date.now() - 60_000,
+    };
+    const b = {
+      ...article(false, 'c2'),
+      sourceId: 'youm7',
+      sourceName: 'اليوم السابع',
+      title: 'محافظ المنيا: اعتماد 5 منشآت صحية بالمحافظة ضمن منظومة الجودة وسلامة المرضى',
+      publishedAt: Date.now() - 30_000,
+    };
+    // The device wants every article, so without cluster dedupe both would send.
+    const { fetchImpl, calls } = stubFetch([
+      { status: 200, body: { access_token: 'ya29.test', expires_in: 3600 } },
+      { status: 200, body: { name: 'ok' } },
+      { status: 200, body: { name: 'ok' } },
+    ]);
+    await sendPushNotifications([a, b], fetchImpl);
+    // token exchange + ONE message, not two.
+    expect(calls).toHaveLength(2);
+  });
+
+  it('leaves unrelated articles as separate notifications', async () => {
+    registerPushToken('user-1', 'dev-all', 'android');
+    updatePushPrefs('user-1', 'dev-all', { mode: 'all' });
+    const a = { ...article(false, 'u1'), title: 'اعتماد 5 منشآت صحية بالمنيا ضمن منظومة الجودة', sourceId: 'almasry' };
+    const b = { ...article(false, 'u2'), title: 'أسعار الذهب ترتفع اليوم في مصر بشكل ملحوظ', sourceId: 'youm7' };
+    const { fetchImpl, calls } = stubFetch([
+      { status: 200, body: { access_token: 'ya29.test', expires_in: 3600 } },
+      { status: 200, body: { name: 'ok' } },
+      { status: 200, body: { name: 'ok' } },
+    ]);
+    await sendPushNotifications([a, b], fetchImpl);
+    expect(calls).toHaveLength(3); // token + two messages
+  });
+
   it('never pushes the same article twice in one process', async () => {
     registerPushToken('user-1', 'dev-1', 'android');
     const { fetchImpl, calls } = stubFetch([
