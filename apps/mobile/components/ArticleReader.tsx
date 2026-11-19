@@ -14,6 +14,7 @@ import { ReactionsBar } from './Reactions';
 import { useAccountGate, AccountGateSheet } from './AccountGate';
 import { shareArticle } from '../lib/share';
 import { fetchReactions, isEmailNotVerified } from '../lib/api';
+import { publishReactions, currentRevision } from '../lib/reactionStore';
 import { VerificationGate } from './VerificationGate';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -123,10 +124,14 @@ export function ArticleReader({
   // payload the card was rendered with: that payload is a snapshot from when the
   // feed loaded, possibly fetched as a different account.
   const [liveArticle, setLiveArticle] = useState(article);
+  const fetchFloor = useRef(0);
   useEffect(() => {
     setLiveArticle(article);
     if (!article.id) return;
     let cancelled = false;
+    // Capture the revision BEFORE the request: anything published while it is in
+    // flight (e.g. the user's own reaction) wins over this response.
+    fetchFloor.current = currentRevision();
     fetchReactions(article.id, token)
       .then((r) => {
         if (cancelled) return;
@@ -135,6 +140,9 @@ export function ArticleReader({
           reactions: r.counts,
           myReaction: r.myReaction,
         }));
+        // Share the truth with every card showing this article. The floor stops
+        // a slow fetch from undoing a reaction written while it was in flight.
+        publishReactions(article.id, { counts: r.counts, myReaction: r.myReaction }, fetchFloor.current);
       })
       .catch(() => {
         /* keep the snapshot; the bar still works with the server response */

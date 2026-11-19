@@ -16,6 +16,8 @@ import { router } from 'expo-router';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import { searchArticles, isNetworkFailure, type Article } from '../lib/api';
+import { beginPageFetch, publishPage } from '../lib/reactionPublish';
+import { useAuth } from '../lib/auth';
 import { FeedCard } from '../components/FeedCard';
 import { useArticleSheet } from '../components/ArticleSheet';
 
@@ -25,6 +27,7 @@ const DEBOUNCE_MS = 300;
 export default function SearchScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
   const { open: openSheet } = useArticleSheet();
+  const { token } = useAuth();
 
   const [query, setQuery] = useState('');
   const [articles, setArticles] = useState<Article[]>([]);
@@ -50,7 +53,9 @@ export default function SearchScreen() {
 
     setLoading(true);
     try {
-      const { articles: found, total: count } = await searchArticles(trimmed, 50, 0);
+      const floor = beginPageFetch();
+      const { articles: found, total: count } = await searchArticles(trimmed, 50, 0, token);
+      publishPage(found, floor);
       if (requestId !== requestIdRef.current) return;
       setArticles(found);
       setTotal(count);
@@ -67,7 +72,7 @@ export default function SearchScreen() {
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, []);
+  }, [token]);
 
   // Debounced search; cancels the pending call on every keystroke.
   useEffect(() => {

@@ -97,9 +97,16 @@ export interface Article {
   myReaction?: ReactionType | null;
 }
 
-export async function fetchFeed(limit = 50, offset = 0): Promise<Article[]> {
+/**
+ * Default feed. `token` is optional but must be sent when the caller has one:
+ * without it the server cannot fill `myReaction`, so the card cannot show the
+ * selected state.
+ */
+export async function fetchFeed(limit = 50, offset = 0, token?: string | null): Promise<Article[]> {
   const url = `${API_BASE}/api/feed?limit=${limit}&offset=${offset}`;
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
   if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Article[] };
   return json.data;
@@ -177,8 +184,10 @@ export async function fetchCategories(): Promise<Category[]> {
   return json.data;
 }
 
-export async function fetchTrending(limit = 20): Promise<Article[]> {
-  const res = await fetch(`${API_BASE}/api/trending?limit=${limit}`);
+export async function fetchTrending(limit = 20, token?: string | null): Promise<Article[]> {
+  const res = await fetch(`${API_BASE}/api/trending?limit=${limit}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
   if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Article[] };
   return json.data;
@@ -188,9 +197,11 @@ export async function fetchSourceArticles(
   sourceId: string,
   limit = 50,
   offset = 0,
+  token?: string | null,
 ): Promise<{ source: SourceMeta; articles: Article[] }> {
   const res = await fetch(
     `${API_BASE}/api/sources/${encodeURIComponent(sourceId)}/articles?limit=${limit}&offset=${offset}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
   );
   if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { source: SourceMeta; data: Article[] };
@@ -265,9 +276,11 @@ export async function searchArticles(
   q: string,
   limit = 50,
   offset = 0,
+  token?: string | null,
 ): Promise<{ articles: Article[]; total: number }> {
   const res = await fetch(
     `${API_BASE}/api/search?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
   );
   if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Article[]; total?: number };

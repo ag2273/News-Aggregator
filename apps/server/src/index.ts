@@ -563,7 +563,10 @@ app.get('/api/feed/following', (c) => {
   const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
   const offset = Number(c.req.query('offset') ?? 0);
   const articles = getArticlesByFollowedSources(sourceIds, limit, offset);
-  return c.json({ data: articles, total: articles.length });
+  return c.json({
+    data: articles.map((a) => withReactions(a, userId)),
+    total: articles.length,
+  });
 });
 
 // --- Saved articles routes (Bearer protected) ---
@@ -582,7 +585,7 @@ app.get('/api/saved', (c) => {
     if (a) articles.push(a);
   }
   const page = articles.slice(offset, offset + limit);
-  return c.json({ data: page, total: page.length });
+  return c.json({ data: page.map((a) => withReactions(a, userId)), total: page.length });
 });
 
 app.get('/api/saved/:articleId', (c) => {
@@ -784,8 +787,14 @@ app.get('/api/categories', (c) => {
 
 app.get('/api/trending', (c) => {
   const limit = Math.min(Number(c.req.query('limit') ?? 20), 50);
+  const viewerId = extractUserId(c.req.header('Authorization'));
   const articles = getTrending(limit);
-  return c.json({ data: articles, total: articles.length });
+  // Every list that renders a card carries counts and myReaction; the card is the
+  // same component everywhere, so a list without them shows an empty capsule.
+  return c.json({
+    data: articles.map((a) => withReactions(a, viewerId)),
+    total: articles.length,
+  });
 });
 
 app.get('/api/sources/:id/articles', (c) => {
@@ -795,7 +804,8 @@ app.get('/api/sources/:id/articles', (c) => {
   const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
   const offset = Number(c.req.query('offset') ?? 0);
   const articles = getArticlesBySource(id, limit, offset);
-  return c.json({ data: articles, source });
+  const viewerId = extractUserId(c.req.header('Authorization'));
+  return c.json({ data: articles.map((a) => withReactions(a, viewerId)), source });
 });
 
 // Search across title, summary and source name (Arabic-normalized).
@@ -984,7 +994,8 @@ app.get('/api/search', (c) => {
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50), 1), 200);
   const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
   const { articles, total } = searchArticles(q, limit, offset);
-  return c.json({ data: articles, total });
+  const viewerId = extractUserId(c.req.header('Authorization'));
+  return c.json({ data: articles.map((a) => withReactions(a, viewerId)), total });
 });
 
 // --- Admin: reaction statistics (aggregate counts only) ---

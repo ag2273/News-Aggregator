@@ -28,6 +28,7 @@ import {
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { FeedCard } from '../components/FeedCard';
+import { beginPageFetch, publishPage } from '../lib/reactionPublish';
 import { PublisherAvatar } from '../components/Publisher';
 import { FloatingDock } from '../components/FloatingDock';
 import { useArticleSheet } from '../components/ArticleSheet';
@@ -62,11 +63,13 @@ export default function SourcesScreen() {
     }
     try {
       setError(null);
+      const floor = beginPageFetch();
       const [sourcesList, ids, feedArticles] = await Promise.all([
         fetchSources().catch(() => []),
         fetchFollows(token),
         fetchFollowingFeed(token, 50, 0),
       ]);
+      publishPage(feedArticles, floor);
       setAllSources(sourcesList);
       setFollowedIds(ids);
       setArticles(feedArticles);

@@ -25,6 +25,7 @@ import type { Article, SourceMeta } from '../../lib/api';
 import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { FeedCard } from '../../components/FeedCard';
+import { beginPageFetch, publishPage } from '../../lib/reactionPublish';
 import { PublisherAvatar } from '../../components/Publisher';
 import { FloatingDock } from '../../components/FloatingDock';
 import { useArticleSheet } from '../../components/ArticleSheet';
@@ -46,7 +47,9 @@ export default function SourceScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const res = await fetchSourceArticles(id, 50, 0);
+      const floor = beginPageFetch();
+      const res = await fetchSourceArticles(id, 50, 0, token);
+      publishPage(res.articles, floor);
       setSource(res.source);
       setArticles(res.articles);
       setError(null);
@@ -57,7 +60,7 @@ export default function SourceScreen() {
           : 'تعذّر تحميل أخبار المصدر. حاول مرة أخرى.',
       );
     }
-  }, [id]);
+  }, [id, token]);
 
   useEffect(() => {
     load().finally(() => setLoading(false));

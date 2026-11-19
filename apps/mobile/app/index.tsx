@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { fetchFeed, fetchGroupedFeed, isNetworkFailure } from '../lib/api';
+import { beginPageFetch, publishPage, publishGroupedPage } from '../lib/reactionPublish';
 import { ClusterSheetHost } from '../components/ClusterCard';
 import { useAuth } from '../lib/auth';
 import { useDoubleBackToExit, EXIT_MESSAGE } from '../lib/doubleBack';
@@ -74,11 +75,15 @@ export default function FeedScreen() {
   const load = useCallback(async (replace: boolean) => {
     try {
       const offset = replace ? 0 : offsetRef.current;
-      const data = await fetchFeed(PAGE_SIZE, offset);
+      const floor = beginPageFetch();
+      const data = await fetchFeed(PAGE_SIZE, offset, token);
+      publishPage(data, floor);
       // Cluster membership is a second, additive request: the deck renders the
       // same articles, and anything that fails here simply means "no badges".
+      const groupedFloor = beginPageFetch();
       fetchGroupedFeed(PAGE_SIZE, offset, token)
         .then((grouped) => {
+          publishGroupedPage(grouped.rows, groupedFloor);
           const next: Record<string, { sourceCount: number; members: Article[] }> = {};
           for (const row of grouped.rows) {
             if (row.kind !== 'cluster') continue;
@@ -111,7 +116,9 @@ export default function FeedScreen() {
           : 'تعذّر تحميل الأخبار. حاول مرة أخرى.',
       );
     }
-  }, []);
+    // `token` matters: the feed is public, but the reaction capsule needs the
+    // caller's own reaction. Re-run when the session appears or changes.
+  }, [token]);
 
   useEffect(() => {
     load(true).finally(() => setLoading(false));

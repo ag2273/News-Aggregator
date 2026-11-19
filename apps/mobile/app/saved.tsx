@@ -19,6 +19,7 @@ import type { Theme } from '../constants/colors';
 import { fetchSavedArticles, isEmailNotVerified, isNetworkFailure, type Article } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { FeedCard } from '../components/FeedCard';
+import { beginPageFetch, publishPage } from '../lib/reactionPublish';
 import { FloatingDock } from '../components/FloatingDock';
 import { useArticleSheet } from '../components/ArticleSheet';
 
@@ -43,7 +44,9 @@ export default function SavedScreen() {
     }
     try {
       setError(null);
+      const floor = beginPageFetch();
       const saved = await fetchSavedArticles(token, 50, 0);
+      publishPage(saved, floor);
       setArticles(saved);
     } catch (err) {
       if (isEmailNotVerified(err)) {

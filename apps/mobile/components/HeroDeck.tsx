@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -18,6 +18,8 @@ import type { Article } from '../lib/api';
 import { shareArticle } from '../lib/share';
 import type { Theme } from '../constants/colors';
 import { PublisherAvatar, PublisherMeta } from './Publisher';
+import { ReactionsCapsule, ReactionPicker } from './Reactions';
+import { useAccountGate, AccountGateSheet } from './AccountGate';
 
 const FLY_OUT_MS = 260;
 const SPRING = { damping: 20, stiffness: 200 };
@@ -52,6 +54,7 @@ function HeroCard({
   onPressSource,
   clusterCount,
   onPressCluster,
+  interactive,
 }: {
   article: Article;
   t: Theme;
@@ -63,12 +66,16 @@ function HeroCard({
   clusterCount?: number;
   /** Opens the comparison sheet. Only the front card is interactive. */
   onPressCluster?: () => void;
+  /** Front card only: the neighbour cards must not open their own sheets. */
+  interactive?: boolean;
 }) {
   // Stable source object per article: re-renders must not re-key the image.
   const coverSource = useMemo(
     () => (article.imageUrl ? { uri: article.imageUrl } : undefined),
     [article.imageUrl],
   );
+  const gate = useAccountGate();
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <View style={styles.cardBody}>
@@ -136,6 +143,22 @@ function HeroCard({
           {relativeTime(article.publishedAt)}
         </Text>
         <View style={styles.hintRow}>
+          <View
+            pointerEvents={interactive ? 'auto' : 'none'}
+            // Kept mounted on every card so the footer geometry — and therefore
+            // the image height and the headline's wrap — is identical whether a
+            // card is front or a neighbour. Only the front card is reachable.
+            accessibilityElementsHidden={!interactive}
+            importantForAccessibility={interactive ? 'auto' : 'no-hide-descendants'}
+          >
+            <ReactionsCapsule
+              t={t}
+              article={article}
+              onPress={() => setPickerOpen(true)}
+              onNeedVerification={() => gate.openWith('verify')}
+              onNeedSignIn={() => gate.openWith('signin')}
+            />
+          </View>
           {clusterCount && clusterCount > 1 && onPressCluster ? (
             <Pressable
               onPress={onPressCluster}
@@ -162,6 +185,39 @@ function HeroCard({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Quick reaction picker, only on the front card: the neighbours share the
+          same body but stay inert, so their sheets can never open. */}
+      <Modal
+        visible={pickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickerOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.pickerBackdrop}
+          activeOpacity={1}
+          onPress={() => setPickerOpen(false)}
+        >
+          <View style={[styles.pickerSheet, { backgroundColor: t.surface }]}>
+            <Text style={[styles.pickerTitle, { color: t.textPrimary }]}>تفاعل مع الخبر</Text>
+            <ReactionPicker
+              t={t}
+              article={article}
+              onNeedVerification={() => {
+                setPickerOpen(false);
+                gate.openWith('verify');
+              }}
+              onNeedSignIn={() => {
+                setPickerOpen(false);
+                gate.openWith('signin');
+              }}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <AccountGateSheet t={t} gate={gate} />
     </View>
   );
 }
@@ -471,6 +527,7 @@ export function HeroDeck({
             <HeroCard
               article={a}
               t={t}
+              interactive={isFrontRole(role)}
               hint={isFrontRole(role) ? hint : undefined}
               onPressSource={isFrontRole(role) ? handleSourcePress : undefined}
               clusterCount={clusterSources?.[a.id]}
@@ -588,4 +645,22 @@ const styles = StyleSheet.create({
   clusterCta: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   clusterCtaText: { fontFamily: 'Cairo_600SemiBold', fontSize: 11 },
   hint: { fontFamily: 'Cairo_400Regular', fontSize: 11 },
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 20,
+    paddingBottom: 32,
+    paddingHorizontal: 16,
+  },
+  pickerTitle: {
+    fontFamily: 'Cairo_700Bold',
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
 });

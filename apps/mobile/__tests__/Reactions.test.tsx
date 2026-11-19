@@ -30,6 +30,7 @@ jest.mock('../lib/auth', () => ({
 
 import { ReactionsBar, ReactionsCapsule } from '../components/Reactions';
 import { ApiError } from '../lib/api';
+import { _resetReactionStore } from '../lib/reactionStore';
 import { palette } from '../constants/colors';
 
 const t = palette.dark;
@@ -65,6 +66,9 @@ const counts = (o: Partial<Record<'like' | 'love' | 'wow' | 'sad' | 'angry' | 't
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // A fresh app session per test: the cross-screen reaction store must not leak
+  // one test's server response into the next.
+  _resetReactionStore();
   mockAuth = {
     token: 'session',
     user: { id: 'u1', email: 'r@example.com', emailVerified: true },

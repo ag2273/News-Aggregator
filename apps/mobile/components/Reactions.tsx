@@ -16,7 +16,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useAccountGate } from './AccountGate';
 import type { Theme } from '../constants/colors';
 import { useAuth } from '../lib/auth';
 import {
@@ -34,6 +33,7 @@ import {
   type ReactionCounts,
   type ReactionType,
 } from '../lib/api';
+import { publishReactions, useLiveReactions } from '../lib/reactionStore';
 
 const EMPTY: ReactionCounts = { like: 0, love: 0, wow: 0, sad: 0, angry: 0, total: 0 };
 
@@ -124,6 +124,12 @@ export function useArticleReactions(
         // become the displayed count.
         .then((result) => {
           setState({ counts: result.counts, myReaction: result.myReaction });
+          // Cards on other screens read from here, so a reaction made in the
+          // reader shows on the card behind it without a refetch.
+          publishReactions(article.id, {
+            counts: result.counts,
+            myReaction: result.myReaction,
+          });
           // The response is newer than the props that started this write.
           lastProps.current = {
             id: article.id,
@@ -228,8 +234,30 @@ export function ReactionsCapsule({
   onNeedVerification: () => void;
   onNeedSignIn?: () => void;
 }) {
-  const counts = article.reactions ?? EMPTY;
-  const mine = article.myReaction ?? null;
+  // Live state: the same article can be on screen in a card and in the reader,
+  // and a reaction made in either must show in both.
+  const { counts, myReaction: mine } = useLiveReactions(
+    article.id,
+    article.reactions,
+    article.myReaction ?? null,
+  );
+  const { token, user, emailVerified } = useAuth();
+
+  // The gate decision belongs HERE. The caller's onPress opens the picker; it
+  // must never be replaced by a sheet, because "no counts yet" is the normal
+  // state of a fresh card, not a sign that the user is signed out. That mix-up
+  // sent signed-in verified users to the sign-in sheet from the bare ＋.
+  const handlePress = () => {
+    if (!token || !user) {
+      (onNeedSignIn ?? onNeedVerification)();
+      return;
+    }
+    if (!emailVerified) {
+      onNeedVerification();
+      return;
+    }
+    onPress();
+  };
 
   const top = useMemo(() => {
     const ranked = REACTION_ORDER.filter((type) => counts[type] > 0).sort(
@@ -243,7 +271,7 @@ export function ReactionsCapsule({
 
   return (
     <TouchableOpacity
-      onPress={article.myReaction || total > 0 ? onPress : (onNeedSignIn ?? onNeedVerification)}
+      onPress={handlePress}
       style={[
         styles.capsule,
         {

@@ -14,9 +14,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { fetchTrending, isNetworkFailure } from '../lib/api';
 import type { Article } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import { FeedCard } from '../components/FeedCard';
+import { beginPageFetch, publishPage } from '../lib/reactionPublish';
 import { FloatingDock } from '../components/FloatingDock';
 import { useArticleSheet } from '../components/ArticleSheet';
 
@@ -25,10 +27,14 @@ export default function TrendingScreen() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { token } = useAuth();
 
   const load = useCallback(async () => {
     try {
-      setArticles(await fetchTrending(20));
+      const floor = beginPageFetch();
+      const list = await fetchTrending(20, token);
+      publishPage(list, floor);
+      setArticles(list);
       setError(null);
     } catch (err) {
       setError(
@@ -37,7 +43,7 @@ export default function TrendingScreen() {
           : 'تعذّر تحميل الترند. حاول مرة أخرى.',
       );
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     load().finally(() => setLoading(false));
