@@ -73,6 +73,12 @@ mechanical fixes, no new tier:
 3. tighten the label tier with the markers that caused all 5 false positives
    («ندين»، «ستعالج»، «عن مصادر»، «تهمة»، institutional attribution).
 
+**That 100% is in-sample, not a forecast.** G's markers and nouns were chosen
+while reading this same 3.25-day corpus, so it is scored on the data it was
+tuned on. If G is approved, the ship must include a hold-out check on articles
+fetched after 2026-11-20T21:36Z (the tuning cutoff) before the threshold is
+trusted; report precision over that hold-out window separately.
+
 - The measurement window is still short (3.25 days, and the corpus only starts when
   the volume does). Re-measure after ≥14 days before tuning the toll threshold.
   Rates are per-day figures recomputed from `fetchedAt`, never assumed.
