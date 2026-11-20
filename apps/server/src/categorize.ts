@@ -173,14 +173,6 @@ const CATASTROPHE_NOUNS = [
   'قصف',
   'غارات',
   'تفجير',
-  // Added 2026-11-21 after the hold-out screen: everyday war wording the first
-  // list missed, which left ~1.8 genuinely breaking stories/day unflagged.
-  'هجمات',
-  'إطلاق نار',
-  'اطلاق نار',
-  'مجزرة',
-  'اشتباكات',
-  'ضربات',
   'تصادم قطارين',
 ] as const;
 
@@ -200,11 +192,6 @@ const CASUALTY_WORDS = [
   'لا ناجين',
   'غرق',
   'انتشال جثة',
-  // The verb, not just the noun: "غارات الجيش السوداني تقتل 37 مدنيا" carries
-  // no noun form of a casualty word at all.
-  'تقتل',
-  'أسفر عن مقتل',
-  'سقط',
 ] as const;
 
 /**
@@ -231,17 +218,6 @@ const NON_EVENT_ALERT = [
   'سيلقي',
   'يلتقي',
   'لحضور',
-  // Added 2026-11-21: the exact shapes behind all five label-tier false
-  // positives in the 3.25-day re-measurement — a condemnation, a faction
-  // statement about future channels, a charge sheet, and one specific
-  // second-hand claim. Attribution wording ("عن مسؤولين", "عن مصادر") is NOT
-  // used: it also appears on genuine official-sourced breaking news, and
-  // excluding it cost a real flag.
-  'ندين',
-  'ستعالج',
-  'تهمة',
-  'محكمة العدل',
-  'سئم الحرب',
 ] as const;
 
 /**
@@ -429,10 +405,6 @@ function toAsciiDigits(text: string): string {
 /**
  * The human toll stated in a title: the first number after a casualty word, or a
  * mass word ("عشرات" = 30, "مئات" = 300). Cargo tonnage is excluded.
- *
- * The number is read on EITHER side of the casualty word. Arabic headlines write
- * both "مقتل 19 مدنيا" and "6 قتلى في غزة", and reading only the trailing form
- * scored the second one as zero — a measured miss on 3 of 6 stories.
  */
 export function casualtyToll(title: string): number {
   const t = toAsciiDigits(title);
@@ -440,11 +412,7 @@ export function casualtyToll(title: string): number {
     /(?:مقتل|مصرع|إصابة|اصابة|قتل|وفاة|غرق|قتلى|جرحى|ضحايا)[^\d]{0,18}(\d+|عشرات|العشرات|المئات|مئات)/,
   );
   const massFirst = t.match(/(?:عشرات|العشرات|المئات|مئات)[^\d]{0,15}(?:قتلى|مصابين|جرحى|ضحايا)/);
-  // Leading form: "6 قتلى", "19 مدنيا", "7 مدنيين وإصابة 4".
-  const beforeCasualty = t.match(
-    /(?:^|[^\d])(\d+|عشرات|العشرات|المئات|مئات)\s*(?:شخصا|شخصًا|أشخاص|مدنيا|مدنيين|قتيل|قتلى|مصاب|مصابين|جرحى|ضحايا|عنصر|عناصر|طالب|طالبة|تلميذ|تلميذة|عاملا|عمال)?[^\d]{0,10}(?:مقتل|قتلى|قتيل|مصرع|إصابة|جرحى|ضحايا|وفيات|تقتل)/,
-  );
-  const raw = afterCasualty?.[1] ?? beforeCasualty?.[1];
+  const raw = afterCasualty?.[1];
   if (!raw) return massFirst ? 30 : 0;
   if (/عشرات|العشرات/.test(raw)) return 30;
   if (/المئات|مئات/.test(raw)) return 300;

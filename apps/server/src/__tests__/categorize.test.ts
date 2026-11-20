@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { categorize, normalizeCategory, detectBreaking, casualtyToll, CATEGORIES } from '../categorize.js';
+import { categorize, normalizeCategory, detectBreaking, CATEGORIES } from '../categorize.js';
 
 describe('categorize: title+summary → category id', () => {
   it('classifies tech articles', () => {
@@ -130,84 +130,5 @@ describe('detectBreaking', () => {
     expect(detectBreaking('')).toBe(false);
     expect(detectBreaking(null)).toBe(false);
     expect(detectBreaking(undefined)).toBe(false);
-  });
-
-  // --- Rule G: the 2026-11-21 re-measurement (span 3.25 days, 5,805 rows) ---
-  //
-  // These are real production titles. The first block is the six incidents the
-  // previous rule missed entirely; the second is the five label-tier false
-  // positives it produced. Both lists are why G exists.
-
-  it('G recovers the six war-wording incidents the old rule missed', () => {
-    // The toll reads the number before the casualty word ("3 آخرين", "6 قتلى").
-    expect(
-      detectBreaking('مقتل عنصر أمن سوري وإصابة 3 آخرين في إطلاق نار بريف دمشق'),
-    ).toBe(true);
-    expect(
-      detectBreaking('مقتل 7 مدنيين وإصابة 4 آخرين في هجمات أوكرانية على جمهورية لوغانسك خلال يوم'),
-    ).toBe(true);
-    expect(
-      detectBreaking('مقتل عنصرين من الأمن السوري وإصابة 4 آخرين في إطلاق نار بريف دمشق'),
-    ).toBe(true);
-    expect(detectBreaking('خلاف عائلي ينتهي بمأساة.. مقتل 8 أشخاص في حادث إطلاق نار بدير الزور')).toBe(true);
-    // The verb form, with no casualty noun at all.
-    expect(detectBreaking('مجزرة جديدة في نيالا.. غارات الجيش السوداني تقتل 37 مدنيا')).toBe(true);
-    expect(detectBreaking('6 قتلى في غزة.. غارات إسرائيلية تطال البريج ومخيمي نازحين')).toBe(true);
-  });
-
-  it('G no longer flags the five label-tier false positives', () => {
-    expect(
-      detectBreaking(
-        'عاجل | مراسل الجزيرة: مفوض الحكومة لدى المحكمة العسكرية في لبنان يوجه لـ5 عناصر من حزب الله تهمة تأليف مجموعة مسلحة',
-      ),
-    ).toBe(false);
-    expect(
-      detectBreaking(
-        'عاجل| محكمة العدل الدولية: ندين قوات أمن ميانمار بتهمة قتل آلاف من مسلمي الروهينغا',
-      ),
-    ).toBe(false);
-    expect(
-      detectBreaking(
-        'عاجل | كتائب حزب الله بالعراق: الإشكالات مع رئيس الحكومة ستعالج عبر قنوات خاصة لتفويت الفرصة على الأعداء',
-      ),
-    ).toBe(false);
-    expect(
-      detectBreaking(
-        'عاجل | وول ستريت جورنال عن مصادر: ترمب أخبر كوشنر أثناء عودته من الصين بأن بوتين سئم الحرب ومستعد للتوصل إلى تسوية',
-      ),
-    ).toBe(false);
-    // Known residual: an anonymous-sourced internal outage still reads as an
-    // alert. Kept visible rather than papered over with a headline-specific marker.
-    expect(
-      detectBreaking(
-        'عاجل | سي إن إن عن مصادر: تعطل شبكة بالغة السرية تستخدمها وكالة الأمن القومي الأمريكية في اتصالاتها الداخلية',
-      ),
-    ).toBe(true);
-  });
-
-  it('G keeps its tolerance of attribution wording, which is not a non-event signal', () => {
-    // Excluding "عن مسؤولين"/"عن مصادر" once cost this real flag.
-    expect(
-      detectBreaking(
-        'عاجل | وول ستريت جورنال عن مسؤولين: واشنطن أرسلت منظومة باتريوت إضافية إلى إسرائيل لتعزيز دفاعاتها الصاروخية',
-      ),
-    ).toBe(true);
-  });
-
-  it('reads the toll on either side of the casualty word', () => {
-    expect(casualtyToll('مقتل 19 مدنيا في قصف')).toBe(19);
-    expect(casualtyToll('6 قتلى في غزة')).toBe(6);
-    expect(casualtyToll('إصابة 11 شخصا في هجوم')).toBe(11);
-    expect(casualtyToll('إصابة العشرات جراء تصادم قطارين')).toBe(30);
-    // Cargo weight is still not a toll.
-    expect(casualtyToll('غرق سفينة تحمل 3 آلاف طن من القمح')).toBe(0);
-  });
-
-  it('still refuses the routine incidents that G must not sweep in', () => {
-    expect(detectBreaking('إصابة 3 أشخاص فى حريق شقة سكنية بالسيوف شرق الإسكندرية')).toBe(false);
-    expect(detectBreaking('إصابة 5 أشخاص في حريق داخل شقة سكنية فى الحوامدية - اليوم السابع')).toBe(false);
-    expect(detectBreaking('أسفر عن مقتل 305 مواطنين.. دعاء صلاة الجمعة في شمال سيناء يحيي ذكرى هجوم مسجد الروضة')).toBe(false);
-    expect(detectBreaking('حصيلة جديدة لضحايا غارات سعودية')).toBe(false);
-    expect(detectBreaking('انفجار أسطوانة بوتاجاز داخل مخبز بالشرقية وإصابة شاب')).toBe(false);
   });
 });
