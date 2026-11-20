@@ -116,6 +116,30 @@ export function deleteUser(userId: string): boolean {
   return removed;
 }
 
+/**
+ * Accounts as counts only. The admin stats page must never receive the user
+ * list, so this is the only user accessor it is given.
+ */
+export interface UserCounts {
+  total: number;
+  verified: number;
+  /** day key -> accounts created that day. */
+  signupsByDay: Record<string, number>;
+}
+
+export function userCounts(): UserCounts {
+  const users = load();
+  const signupsByDay: Record<string, number> = {};
+  let verified = 0;
+  for (const u of users) {
+    if (u.emailVerified) verified += 1;
+    if (!Number.isFinite(u.createdAt)) continue;
+    const day = new Date(u.createdAt + 2 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    signupsByDay[day] = (signupsByDay[day] ?? 0) + 1;
+  }
+  return { total: users.length, verified, signupsByDay };
+}
+
 export function toSafeUser(user: StoredUser): SafeUser {
   const safe: SafeUser = {
     id: user.id,

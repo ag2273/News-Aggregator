@@ -24,6 +24,7 @@ import type { Article } from '../lib/api';
 import { sheetDismissOutcome } from '../lib/swipe';
 import { ArticleReader } from './ArticleReader';
 import { WebViewPane } from './WebViewPane';
+import { beaconOpen } from '../lib/analytics';
 
 const SPRING = { damping: 20, stiffness: 200 };
 
@@ -76,6 +77,8 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
       ty.value = sheetHeight + 40;
       setVisible(true);
       ty.value = withTiming(0, { duration: 250 });
+      // One aggregate count for this open; it must never delay the animation.
+      beaconOpen(next.id);
     },
     [sheetHeight, ty],
   );

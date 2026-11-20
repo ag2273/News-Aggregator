@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ArticleSheetProvider } from '../components/ArticleSheet';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { initCrashReporting } from '../lib/crash';
+import { beaconPing } from '../lib/analytics';
 import {
   addNotificationResponseListener,
   addPushTokenRefreshListener,
@@ -30,6 +31,8 @@ function PushTokenSync() {
   const { token, refreshSession } = useAuth();
   useEffect(() => {
     ensureNotificationChannels();
+    // One aggregate "this install is active today" count. Fire and forget.
+    beaconPing();
   }, []);
   useEffect(() => addPushTokenRefreshListener(() => token), [token]);
 

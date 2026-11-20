@@ -14,6 +14,7 @@
 
 import { Share } from 'react-native';
 import type { Article } from './api';
+import { beaconShare } from './analytics';
 
 export const SHARE_VIA = 'عبر تطبيق رئيس التحرير';
 
@@ -45,7 +46,11 @@ export async function shareArticle(article: Pick<Article, 'title' | 'url'>): Pro
       { title: article.title, message: shareMessage(article) },
       { dialogTitle: 'مشاركة الخبر' },
     );
-    return result.action === Share.sharedAction || result.action === Share.dismissedAction;
+    const shown = result.action === Share.sharedAction || result.action === Share.dismissedAction;
+    // Counted only once the sheet actually opened, and only as an aggregate.
+    const id = (article as { id?: string }).id;
+    if (shown && id) beaconShare(id);
+    return shown;
   } catch {
     return false;
   }

@@ -104,6 +104,21 @@ import {
 } from './push.js';
 import type { Article } from './types.js';
 import {
+  recordDevice,
+  recordOpen,
+  recordShare,
+  recordSourceView,
+  recordEvent,
+  recordQuery,
+  recordSignup,
+  beaconRateState,
+  recordBeaconHit,
+  getAnalytics,
+} from './analytics.js';
+import { aggregateStats, renderStatsPage, renderStatsCsv } from './adminStats.js';
+import { userCounts } from './users.js';
+import { getAllArticles } from './db.js';
+import {
   hashPassword,
   verifyPassword,
   createToken,
@@ -204,6 +219,8 @@ app.post('/api/auth/register', async (c) => {
   };
 
   createUser(user);
+  // Aggregate only: no id, email or IP is recorded for this.
+  recordSignup(user.createdAt);
 
   // Send the link without making the user wait: sign-up returns a session even
   // if the mail cannot be sent (the app can resend).
@@ -541,6 +558,7 @@ app.put('/api/follows/:sourceId', (c) => {
   const meta = getSourceMeta(sourceId);
   if (!meta) return c.json({ error: 'source not found' }, 404);
   const sourceIds = followSource(userId, sourceId);
+  recordEvent('follow');
   return c.json({ data: { sourceIds } });
 });
 
@@ -607,6 +625,7 @@ app.put('/api/saved/:articleId', (c) => {
   const article = getArticleById(articleId);
   if (!article) return c.json({ error: 'article not found' }, 404);
   const articleIds = saveArticle(userId, articleId);
+  recordEvent('save');
   return c.json({ data: { ok: true, saved: true, articleIds } });
 });
 
@@ -801,6 +820,7 @@ app.get('/api/sources/:id/articles', (c) => {
   const id = c.req.param('id');
   const source = getSourceMeta(id);
   if (!source) return c.json({ error: 'not found' }, 404);
+  recordSourceView(id);
   const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
   const offset = Number(c.req.query('offset') ?? 0);
   const articles = getArticlesBySource(id, limit, offset);
@@ -922,6 +942,7 @@ app.post('/api/keywords', async (c) => {
     if (result.error === 'duplicate') return c.json({ error: 'already following' }, 409);
     return c.json({ error: 'keyword must be at least 2 characters' }, 400);
   }
+  recordEvent('keyword_follow');
   return c.json({ data: { keywords: result.keywords } });
 });
 
@@ -967,9 +988,11 @@ app.post('/api/mutes', async (c) => {
     return c.json({ error: 'invalid JSON body' }, 400);
   }
   if (typeof body.keyword === 'string') {
+    recordEvent('keyword_mute');
     return c.json({ data: { mutedKeywords: muteKeyword(userId, body.keyword) } });
   }
   if (typeof body.sourceId === 'string') {
+    recordEvent('keyword_mute');
     return c.json({ data: { mutedSources: muteSource(userId, body.sourceId) } });
   }
   return c.json({ error: 'keyword or sourceId is required' }, 400);
@@ -993,6 +1016,8 @@ app.get('/api/search', (c) => {
   const q = c.req.query('q') ?? '';
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50), 1), 200);
   const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
+  // Count the query text only: no user, no IP, and nothing below 2 chars.
+  recordQuery(q);
   const { articles, total } = searchArticles(q, limit, offset);
   const viewerId = extractUserId(c.req.header('Authorization'));
   return c.json({ data: articles.map((a) => withReactions(a, viewerId)), total });
@@ -1094,6 +1119,125 @@ app.get('/admin/reactions.csv', (c) => {
 app.get('/robots.txt', (c) => {
   c.header('Content-Type', 'text/plain; charset=utf-8');
   return c.body('User-agent: *\nDisallow: /admin\nAllow: /\n');
+});
+
+// --- Usage beacon endpoints (unauthenticated, rate-limited, no identity) ---
+
+/**
+ * Shared guard for the beacons: a per-IP budget, plus the day's anonymous
+ * device count. Nothing here reads or stores the caller's account.
+ */
+function guardBeacon(c: {
+  req: { header: (n: string) => string | undefined };
+  json: (b: unknown, s: 429) => Response;
+}): Response | null {
+  const ip =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown';
+  const rate = beaconRateState(ip);
+  if (!rate.allowed) {
+    return c.json({ error: 'too many requests', retryAfterSeconds: Math.ceil(rate.retryAfterMs / 1000) }, 429);
+  }
+  recordBeaconHit(ip);
+  // Count the device for today's DAU. The raw id is hashed and discarded.
+  recordDevice(c.req.header('x-install-id'));
+  return null;
+}
+
+/** POST /api/events/open {articleId} — the reader was opened. */
+app.post('/api/events/open', async (c) => {
+  const denied = guardBeacon(c);
+  if (denied) return denied;
+  let body: { articleId?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (typeof body.articleId !== 'string' || !body.articleId) {
+    return c.json({ error: 'articleId is required' }, 400);
+  }
+  if (!getArticleById(body.articleId)) return c.json({ error: 'article not found' }, 404);
+  recordOpen(body.articleId);
+  return c.json({ ok: true });
+});
+
+/** POST /api/events/share {articleId} — the share sheet was used. */
+app.post('/api/events/share', async (c) => {
+  const denied = guardBeacon(c);
+  if (denied) return denied;
+  let body: { articleId?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (typeof body.articleId !== 'string' || !body.articleId) {
+    return c.json({ error: 'articleId is required' }, 400);
+  }
+  if (!getArticleById(body.articleId)) return c.json({ error: 'article not found' }, 404);
+  recordShare(body.articleId);
+  return c.json({ ok: true });
+});
+
+/** GET /api/events/ping — app start: counts the device for today only. */
+app.get('/api/events/ping', (c) => {
+  const denied = guardBeacon(c);
+  if (denied) return denied;
+  return c.json({ ok: true });
+});
+
+// --- Admin: usage statistics (aggregate counts only) ---
+
+/** Build the aggregate for the current query string. */
+function statsDataFromQuery(q: Record<string, string | undefined>): ReturnType<typeof aggregateStats> {
+  const period = isPeriod(q['period']) ? q['period'] : '7d';
+  const articles = getAllArticles().map((a) => ({
+    id: a.id,
+    title: a.title,
+    url: a.url,
+    sourceName: a.sourceName,
+    sourceId: a.sourceId,
+    category: a.category,
+  }));
+  // Reaction timestamps only; the aggregation never sees a user id.
+  const reactions = Object.entries(getAllReactions()).map(([articleId, entry]) => {
+    const at = Object.values(entry)
+      .map((v) => (typeof v === 'string' ? 0 : v.updatedAt))
+      .filter((ms) => ms > 0);
+    let total = 0;
+    for (const v of Object.values(entry)) {
+      if (typeof v === 'string' || (v && typeof v.type === 'string')) total += 1;
+    }
+    return { articleId, total, at };
+  });
+  return aggregateStats(getAnalytics(), articles, reactions, userCounts(), { period });
+}
+
+app.get('/admin/stats', (c) => {
+  const denied = guardAdmin(c);
+  if (denied) {
+    if (denied.status === 401) adminChallenge(c);
+    return denied;
+  }
+  adminChallenge(c);
+  const data = statsDataFromQuery({ period: c.req.query('period') });
+  return c.html(renderStatsPage(data));
+});
+
+app.get('/admin/stats.csv', (c) => {
+  const denied = guardAdmin(c);
+  if (denied) {
+    if (denied.status === 401) adminChallenge(c);
+    return denied;
+  }
+  adminChallenge(c);
+  const data = statsDataFromQuery({ period: c.req.query('period') });
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header(
+    'Content-Disposition',
+    `attachment; filename="stats-${data.period}-${new Date().toISOString().slice(0, 10)}.csv"`,
+  );
+  return c.body(renderStatsCsv(data));
 });
 
 app.get('/health', (c) => c.json({ ok: true }));

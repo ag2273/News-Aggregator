@@ -363,6 +363,7 @@ export function renderAdminPage(data: AdminData): string {
 
   <div class="toolbar">
     ${periodLinks}
+    <a class="pill" href="/admin/stats?period=${period}">الاستخدام</a>
     <a class="csv" href="/admin/reactions.csv${query({ period, sort: data.sort })}">تنزيل CSV</a>
   </div>
 
