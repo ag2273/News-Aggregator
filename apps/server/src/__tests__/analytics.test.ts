@@ -39,6 +39,7 @@ import {
 } from '../analytics.js';
 import {
   aggregateStats,
+  categoryLabel,
   periodDays,
   reactionRowsFromStore,
   renderStatsPage,
@@ -184,14 +185,20 @@ describe('analytics: counting', () => {
     recordEvent('keyword_follow');
     recordEvent('keyword_mute');
 
-    const data = aggregateStats(getAnalytics(), articleLookup(), [], userCounts(), { period: '24h' });
+    const data = aggregateStats(getAnalytics(), articleLookup(), [], userCounts(), {
+      period: '24h',
+      knownSources: [{ id: 'youm7', name: 'اليوم السابع' }],
+    });
     expect(data.summary.shares).toBe(1);
     expect(data.summary.sourceViews).toBe(2);
     expect(data.summary.saves).toBe(1);
     expect(data.summary.follows).toBe(1);
     expect(data.summary.keywordFollows).toBe(1);
     expect(data.summary.keywordMutes).toBe(1);
-    expect(data.perSource.find((s) => s.id === 'youm7')?.count).toBe(2);
+    // Page views are their own number: the per-source panel counts OPENS, which
+    // is the bug this used to hide (2 page views rendered as "no data").
+    expect(data.summary.sourceViews).toBe(2);
+    expect(data.perSource.find((s) => s.id === 'youm7')?.count).toBe(0);
   });
 
   it('folds article opens into per-category counts', () => {
@@ -490,10 +497,14 @@ describe('admin stats: HTTP', () => {
         body: JSON.stringify({ articleId: 'a1' }),
       });
     expect((await open()).status).toBe(200);
+    // Fill the budget for this IP, then expect a 429. The limiter is keyed by IP
+    // and tests share one, so reset first and leave the budget exhausted only
+    // for the rest of THIS test: every later request must use a fresh IP.
     _resetBeaconRateLimit();
-    // Fill the budget for this (shared) test IP, then expect a 429.
     for (let i = 0; i < BEACON_RATE_LIMIT + 1; i += 1) await open();
     expect((await open()).status).toBe(429);
+    // Do not leak the exhausted budget into other tests.
+    _resetBeaconRateLimit();
   });
 
   it('rejects an open for an article that does not exist', async () => {
@@ -527,7 +538,11 @@ describe('admin stats: HTTP', () => {
   });
 
   it('counts a real search as a query, not as a user', async () => {
-    await app.request('/api/search?q=' + encodeURIComponent('غزة'));
+    // A distinct IP: the beacon limiter is process-wide and keyed by IP, so a
+    // previous test's exhausted budget must not turn this into a 429.
+    await app.request('/api/search?q=' + encodeURIComponent('غزة'), {
+      headers: { 'x-forwarded-for': '203.0.113.77' },
+    });
     const data = aggregateStats(getAnalytics(), articleLookup(), [], userCounts(), { period: '24h' });
     expect(data.summary.searches).toBe(1);
     expect(readAnalyticsRaw()).not.toContain('"user"');
@@ -541,4 +556,95 @@ describe('analytics: salt is unguessable', () => {
     expect(salt).toMatch(/^[0-9a-f]{32}$/);
     expect(salt).not.toBe(crypto.randomBytes(16).toString('hex'));
   });
+
+describe('admin stats: source and category breakdowns', () => {
+  const SOURCES = [
+    { id: 'youm7', name: 'اليوم السابع' },
+    { id: 'aljazeera', name: 'الجزيرة' },
+    { id: 'rt-arabic', name: 'آر تي عربي' },
+  ];
+
+  it('per-source opens equal the sum of the top-article opens for that source', () => {
+    // The live bug: the table showed 2 opens for an RT article while the
+    // per-source panel said there was no data, because it counted page views.
+    const articles = [
+      { id: 'a1', title: 'خبر', url: 'https://x/1', sourceName: 'آر تي عربي', sourceId: 'rt-arabic', category: 'world' },
+      { id: 'a2', title: 'خبر ٢', url: 'https://x/2', sourceName: 'آر تي عربي', sourceId: 'rt-arabic', category: 'world' },
+      { id: 'a3', title: 'خبر ٣', url: 'https://x/3', sourceName: 'الجزيرة', sourceId: 'aljazeera', category: 'egypt' },
+    ];
+    recordOpen('a1');
+    recordOpen('a2');
+    recordOpen('a3');
+    // A source page view must NOT leak into the opens panel.
+    recordSourceView('youm7');
+
+    const data = aggregateStats(getAnalytics(), articles, [], userCounts(), {
+      period: '24h',
+      knownSources: SOURCES,
+    });
+
+    const fromTop = new Map<string, number>();
+    for (const a of data.topArticles) fromTop.set(a.sourceName, (fromTop.get(a.sourceName) ?? 0) + a.opens);
+    const panel = new Map(data.perSource.map((s) => [s.id, s.count]));
+
+    expect(panel.get('rt-arabic')).toBe(2);
+    expect(panel.get('rt-arabic')).toBe(fromTop.get('آر تي عربي'));
+    expect(panel.get('aljazeera')).toBe(1);
+    expect(panel.get('aljazeera')).toBe(fromTop.get('الجزيرة'));
+    // Page views are their own summary field, not opens.
+    expect(data.summary.sourceViews).toBe(1);
+    expect(data.summary.opens).toBe(3);
+  });
+
+  it('lists every configured source, with 0 where it has no opens', () => {
+    recordOpen('a1'); // youm7
+    recordOpen('a2'); // aljazeera
+    const data = aggregateStats(getAnalytics(), articleLookup(), [], userCounts(), {
+      period: '24h',
+      knownSources: SOURCES,
+    });
+    expect(data.perSource).toHaveLength(3);
+    const ids = data.perSource.map((s) => s.id);
+    // The third configured source has no opens at all and must still appear.
+    expect(ids).toEqual(expect.arrayContaining(['youm7', 'aljazeera', 'rt-arabic']));
+    expect(data.perSource.find((s) => s.id === 'rt-arabic')?.count).toBe(0);
+    expect(data.perSource.find((s) => s.id === 'rt-arabic')?.name).toBe('آر تي عربي');
+  });
+
+  it('renders Arabic category names, never the raw id', () => {
+    recordOpen('a1'); // egypt
+    recordOpen('a2'); // world
+    const data = aggregateStats(getAnalytics(), articleLookup(), [], userCounts(), { period: '24h' });
+    const categories = data.perCategory.map((c) => c.name);
+    expect(categories).toContain('مصر');
+    expect(categories).not.toContain('egypt');
+    expect(categories).not.toContain('misc');
+
+    const html = renderStatsPage(data);
+    // The user saw the literal id "misc" before this fix.
+    expect(html).not.toMatch(/>misc</);
+    expect(html).toContain('مصر');
+  });
+
+  it('labels every known category in Arabic', () => {
+    expect(categoryLabel('egypt')).toBe('مصر');
+    expect(categoryLabel('economy')).toBe('اقتصاد');
+    expect(categoryLabel('sports')).toBe('رياضة');
+    expect(categoryLabel('health')).toBe('صحة');
+    expect(categoryLabel('tech')).toBe('تكنولوجيا');
+    expect(categoryLabel('misc')).toBe('منوعات');
+    // An unknown id degrades to itself rather than a wrong label.
+    expect(categoryLabel('world')).toBe('world');
+  });
+
+  it('shows the source breakdown content in the page', () => {
+    recordOpen('a1');
+    const data = aggregateStats(getAnalytics(), articleLookup(), [], userCounts(), { period: '24h' });
+    const html = renderStatsPage(data);
+    expect(html).toContain('فتح حسب المصدر');
+    const panel = html.slice(html.indexOf('فتح حسب المصدر'));
+    expect(panel).toContain('اليوم السابع'); // an article was opened there
+    expect(panel.slice(0, panel.indexOf('فتح حسب التصنيف'))).not.toContain('لا بيانات في هذه الفترة');
+  });
+});
 });

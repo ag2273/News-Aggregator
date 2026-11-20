@@ -6,6 +6,7 @@
 // count before they get here — `aggregateStats` only reads `bucket.dau`.
 
 import type { Period } from './adminReactions.js';
+import { CATEGORIES } from './categorize.js';
 import type { AnalyticsStore } from './analytics.js';
 import { dayKey, dayKeyBefore, KEEP_DAYS, TOP_ARTICLES, TOP_QUERIES } from './analytics.js';
 import type { UserCounts } from './users.js';
@@ -33,6 +34,17 @@ export interface LabeledCount {
   id: string;
   name: string;
   count: number;
+}
+
+/** A source the page always lists, even with no opens. */
+export interface KnownSource {
+  id: string;
+  name: string;
+}
+
+/** Arabic display name for a category id, as /api/categories returns it. */
+export function categoryLabel(id: string): string {
+  return CATEGORIES.find((c) => c.id === id)?.nameAr ?? id;
 }
 
 export interface StatsData {
@@ -150,7 +162,12 @@ export function aggregateStats(
   articles: ArticleLookup[],
   reactions: ReactionRowLookup[],
   users: UserCounts,
-  options: { period?: Period; now?: number } = {},
+  options: {
+    period?: Period;
+    now?: number;
+    /** Every configured source, so the page can show a 0 instead of nothing. */
+    knownSources?: KnownSource[];
+  } = {},
 ): StatsData {
   const period = options.period ?? '7d';
   const now = options.now ?? Date.now();
@@ -160,9 +177,9 @@ export function aggregateStats(
   const fromDay = days[0] ?? toDay;
 
   const byId = new Map(articles.map((a) => [a.id, a]));
-  const sourceNames = new Map(articles.map((a) => [a.sourceId, a.sourceName]));
-  const categoryNames = new Map<string, string>();
-  for (const a of articles) categoryNames.set(a.category, a.category);
+  const knownSources = options.knownSources ?? [];
+  const sourceNames = new Map<string, string>(knownSources.map((s) => [s.id, s.name]));
+  for (const a of articles) sourceNames.set(a.sourceId, a.sourceName);
 
   const opens: Record<string, number> = {};
   const shares: Record<string, number> = {};
@@ -237,23 +254,33 @@ export function aggregateStats(
     };
   });
 
-  const perSource: LabeledCount[] = sortCounts(sourceViews).map(({ id, count }) => ({
+  // Opens per source: fold the SAME open events the top-articles table uses, so
+  // the two views can never disagree. Every configured source is listed, with 0
+  // where it has no opens, so a missing row is not mistaken for missing data.
+  const perSourceMap: Record<string, number> = {};
+  for (const { id } of knownSources) perSourceMap[id] = 0;
+  for (const [id, n] of Object.entries(opens)) {
+    const sourceId = byId.get(id)?.sourceId ?? 'unknown';
+    perSourceMap[sourceId] = (perSourceMap[sourceId] ?? 0) + n;
+  }
+  const perSource: LabeledCount[] = sortCounts(perSourceMap).map(({ id, count }) => ({
     id,
     name: sourceNames.get(id) ?? id,
     count,
   }));
 
-  // Opens per category: fold article opens through each article's category.
+  // Opens per category, with the Arabic display name from CATEGORIES (the same
+  // names /api/categories returns).
   const perCategoryMap: Record<string, number> = {};
   for (const [id, n] of Object.entries(opens)) {
     const category = byId.get(id)?.category ?? 'misc';
     perCategoryMap[category] = (perCategoryMap[category] ?? 0) + n;
   }
-  const perCategory: LabeledCount[] = sortCounts(perCategoryMap).map(({ id, count }) => ({
-    id,
-    name: categoryNames.get(id) ?? id,
-    count,
-  }));
+  const perCategory: LabeledCount[] = Object.keys(perCategoryMap).length
+    ? Object.entries(perCategoryMap)
+        .map(([id, count]) => ({ id, name: categoryLabel(id), count }))
+        .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id))
+    : [];
 
   const topQueries: LabeledCount[] = sortCounts(queries, TOP_QUERIES).map(({ id, count }) => ({
     id,

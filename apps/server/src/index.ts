@@ -1206,7 +1206,11 @@ function statsDataFromQuery(q: Record<string, string | undefined>): ReturnType<t
   }));
   // Reaction timestamps only; the aggregation never sees a user id.
   const reactions = reactionRowsFromStore(getAllReactions());
-  return aggregateStats(getAnalytics(), articles, reactions, userCounts(), { period });
+  return aggregateStats(getAnalytics(), articles, reactions, userCounts(), {
+    period,
+    // All ten outlets, so a source with no opens shows 0 rather than vanishing.
+    knownSources: getSources().map((s) => ({ id: s.id, name: s.name })),
+  });
 }
 
 app.get('/admin/stats', (c) => {
