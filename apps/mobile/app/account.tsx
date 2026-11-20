@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import { useAuth } from '../lib/auth';
+import { openPrivacy } from '../lib/privacyLink';
 import { crashNow } from '../lib/crash';
 import appConfig from '../app.json';
 
@@ -198,6 +199,21 @@ export default function AccountScreen() {
               <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
 
               <TouchableOpacity
+                style={styles.settingsRow}
+                onPress={() => openPrivacy('ar')}
+                accessibilityRole="button"
+                accessibilityLabel="سياسة الخصوصية"
+              >
+                <Ionicons name="shield-checkmark-outline" size={18} color={t.textPrimary} />
+                <Text style={[styles.settingsRowText, { color: t.textPrimary }]}>
+                  سياسة الخصوصية
+                </Text>
+                <Ionicons name="chevron-back" size={16} color={t.textMuted} />
+              </TouchableOpacity>
+
+              <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
+
+              <TouchableOpacity
                 style={[styles.signOutBtn, { borderColor: t.breaking }]}
                 onPress={async () => {
                   await signOut();
@@ -259,6 +275,18 @@ export default function AccountScreen() {
               >
                 <Text style={[styles.secondaryBtnText, { color: t.textPrimary }]}>
                   إنشاء حساب جديد
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.privacyLinkRow}
+                onPress={() => openPrivacy('ar')}
+                accessibilityRole="button"
+                accessibilityLabel="سياسة الخصوصية"
+              >
+                <Ionicons name="shield-checkmark-outline" size={16} color={t.textMuted} />
+                <Text style={[styles.privacyLinkText, { color: t.textMuted }]}>
+                  سياسة الخصوصية
                 </Text>
               </TouchableOpacity>
             </View>
@@ -378,6 +406,14 @@ const styles = StyleSheet.create({
     fontFamily: 'Cairo_600SemiBold',
     fontSize: 15,
   },
+  privacyLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 18,
+  },
+  privacyLinkText: { fontSize: 13 },
   versionText: {
     fontFamily: 'Cairo_400Regular',
     fontSize: 10,

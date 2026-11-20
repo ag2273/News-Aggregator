@@ -17,6 +17,7 @@ import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import { useAuth } from '../lib/auth';
 import { useFormKeyboardAwareness } from '../lib/keyboard';
+import { openPrivacy } from '../lib/privacyLink';
 
 export default function RegisterScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
@@ -192,6 +193,20 @@ export default function RegisterScreen() {
               )}
             </TouchableOpacity>
 
+            {/* Consent line: a real link, kept outside the submit button so the
+                keyboard-avoidance layout and the tap target are unchanged. */}
+            <Text style={[styles.consentText, { color: t.textMuted }]}>
+              بإنشاء حساب أنت توافق على{' '}
+              <Text
+                style={[styles.consentLink, { color: t.accent }]}
+                onPress={() => openPrivacy('ar')}
+                accessibilityRole="link"
+                accessibilityLabel="سياسة الخصوصية"
+              >
+                سياسة الخصوصية
+              </Text>
+            </Text>
+
             {/* Switch to Login */}
             <View style={styles.switchRow}>
               <Text style={[styles.switchPrompt, { color: t.textMuted }]}>
@@ -279,6 +294,13 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   btnDisabled: { opacity: 0.6 },
+  consentText: {
+    fontSize: 12,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  consentLink: { fontSize: 12, lineHeight: 20, fontWeight: '700' },
   submitText: { color: '#FFFFFF', fontFamily: 'Cairo_700Bold', fontSize: 16 },
   switchRow: {
     flexDirection: 'row',

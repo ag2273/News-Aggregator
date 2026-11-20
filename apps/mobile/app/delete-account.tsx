@@ -16,6 +16,7 @@ import { router } from 'expo-router';
 import { palette } from '../constants/colors';
 import type { Theme } from '../constants/colors';
 import { useAuth } from '../lib/auth';
+import { openPrivacy } from '../lib/privacyLink';
 
 /**
  * Account deletion, per Play policy: a destructive action behind an explicit
@@ -160,6 +161,20 @@ export default function DeleteAccountScreen() {
             >
               <Text style={[styles.cancelText, { color: t.textMuted }]}>إلغاء</Text>
             </TouchableOpacity>
+
+            {/* What deletion removes is explained in the policy; link it here so
+                the user can read it before confirming. */}
+            <TouchableOpacity
+              style={styles.privacyRow}
+              onPress={() => openPrivacy('ar')}
+              accessibilityRole="button"
+              accessibilityLabel="سياسة الخصوصية"
+            >
+              <Ionicons name="shield-checkmark-outline" size={15} color={t.textMuted} />
+              <Text style={[styles.privacyText, { color: t.textMuted }]}>
+                اقرأ سياسة الخصوصية قبل الحذف
+              </Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -243,4 +258,12 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   cancelBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 14 },
   cancelText: { fontFamily: 'Cairo_600SemiBold', fontSize: 13 },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 16,
+  },
+  privacyText: { fontSize: 13 },
 });

@@ -283,6 +283,10 @@ export function buildVerificationEmail(link: string): EmailContent {
                   إن لم يعمل الزر، انسخ هذا الرابط في المتصفح:<br />
                   ${link}
                 </p>
+                <p style="margin:16px 0 0;font-size:11px;line-height:20px;color:#94A3B8;">
+                  بإرسال هذه الرسالة نكون جمعنا بريدك لتوثيق الحساب فقط.
+                  اقرأ <a href="https://news.nileorbit.com/privacy" style="color:#10B981;text-decoration:none;">سياسة الخصوصية</a>.
+                </p>
               </td>
             </tr>
           </table>

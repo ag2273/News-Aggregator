@@ -123,6 +123,7 @@ import {
 } from './adminStats.js';
 import { userCounts } from './users.js';
 import { getAllArticles } from './db.js';
+import { privacyCopy, privacyLang, renderPrivacyPage } from './privacy.js';
 import {
   hashPassword,
   verifyPassword,
@@ -480,6 +481,7 @@ app.get('/delete-account', (c) => {
         <li>مش هتقدر ترجع الحساب بعد الحذف.</li>
         <li>لو حابب تحتفظ بحاجة، احفظ روابط المقالات المهمة الأول.</li>
         <li>لأي استفسار: no-reply@nileorbit.com</li>
+        <li>إيه البيانات اللي بنجمعها؟ شوف <a href="/privacy" style="color:#34D399">سياسة الخصوصية</a>.</li>
       </ul>
     </div>
     <script>
@@ -1118,6 +1120,13 @@ app.get('/admin/reactions.csv', (c) => {
     `attachment; filename="reactions-${data.period}-${new Date().toISOString().slice(0, 10)}.csv"`,
   );
   return c.body(renderAdminCsv(data));
+});
+
+/** GET /privacy — the public privacy policy. Indexable on purpose (Play needs a
+ * reachable policy URL), Arabic by default and English at ?lang=en. */
+app.get('/privacy', (c) => {
+  const lang = privacyLang(c.req.query('lang'));
+  return c.html(renderPrivacyPage(privacyCopy(lang)));
 });
 
 /** Robots: keep crawlers out of /admin entirely. */
