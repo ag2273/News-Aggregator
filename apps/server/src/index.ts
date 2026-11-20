@@ -115,7 +115,12 @@ import {
   recordBeaconHit,
   getAnalytics,
 } from './analytics.js';
-import { aggregateStats, renderStatsPage, renderStatsCsv } from './adminStats.js';
+import {
+  aggregateStats,
+  reactionRowsFromStore,
+  renderStatsPage,
+  renderStatsCsv,
+} from './adminStats.js';
 import { userCounts } from './users.js';
 import { getAllArticles } from './db.js';
 import {
@@ -1200,16 +1205,7 @@ function statsDataFromQuery(q: Record<string, string | undefined>): ReturnType<t
     category: a.category,
   }));
   // Reaction timestamps only; the aggregation never sees a user id.
-  const reactions = Object.entries(getAllReactions()).map(([articleId, entry]) => {
-    const at = Object.values(entry)
-      .map((v) => (typeof v === 'string' ? 0 : v.updatedAt))
-      .filter((ms) => ms > 0);
-    let total = 0;
-    for (const v of Object.values(entry)) {
-      if (typeof v === 'string' || (v && typeof v.type === 'string')) total += 1;
-    }
-    return { articleId, total, at };
-  });
+  const reactions = reactionRowsFromStore(getAllReactions());
   return aggregateStats(getAnalytics(), articles, reactions, userCounts(), { period });
 }
 

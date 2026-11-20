@@ -84,6 +84,33 @@ export interface ReactionRowLookup {
   at?: number[];
 }
 
+/**
+ * Flatten the reaction store to per-article rows. Takes only types and
+ * timestamps — the user id keys are dropped here, at the boundary, so no caller
+ * downstream can emit one.
+ *
+ * Legacy entries stored as a bare type string have no timestamp; they count
+ * toward the total and are left out of the daily table (same rule as
+ * /admin/reactions, which falls back to the article's publish time there).
+ */
+export function reactionRowsFromStore(
+  store: Record<string, Record<string, { type: string; updatedAt: number } | string>>,
+): ReactionRowLookup[] {
+  const rows: ReactionRowLookup[] = [];
+  for (const [articleId, entry] of Object.entries(store)) {
+    let total = 0;
+    const at: number[] = [];
+    for (const value of Object.values(entry)) {
+      total += 1;
+      if (typeof value !== 'string' && value && typeof value.updatedAt === 'number' && value.updatedAt > 0) {
+        at.push(value.updatedAt);
+      }
+    }
+    rows.push({ articleId, total, at });
+  }
+  return rows;
+}
+
 const PERIOD_DAYS: Record<Exclude<Period, 'all'>, number> = {
   '24h': 1,
   '7d': 7,

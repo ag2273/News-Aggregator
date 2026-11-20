@@ -37,7 +37,13 @@ import {
   _resetAnalyticsCache,
   getAnalytics,
 } from '../analytics.js';
-import { aggregateStats, periodDays, renderStatsPage, renderStatsCsv } from '../adminStats.js';
+import {
+  aggregateStats,
+  periodDays,
+  reactionRowsFromStore,
+  renderStatsPage,
+  renderStatsCsv,
+} from '../adminStats.js';
 import type { Article } from '../types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -242,6 +248,33 @@ describe('analytics: counting', () => {
     expect(data.summary.reactions).toBe(2);
     const today = data.daily.find((d) => d.day === dayKey(now));
     expect(today?.reactions).toBe(2);
+  });
+});
+
+describe('analytics: reaction rows', () => {
+  it('flattens the real store shape and drops the user keys', () => {
+    const now = Date.now();
+    const rows = reactionRowsFromStore({
+      a1: {
+        'user-1': { type: 'like', updatedAt: now },
+        'user-2': 'wow',
+      },
+      a2: { 'user-3': { type: 'sad', updatedAt: 0 } },
+    });
+    expect(rows).toEqual([
+      { articleId: 'a1', total: 2, at: [now] },
+      { articleId: 'a2', total: 1, at: [] },
+    ]);
+    // No identifier survives the flattening.
+    const json = JSON.stringify(rows);
+    expect(json).not.toContain('user-1');
+    expect(json).not.toContain('user-2');
+    expect(json).not.toContain('user-3');
+  });
+
+  it('counts legacy bare-string entries in the total only', () => {
+    const rows = reactionRowsFromStore({ a1: { u1: 'like', u2: 'like' } });
+    expect(rows[0]).toEqual({ articleId: 'a1', total: 2, at: [] });
   });
 });
 
