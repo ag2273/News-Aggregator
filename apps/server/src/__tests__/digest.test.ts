@@ -434,6 +434,7 @@ describe('digest: building and failure policy', () => {
     expect(res.digest?.items).toHaveLength(1);
     expect(res.digest?.items[0].textSource).toBe('snippet');
   });
+});
 
 describe('digest: cross-source repetition as an importance signal', () => {
   const now = Date.UTC(2026, 10, 21, 12, 0);
@@ -594,4 +595,43 @@ describe('digest: cross-source repetition as an importance signal', () => {
     expect(groups.every((g) => g.sourceCount === 1)).toBe(true);
   });
 });
+
+describe('digest: the single-beat floor', () => {
+  const now = Date.UTC(2026, 10, 21, 12, 0);
+  function art(id: string, sourceId: string, ageMs: number, category = 'egypt'): Article {
+    return {
+      id, title: `خبر ${id}`, summary: 'ملخص', imageUrl: null, url: `https://x/${id}`,
+      sourceId, sourceName: sourceId, category, country: 'EG',
+      publishedAt: now - ageMs, isBreaking: false,
+    };
+  }
+
+  it('guarantees the tech outlets slots when the general papers flood', () => {
+    // The measured shape: every general outlet fills its per-source cap with
+    // fresher stories than the tech ones.
+    const SRC = ['almasry', 'youm7', 'aljazeera', 'skynews-arabia', 'rt-arabic', 'alarabiya', 'ahram', 'cnn-arabic'];
+    const general = SRC.flatMap((s) => Array.from({ length: 4 }, (_, i) => art(`${s}-${i}`, s, i * 1000)));
+    const tech = Array.from({ length: 3 }, (_, i) => art(`t${i}`, 'tech-wd', 600_000 + i * 1000, 'tech'));
+    const pool = selectCandidates([...general, ...tech], { now });
+    expect(pool).toHaveLength(30);
+    expect(pool.filter((a) => a.sourceId === 'tech-wd').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('does not grow the pool, so the AI cost stays flat', () => {
+    const SRC = ['almasry', 'youm7', 'aljazeera', 'skynews-arabia', 'rt-arabic', 'alarabiya', 'ahram', 'cnn-arabic'];
+    const general = SRC.flatMap((s) => Array.from({ length: 4 }, (_, i) => art(`${s}-${i}`, s, i * 1000)));
+    const tech = art('t1', 'tech-wd', 600_000, 'tech');
+    // The tech story replaces a general one: still a 30-item pool, so the AI cost
+    // is identical whether or not the floor kicks in.
+    const pool = selectCandidates([...general, tech], { now, limit: 30 });
+    expect(pool).toHaveLength(30);
+    expect(pool.some((a) => a.sourceId === 'tech-wd')).toBe(true);
+  });
+
+  it('leaves a pool alone when the tech outlets are already present', () => {
+    const SRC = ['tech-wd', 'almasry', 'youm7', 'aljazeera', 'skynews-arabia', 'rt-arabic', 'alarabiya', 'ahram'];
+    const mixed = SRC.flatMap((s) => Array.from({ length: 4 }, (_, i) => art(`${s}-${i}`, s, i * 1000, s === 'tech-wd' ? 'tech' : 'egypt')));
+    const pool = selectCandidates(mixed, { now });
+    expect(pool.filter((a) => a.sourceId === 'tech-wd')).toHaveLength(4);
+  });
 });

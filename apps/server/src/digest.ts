@@ -40,6 +40,24 @@ export const MAX_PER_SOURCE = 4;
 export const TEXT_CONCURRENCY = 6;
 
 /**
+ * How many single-beat sources (the pure tech outlets) are guaranteed a slot.
+ *
+ * Without this, a ranking of breaking-then-newest gives them almost nothing: the
+ * general papers publish far faster, and a measured pool of 30 held exactly 2
+ * tech stories. Two slots keeps تكنولوجيا readable without distorting the rest.
+ */
+export const SINGLE_BEAT_FLOOR = 3;
+
+/** Sources whose whole beat is one category, so their stories are easy to starve. */
+export const SINGLE_BEAT_SOURCES = new Set([
+  'tech-wd',
+  'hashtagarabi',
+  'arabhardware',
+  'arabgamerz',
+  'aitnews',
+]);
+
+/**
  * Group candidates that are the same story by comparing their ARTICLE TEXT.
  *
  * Deliberately not `cluster.ts`: that groups titles for the feed's «من N مصادر»
@@ -107,7 +125,7 @@ export interface BuildResult {
  */
 export function selectCandidates(
   articles: Article[],
-  options: { since?: number; now?: number; limit?: number; perSource?: number } = {},
+  options: { since?: number; now?: number; limit?: number; perSource?: number; floor?: number } = {},
 ): Article[] {
   const now = options.now ?? Date.now();
   const since = options.since ?? now - DEFAULT_WINDOW_MS;
@@ -128,6 +146,33 @@ export function selectCandidates(
     chosen.push(article);
     if (chosen.length >= limit) break;
   }
+  // Guarantee the single-beat outlets a few slots: they cannot compete with the
+  // general papers on publishing rate, and a measured pool of 30 held exactly 2
+  // tech stories. They replace the OLDEST general stories, so the pool size — and
+  // therefore the AI cost — is unchanged.
+  const floor = options.floor ?? SINGLE_BEAT_FLOOR;
+  let have = chosen.filter((a) => SINGLE_BEAT_SOURCES.has(a.sourceId)).length;
+  if (floor > 0 && have < floor) {
+    const already = new Set(chosen.map((a) => a.id));
+    for (const article of inWindow) {
+      if (have >= floor) break;
+      if (already.has(article.id) || !SINGLE_BEAT_SOURCES.has(article.sourceId)) continue;
+      already.add(article.id);
+      // Drop the oldest general story to make room.
+      let victim = -1;
+      for (let k = chosen.length - 1; k >= 0; k -= 1) {
+        if (!SINGLE_BEAT_SOURCES.has(chosen[k]!.sourceId)) {
+          victim = k;
+          break;
+        }
+      }
+      if (victim >= 0) chosen.splice(victim, 1);
+      else if (chosen.length >= limit) break;
+      chosen.push(article);
+      have += 1;
+    }
+  }
+
   // Restore pure recency order for the digest itself.
   return chosen.sort((a, b) => b.publishedAt - a.publishedAt);
 }
