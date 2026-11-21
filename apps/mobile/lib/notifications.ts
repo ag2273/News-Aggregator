@@ -29,6 +29,8 @@ export interface PushPrefs {
   token: string;
   enabled: boolean;
   mode: PushMode;
+  /** The twice-daily digest, its own switch, on by default. */
+  digestEnabled?: boolean;
   provider?: string;
 }
 
@@ -43,6 +45,8 @@ export interface PermissionStatus {
 /** Android channels, mirrored by the server's channel_id values. */
 export const CHANNEL_BREAKING = 'breaking';
 export const CHANNEL_NEWS = 'news';
+/** The twice-daily digest; default importance, never breaking. */
+export const CHANNEL_DIGEST = 'digest';
 
 // Foreground presentation: show the banner and play the sound.
 Notifications.setNotificationHandler({
@@ -55,7 +59,7 @@ Notifications.setNotificationHandler({
 });
 
 /**
- * Create the two notification channels. Breaking news arrives on a
+ * Create the three notification channels. Breaking news arrives on a
  * high-importance channel so it can heads-up; everything else is default.
  * Safe to call repeatedly.
  */
@@ -72,6 +76,14 @@ export async function ensureNotificationChannels(): Promise<void> {
     await Notifications.setNotificationChannelAsync(CHANNEL_NEWS, {
       name: 'الأخبار',
       description: 'إشعارات الأخبار الجديدة',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      lightColor: '#22C55E',
+    });
+    // The digest keeps its own channel, so its toggle is independent of breaking
+    // news and a reader can mute one without the other.
+    await Notifications.setNotificationChannelAsync(CHANNEL_DIGEST, {
+      name: 'الخلاصة اليومية',
+      description: 'خلاصة مرتين في اليوم: ٩ صباحًا و٦ مساءً',
       importance: Notifications.AndroidImportance.DEFAULT,
       lightColor: '#22C55E',
     });
@@ -233,7 +245,7 @@ export async function fetchPrefs(authToken: string): Promise<PushPrefs | null> {
 /** Persist enabled/mode for this device. Throws PushError on failure. */
 export async function updatePrefs(
   authToken: string,
-  prefs: { enabled?: boolean; mode?: PushMode },
+  prefs: { enabled?: boolean; mode?: PushMode; digestEnabled?: boolean },
 ): Promise<PushPrefs> {
   const pushToken = await getDevicePushToken();
 

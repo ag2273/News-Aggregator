@@ -558,3 +558,77 @@ export async function fetchReactions(
   };
   return json.data;
 }
+
+/** The twice-daily digest topics, matching the server's ids. */
+export type DigestTopic = 'egypt' | 'economy' | 'sports' | 'health' | 'tech' | 'misc';
+
+/** Arabic labels for the picker, in the order the app shows them. */
+export const DIGEST_TOPIC_LABEL: Record<DigestTopic, string> = {
+  egypt: 'مصر',
+  economy: 'اقتصاد',
+  sports: 'رياضة',
+  health: 'صحة',
+  tech: 'تكنولوجيا',
+  misc: 'منوعات',
+};
+
+export interface DigestItem {
+  articleId: string;
+  title: string;
+  url: string;
+  sourceName: string;
+  sourceId: string;
+  category: DigestTopic;
+  summary: string;
+  why: string;
+  isBreaking: boolean;
+  publishedAt: number;
+  /** 'snippet' means the summary was built from the RSS excerpt, not the article. */
+  textSource: 'full' | 'snippet';
+}
+
+export interface DigestResponse {
+  slot: string | null;
+  builtAt: number | null;
+  /** True before the first digest exists, so the screen can say so. */
+  stale: boolean;
+  topics: DigestTopic[];
+  items: DigestItem[];
+}
+
+/** The digest for this reader (or the default topic mix for a guest). */
+export async function fetchDigest(token?: string | null): Promise<DigestResponse> {
+  const res = await fetch(`${API_BASE}/api/digest`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as { data: DigestResponse };
+  return json.data;
+}
+
+export interface DigestPrefs {
+  topics: DigestTopic[];
+  available: DigestTopic[];
+  defaults: DigestTopic[];
+}
+
+export async function fetchDigestPrefs(token: string): Promise<DigestPrefs> {
+  const res = await fetch(`${API_BASE}/api/digest/topics`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as { data: DigestPrefs };
+  return json.data;
+}
+
+/** Save the chosen topics. An empty list is respected, not replaced by defaults. */
+export async function saveDigestTopics(token: string, topics: DigestTopic[]): Promise<DigestTopic[]> {
+  const res = await fetch(`${API_BASE}/api/digest/topics`, {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify({ topics }),
+  });
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as { data: { topics: DigestTopic[] } };
+  return json.data.topics;
+}

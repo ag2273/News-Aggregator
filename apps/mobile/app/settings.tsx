@@ -43,6 +43,8 @@ export default function SettingsScreen() {
 
   const [enabled, setEnabled] = useState(false);
   const [mode, setMode] = useState<PushMode>('urgent');
+  /** The twice-daily digest, on unless explicitly turned off. */
+  const [digestEnabled, setDigestEnabled] = useState(true);
   const [permission, setPermission] = useState<PermissionStatus | null>(null);
   const [device, setDevice] = useState<DeviceState>({ status: 'loading' });
   const [saving, setSaving] = useState(false);
@@ -74,6 +76,7 @@ export default function SettingsScreen() {
       const registered = await registerDevice(token);
       setEnabled(registered.enabled);
       setMode(registered.mode);
+      setDigestEnabled(registered.digestEnabled !== false);
       setDevice({ status: 'ready' });
     } catch (err) {
       const pushErr = err instanceof PushError ? err : null;
@@ -99,7 +102,11 @@ export default function SettingsScreen() {
     })();
   }, [authLoading, token, loadPrefs, refreshPermission]);
 
-  const persist = async (next: { enabled?: boolean; mode?: PushMode }) => {
+  const persist = async (next: {
+    enabled?: boolean;
+    mode?: PushMode;
+    digestEnabled?: boolean;
+  }) => {
     if (!token) return;
     setSaving(true);
     setError(null);
@@ -107,6 +114,7 @@ export default function SettingsScreen() {
       const saved = await updatePrefs(token, next);
       setEnabled(saved.enabled);
       setMode(saved.mode);
+      setDigestEnabled(saved.digestEnabled !== false);
       setDevice({ status: 'ready' });
     } catch (err) {
       const pushErr = err instanceof PushError ? err : null;
@@ -330,6 +338,33 @@ export default function SettingsScreen() {
                       </Text>
                     </View>
                   </TouchableOpacity>
+                </View>
+
+                <Text style={[styles.sectionLabel, { color: t.textMuted }]}>
+                  الخلاصة اليومية
+                </Text>
+
+                {/* Its own switch: a reader can mute breaking news and still want
+                    the digest, or the reverse. It does not touch `mode`. */}
+                <View style={[styles.card, { backgroundColor: t.surface }]}>
+                  <View style={styles.optionRow}>
+                    <Ionicons name="newspaper-outline" size={20} color={t.accent} />
+                    <View style={styles.rowText}>
+                      <Text style={[styles.rowTitle, { color: t.textPrimary }]}>
+                        إشعار الخلاصة
+                      </Text>
+                      <Text style={[styles.rowSub, { color: t.textMuted }]}>
+                        خلاصة مختارة مرتين يوميًا: ٩ صباحًا و٦ مساءً
+                      </Text>
+                    </View>
+                    <Switch
+                      value={digestEnabled}
+                      onValueChange={(value) => persist({ digestEnabled: value })}
+                      disabled={saving}
+                      trackColor={{ true: t.accent, false: t.borderLight }}
+                      accessibilityLabel="إشعار الخلاصة"
+                    />
+                  </View>
                 </View>
               </>
             )}

@@ -5,9 +5,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import type { Theme } from '../constants/colors';
 
-export type DockTab = 'home' | 'following' | 'video' | 'saved' | 'profile';
+export type DockTab = 'home' | 'following' | 'digest' | 'saved' | 'profile';
 
-/** Floating white capsule dock: glowing home, following, video cam, bookmarks, profile. */
+/** Floating white capsule dock: home, following, digest, bookmarks, sources. */
 export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
   return (
     <View style={[styles.dock, { backgroundColor: t.dockBg, shadowColor: t.dockShadow }]}>
@@ -27,10 +27,10 @@ export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
       />
       <DockButton
         t={t}
-        active={active === 'video'}
-        icon="trending-up-outline"
-        label="الأكثر تداولاً"
-        onPress={() => router.push('/trending')}
+        active={active === 'digest'}
+        icon="newspaper-outline"
+        label="الخلاصة"
+        onPress={() => router.push('/digest')}
       />
       <DockButton
         t={t}
