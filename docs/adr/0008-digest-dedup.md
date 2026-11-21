@@ -75,6 +75,16 @@ The three merges, with the similarity:
   إلى 25 مليون دولار» (الجزيرة) — one story, **different headlines, title
   clustering misses it**. This is the case the feature exists for.
 
+**Known limitation, measured live:** a candidate whose publisher refused full text
+is compared on its ~200-character snippet. Two such items score ~0.05 against a
+full body even when they cover the same event, so they stay separate. In the live
+digest after this shipped, «ترامب: اتفاق دائم مع إيران» (سكاي, full body) and
+«ترامب: سأبرم اتفاقًا دائمًا…» (المصري اليوم, **snippet only, 197 chars**) were
+not merged. That is the documented behaviour — an uncomparable body is never
+merged on a guess — and it is visible: the item is labelled `textSource:
+'snippet'` in the API and «ملخص من المقتطف» in the app. Closing it properly needs
+full text from those sources, not a looser threshold.
+
 ## Consequences
 
 - Cost stays flat: no second AI call, no embedding API.
