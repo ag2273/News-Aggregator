@@ -125,6 +125,19 @@ import { userCounts } from './users.js';
 import { getAllArticles } from './db.js';
 import { privacyCopy, privacyLang, renderPrivacyPage } from './privacy.js';
 import {
+  DIGEST_SLOTS,
+  DIGEST_ITEMS,
+  DEFAULT_TOPICS,
+  digestForTopics,
+  digestForSlot,
+  latestDigest,
+  setTopics,
+  topicsFor,
+  type DigestSlot,
+} from './digestStore.js';
+import { TOPIC_IDS, type TopicId } from './digestAi.js';
+import { startDigestScheduler, tick as digestTick } from './digestScheduler.js';
+import {
   hashPassword,
   verifyPassword,
   createToken,
@@ -189,6 +202,9 @@ if (loadResendKey()) {
 refreshAll().catch(console.error);
 // Also refresh every 10 minutes in background
 setInterval(() => refreshAll().catch(console.error), 10 * 60 * 1000);
+// Twice-daily digest at 09:00 and 18:00 Cairo. Idempotent per slot, so a restart
+// never double-builds, and a failure keeps the previous digest.
+startDigestScheduler();
 
 // --- Auth routes ---
 
@@ -1247,6 +1263,65 @@ app.get('/admin/stats.csv', (c) => {
     `attachment; filename="stats-${data.period}-${new Date().toISOString().slice(0, 10)}.csv"`,
   );
   return c.body(renderStatsCsv(data));
+});
+
+
+// --- Twice-daily digest ---
+
+/** The digest a reader sees: the newest one, filtered to their topics. */
+app.get('/api/digest', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  // Anonymous readers get the default topic mix rather than nothing: the page is
+  // useful before signing up, and it carries no personal data.
+  const topics = topicsFor(userId);
+  const digest = latestDigest();
+  const items = digestForTopics(digest, topics);
+  // Counted as an open on a synthetic id so it appears in /admin/stats. Only for
+  // signed-in readers: an anonymous request is not tracked beyond the daily
+  // device count, matching what the privacy page states.
+  if (userId) recordOpen(`digest:${digest?.slot ?? 'none'}`);
+  return c.json({
+    data: {
+      slot: digest?.slot ?? null,
+      builtAt: digest?.builtAt ?? null,
+      /** True when no digest could be built yet, so the app shows its empty state. */
+      stale: digest === null,
+      topics,
+      items,
+    },
+  });
+});
+
+/** The reader's topic choice. */
+app.get('/api/digest/topics', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ data: { topics: topicsFor(userId), available: TOPIC_IDS, defaults: DEFAULT_TOPICS } });
+});
+
+app.put('/api/digest/topics', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  let body: { topics?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (!Array.isArray(body.topics)) return c.json({ error: 'topics must be an array' }, 400);
+  const clean = body.topics.filter((t): t is TopicId => typeof t === 'string');
+  return c.json({ data: { topics: setTopics(userId, clean) } });
+});
+
+/** Build one digest now. Operator-only in spirit: it costs money per call. */
+app.post('/api/digest/build', async (c) => {
+  const denied = guardAdmin(c);
+  if (denied) {
+    if (denied.status === 401) adminChallenge(c);
+    return denied;
+  }
+  const result = await digestTick({ hasSlot: () => false });
+  return c.json({ data: result });
 });
 
 app.get('/health', (c) => c.json({ ok: true }));

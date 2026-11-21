@@ -51,6 +51,11 @@ export interface PushRecord {
   provider: string;
   enabled: boolean;
   mode: PushMode;
+  /**
+   * The twice-daily digest notification. Its own switch, on by default, and it
+   * never reads `mode`: a reader who wants only the digest must be able to say so.
+   */
+  digestEnabled?: boolean;
   updatedAt: number;
 }
 
@@ -127,13 +132,14 @@ export function registerPushToken(
 export function updatePushPrefs(
   userId: string,
   token: string,
-  prefs: { enabled?: boolean; mode?: PushMode },
+  prefs: { enabled?: boolean; mode?: PushMode; digestEnabled?: boolean },
 ): PushRecord | null {
   const rows = load();
   const record = rows.find((r) => r.token === token && r.userId === userId);
   if (!record) return null;
   if (typeof prefs.enabled === 'boolean') record.enabled = prefs.enabled;
   if (isValidMode(prefs.mode)) record.mode = prefs.mode;
+  if (typeof prefs.digestEnabled === 'boolean') record.digestEnabled = prefs.digestEnabled;
   record.updatedAt = Date.now();
   cache = rows;
   save();
@@ -593,4 +599,71 @@ export function _resetPushedIds(): void {
   pushedArticleIds.clear();
   keywordPushedIds.clear();
   pushedClusterKeys.clear();
+}
+
+/** The digest channel Android shows for a twice-daily summary. */
+export const CHANNEL_DIGEST = 'digest';
+
+/** The FCM payload for a new digest: a count and a deep link, no article data. */
+export function buildDigestMessage(
+  token: string,
+  summary: { count: number; slot: string },
+): FcmMessage {
+  return {
+    token,
+    notification: {
+      title: 'خلاصتك اليومية',
+      body:
+        summary.count > 0
+          ? `${summary.count} أخبار مختارة لك — اضغط للاطلاع`
+          : 'خلاصتك جاهزة — اضغط للاطلاع',
+    },
+    data: { digest: '1', slot: summary.slot },
+    android: {
+      // Never `breaking` importance: a digest is not an emergency.
+      priority: 'normal',
+      notification: { channel_id: CHANNEL_DIGEST, color: '#22C55E' },
+    },
+  };
+}
+
+/**
+ * Tell every device that opted into the digest that a new one is ready.
+ *
+ * Deliberately separate from `sendPushNotifications`: it ignores the breaking/all
+ * modes, so a reader who muted breaking news still gets the digest, and one who
+ * only wants breaking news can turn this off. Returns how many devices accepted.
+ */
+export async function sendDigestNotifications(
+  digest: { slot: string; count: number },
+  fetcher: typeof fetch = fetch,
+): Promise<number> {
+  // `digestEnabled` is on unless it was explicitly turned off.
+  const records = getAllPushRecords().filter(
+    (r) => r.provider === 'fcm' && r.enabled && r.digestEnabled !== false,
+  );
+  if (!records.length) return 0;
+  const account = loadServiceAccount();
+  if (!account) return 0;
+
+  let accessToken: string;
+  try {
+    accessToken = await getAccessToken(account, fetcher);
+  } catch (err) {
+    console.error('[push] digest: could not get an access token:', err);
+    return 0;
+  }
+
+  let sent = 0;
+  for (const record of records) {
+    const outcome = await sendFcmMessage(
+      account.project_id,
+      accessToken,
+      buildDigestMessage(record.token, digest),
+      fetcher,
+    );
+    if (outcome === 'ok') sent += 1;
+    if (outcome === 'dead') unregisterPushToken(record.userId, record.token);
+  }
+  return sent;
 }
