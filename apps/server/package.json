@@ -10,8 +10,11 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.11.1",
+    "@mozilla/readability": "^0.6.0",
     "fast-xml-parser": "^4.3.4",
-    "hono": "^4.2.7"
+    "hono": "^4.2.7",
+    "linkedom": "^0.18.15",
+    "undici": "^6.29.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.5",
