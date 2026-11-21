@@ -131,14 +131,18 @@ export function getArticleById(id: string): Article | null {
 }
 
 export function getSources(): Array<{ id: string; name: string; country: string }> {
-  const rows = getDistinctSources();
+  const configured = new Map(SOURCES.map((s) => [s.id, s]));
+  // The registry is the source of truth: a source removed from it must disappear
+  // from مصادري even while its old rows are still in the corpus, otherwise the app
+  // lists an outlet that will never update again.
+  const rows = getDistinctSources()
+    .filter((r) => configured.has(r.id))
+    .map((r) => ({ ...r, name: configured.get(r.id)?.nameAr ?? r.name }));
 
   // Always include configured sources even if they have 0 articles yet.
   const seen = new Set(rows.map((r) => r.id));
   for (const s of SOURCES) {
-    if (!seen.has(s.id)) {
-      rows.push({ id: s.id, name: s.nameAr, country: s.country });
-    }
+    if (!seen.has(s.id)) rows.push({ id: s.id, name: s.nameAr, country: s.country });
   }
   return rows;
 }

@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SOURCES } from '../types.js';
-import { dueSources, applySourceBreaking } from '../ingest.js';
+import { dueSources, applySourceBreaking, getSources } from '../ingest.js';
 import { insertArticles, getAllArticles, _resetDbCache } from '../db.js';
 import { detectBreaking } from '../categorize.js';
 
@@ -156,5 +156,24 @@ describe('sources: breaking stays off for new outlets', () => {
     ]);
     _resetDbCache();
     expect(getAllArticles().find((a) => a.id === 'old-source-breaking')?.isBreaking).toBe(true);
+  });
+
+  it('drops a de-registered source from the app list, keeping its old rows', () => {
+    // A source removed from the registry must vanish from مصادري at once, or the
+    // app offers an outlet that will never update again.
+    insertArticles([
+      { id: 'ghost-1', title: 'خبر من مصدر ملغى', summary: null, imageUrl: null,
+        url: 'https://example.com/g', sourceId: 'alwatan-sa', sourceName: 'الوطن',
+        category: 'egypt', country: 'SA', publishedAt: Date.now(), isBreaking: false },
+      { id: 'live-1', title: 'خبر من مصدر حالي', summary: null, imageUrl: null,
+        url: 'https://example.com/l', sourceId: 'aljazeraa'.replace('aa','a'), sourceName: 'الجزيرة',
+        category: 'egypt', country: 'QA', publishedAt: Date.now(), isBreaking: false },
+    ]);
+    _resetDbCache();
+    const ids = getSources().map((s) => s.id);
+    expect(ids).not.toContain('alwatan-sa');
+    expect(ids).toContain('aljazeera');
+    // The old rows are untouched: only the listing changes.
+    expect(getAllArticles().some((a) => a.id === 'ghost-1')).toBe(true);
   });
 });
