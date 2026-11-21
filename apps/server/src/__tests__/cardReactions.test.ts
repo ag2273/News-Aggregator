@@ -16,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app } from '../index.js';
 import { insertArticles, _resetDbCache } from '../db.js';
+import { _resetIngestState } from '../ingest.js';
 import { createUser, markUserVerified, _resetUsersCache } from '../users.js';
 import { createToken } from '../auth.js';
 import {
@@ -195,6 +196,11 @@ describe('reaction data on every card list', () => {
     setReaction('same-a', 'u-card', 'like');
     setReaction('same-b', 'another', 'wow');
 
+    // The store must be re-read after the inserts above, and the refresh
+    // bookkeeping reset: `/api/feed` calls refreshAll, which skips while an
+    // earlier call in this file still counts as fresh.
+    _resetDbCache();
+    _resetIngestState();
     const res = await app.request('/api/feed?grouped=1&limit=20', {
       headers: { Authorization: `Bearer ${token}` },
     });

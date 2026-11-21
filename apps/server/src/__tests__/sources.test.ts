@@ -40,8 +40,8 @@ function reset(): void {
 beforeEach(reset);
 
 describe('sources: registry', () => {
-  it('has 26 sources after round 2 batch 2', () => {
-    expect(SOURCES).toHaveLength(26);
+  it('has 29 sources: round 2 complete', () => {
+    expect(SOURCES).toHaveLength(29);
     for (const s of SOURCES) {
       expect(s.intervalMinutes).toBeGreaterThan(0);
       expect(typeof s.breaking).toBe('boolean');
@@ -270,5 +270,27 @@ describe('sources: breaking stays off for new outlets', () => {
       expect(s?.breaking).toBe(false);
     }
     expect(SOURCES.filter((x) => x.breaking)).toHaveLength(10);
+  });
+
+  it('adds the business/TV trio with breaking disabled', () => {
+    for (const id of ['asharqbusiness', 'euronews-ar', 'cnbcarabia']) {
+      const s = SOURCES.find((x) => x.id === id) as { breaking: boolean } | undefined;
+      expect(s).toBeTruthy();
+      expect(s?.breaking).toBe(false);
+    }
+    expect(SOURCES.filter((x) => x.breaking)).toHaveLength(10);
+  });
+
+  it('scopes Euronews to its Arabic section, not the whole site', () => {
+    // The whole-site feed is 0% Arabic; only arabic.euronews.com is Arabic-only.
+    const e = SOURCES.find((x) => x.id === 'euronews-ar') as { rssUrl: string; type: string };
+    expect(e.rssUrl).toBe('https://arabic.euronews.com/rss');
+    expect(e.rssUrl).not.toContain('euronews.com/rss?lang=ar');
+    expect(e.type).toBe('direct');
+    // ...and the Google-News ones keep their window filter.
+    for (const id of ['asharqbusiness', 'cnbcarabia']) {
+      const s = SOURCES.find((x) => x.id === id) as { rssUrl: string };
+      expect(s.rssUrl).toMatch(/when:\d+d/);
+    }
   });
 });

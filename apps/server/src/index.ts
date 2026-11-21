@@ -198,13 +198,20 @@ if (loadResendKey()) {
   console.log('[email] Resend API key loaded — verification emails enabled');
 }
 
-// Trigger a refresh on startup
-refreshAll().catch(console.error);
-// Also refresh every 10 minutes in background
-setInterval(() => refreshAll().catch(console.error), 10 * 60 * 1000);
+// Trigger a refresh on startup, then every 10 minutes.
+//
+// NOT in a test process: importing this module for its routes would otherwise
+// fetch all 29 live feeds and keep timers running, which made the suite hang
+// intermittently once the corpus grew.
+if (process.env['NODE_ENV'] !== 'test') {
+  refreshAll().catch(console.error);
+  setInterval(() => refreshAll().catch(console.error), 10 * 60 * 1000);
+}
 // Twice-daily digest at 09:00 and 18:00 Cairo. Idempotent per slot, so a restart
 // never double-builds, and a failure keeps the previous digest.
-startDigestScheduler();
+if (process.env['NODE_ENV'] !== 'test') {
+  startDigestScheduler();
+}
 
 // --- Auth routes ---
 

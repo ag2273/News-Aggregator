@@ -16,6 +16,18 @@ import { countsFor, myReaction, reactionWeight } from './reactions.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 let lastFetchTime = 0;
+
+/**
+ * Reset the refresh bookkeeping (tests only).
+ *
+ * Without this a suite that calls `/api/feed` twice gets "cache still fresh" on
+ * the second call and sees a stale store — the route's refresh was masking it.
+ */
+export function _resetIngestState(): void {
+  lastFetchTime = 0;
+  firstRefreshDone = false;
+  lastFetchBySource.clear();
+}
 /**
  * When each source was last polled. The ticker is 10 minutes; a source whose
  * `intervalMinutes` has not elapsed is skipped, so a 100-a-day paper is not
@@ -50,6 +62,13 @@ export function dueSources(now: number = Date.now()): typeof SOURCES {
 let firstRefreshDone = false;
 
 export async function refreshAll(): Promise<void> {
+  // Never fetch live feeds from a test process. `/api/feed` calls this on every
+  // request, so without the guard a suite hits 29 real feeds, which both stalls
+  // the run and silently inserts ~1,200 production rows into the test store —
+  // that is what made an unrelated card test see a 1,198-row corpus.
+  if (process.env['NODE_ENV'] === 'test' && process.env['ALLOW_TEST_INGEST'] !== '1') {
+    return;
+  }
   const now = Date.now();
 
   if (now - lastFetchTime < CACHE_TTL_MS) {

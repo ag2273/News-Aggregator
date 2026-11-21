@@ -396,4 +396,47 @@ export const SOURCES: Source[] = [
     breaking: false,
     type: 'google-news',
   },
+
+  // --- Added 2026-11-22, round-2 batch 3 (last): business and TV.
+  // Measured 27/day, newest within 2h.
+  {
+    id: 'asharqbusiness',
+    name: 'Asharq Business',
+    nameAr: 'الشرق بلومبرغ',
+    url: 'https://asharqbusiness.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:asharqbusiness.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'SA',
+    intervalMinutes: 30,
+    breaking: false,
+    type: 'google-news',
+  },
+  // Its own Arabic RSS, verified Arabic-only: 50 items, 10,947 Arabic chars,
+  // median 14.6h. The whole-site feed (euronews.com/rss?lang=ar) is 0% Arabic,
+  // so scoping to the Arabic section is the only honest route.
+  {
+    id: 'euronews-ar',
+    name: 'Euronews Arabic',
+    nameAr: 'يورونيوز عربي',
+    url: 'https://arabic.euronews.com',
+    rssUrl:
+      'https://arabic.euronews.com/rss',
+    country: 'FR',
+    intervalMinutes: 30,
+    breaking: false,
+    type: 'direct',
+  },
+  // Measured 22/day, newest within 2h.
+  {
+    id: 'cnbcarabia',
+    name: 'CNBC Arabia',
+    nameAr: 'CNBC عربية',
+    url: 'https://www.cnbcarabia.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:cnbcarabia.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'AE',
+    intervalMinutes: 30,
+    breaking: false,
+    type: 'google-news',
+  },
 ];
