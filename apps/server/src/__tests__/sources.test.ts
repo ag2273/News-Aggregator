@@ -40,8 +40,8 @@ function reset(): void {
 beforeEach(reset);
 
 describe('sources: registry', () => {
-  it('has 22 sources after round 2 batch 1 (the tech five)', () => {
-    expect(SOURCES).toHaveLength(22);
+  it('has 26 sources after round 2 batch 2', () => {
+    expect(SOURCES).toHaveLength(26);
     for (const s of SOURCES) {
       expect(s.intervalMinutes).toBeGreaterThan(0);
       expect(typeof s.breaking).toBe('boolean');
@@ -261,5 +261,14 @@ describe('sources: breaking stays off for new outlets', () => {
       if (s.type !== 'google-news') continue;
       expect(s.rssUrl).toMatch(/when:\d+d/);
     }
+  });
+
+  it('adds the four big papers with breaking disabled', () => {
+    for (const id of ['alghad', 'elbalad', 'al-madina', 'aleqt']) {
+      const s = SOURCES.find((x) => x.id === id) as { breaking: boolean } | undefined;
+      expect(s).toBeTruthy();
+      expect(s?.breaking).toBe(false);
+    }
+    expect(SOURCES.filter((x) => x.breaking)).toHaveLength(10);
   });
 });

@@ -342,4 +342,58 @@ export const SOURCES: Source[] = [
     breaking: false,
     type: 'google-news',
   },
+
+  // --- Added 2026-11-22, round-2 batch 2: the big papers from Nabd's directory.
+  // Measured 99/day, newest within 2h. Interval follows the volume.
+  {
+    id: 'alghad',
+    name: 'Al Ghad',
+    nameAr: 'الغد',
+    url: 'https://alghad.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:alghad.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'JO',
+    intervalMinutes: 10,
+    breaking: false,
+    type: 'google-news',
+  },
+  // Measured 89/day, newest within 2h. Interval follows the volume.
+  {
+    id: 'elbalad',
+    name: 'Sada El Balad',
+    nameAr: 'صدى البلد',
+    url: 'https://www.elbalad.news',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:elbalad.news+when:2d&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'EG',
+    intervalMinutes: 10,
+    breaking: false,
+    type: 'google-news',
+  },
+  // Measured 33/day, newest within 2h. Interval follows the volume.
+  {
+    id: 'al-madina',
+    name: 'Al Madina',
+    nameAr: 'المدينة',
+    url: 'https://www.al-madina.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:al-madina.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'SA',
+    intervalMinutes: 30,
+    breaking: false,
+    type: 'google-news',
+  },
+  // Measured 17/day, newest within 2h. Interval follows the volume.
+  {
+    id: 'aleqt',
+    name: 'Al Eqtisadiah',
+    nameAr: 'الاقتصادية',
+    url: 'https://www.aleqt.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:aleqt.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'SA',
+    intervalMinutes: 30,
+    breaking: false,
+    type: 'google-news',
+  },
 ];
