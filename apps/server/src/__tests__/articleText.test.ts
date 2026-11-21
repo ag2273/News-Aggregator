@@ -90,6 +90,23 @@ describe('articleText: Google News resolution', () => {
     await expect(resolveGoogleNewsUrl('https://example.com/a', f)).resolves.toBe('https://example.com/a');
   });
 
+  it('unescapes a URL that carries literal backslashes', async () => {
+    // The real body: `cdate\u003d21112026\u0026id\u003d5192...`. A plain replace
+    // leaves `\=` and every الشروق article resolved to a truncated URL that
+    // returned 88 characters — measured, 0/5 full text before this.
+    const f = jsonFetch({
+      'news.google.com/rss/articles': { body: PAGE_WITH_SIG },
+      batchexecute: {
+        // The live body carries TWO backslashes before the escape, which is what
+        // made the naive replace leave a stray `\=` and truncate the URL.
+        body: '["garturlreq",[["garturlres","https://www.shorouknews.com/mobile/news/view.aspx?cdate\\\\u003d21112026\\\\u0026id\\\\u003d519267b2"]]]',
+      },
+    });
+    const url = await resolveGoogleNewsUrl(GN, f);
+    expect(url).toBe('https://www.shorouknews.com/mobile/news/view.aspx?cdate=21112026&id=519267b2');
+    expect(url).not.toContain('\\');
+  });
+
   it('returns null when the RPC answers nothing', async () => {
     const f = jsonFetch({
       'news.google.com/rss/articles': { body: PAGE_WITH_SIG },

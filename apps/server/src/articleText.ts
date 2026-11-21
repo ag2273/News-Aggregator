@@ -214,7 +214,14 @@ export async function resolveGoogleNewsUrl(
       const escaped = parsed.match(/\\"garturlres\\",\\"(.*?)\\"/);
       const raw = direct?.[1] ?? escaped?.[1];
       if (!raw) return null;
-      const url = raw.replace(/\\u003d/g, '=').replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+      // The RPC escapes as `\u003d` but the body carries a literal backslash, so
+      // a naive replace leaves `\=` and the URL 404s. Measured on الشروق: every
+      // article resolved to a truncated URL and the fetch returned 88 chars.
+      const url = raw
+        .replace(/\\*u003d/g, '=')
+        .replace(/\\*u0026/g, '&')
+        .replace(/\\*u002f/gi, '/')
+        .replace(/\\\//g, '/');
       return /^https?:\/\//.test(url) ? url : null;
     } catch {
       if (attempt === attempts - 1) return null;
