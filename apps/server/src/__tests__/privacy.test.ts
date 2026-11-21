@@ -69,9 +69,19 @@ describe('privacy: the page', () => {
         'Resend',
         'Google Cloud',
         'Google News',
+        // The digest sends article text here, so it must be disclosed.
+        'Command Code',
       ]) {
         expect(html).toContain(name);
       }
+    }
+  });
+
+  it('discloses that article text goes to the AI service, with zero retention', () => {
+    for (const lang of ['ar', 'en'] as const) {
+      const html = renderPrivacyPage(privacyCopy(lang));
+      expect(html).toContain('Command Code');
+      expect(html).toContain('zero data retention');
     }
   });
 

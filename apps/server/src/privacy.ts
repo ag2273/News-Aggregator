@@ -95,6 +95,18 @@ const ar: PrivacyCopy = {
             '90 يوم',
           ],
           [
+            'نص المقالات العامة اللي بتتبعت لخدمة الذكاء الاصطناعي لتجهيز الخلاصة (مش بيانات حسابك)',
+            'عمل الخلاصة اليومية: تلخيص وترتيب أهم الأخبار',
+            'بيتبعت لـ Command Code مع طلب عدم الاحتفاظ، ومش بيتخزن عندنا كنص',
+            'مش بيتخزن — النص بيتستخدم لحظة التجهيز فقط',
+          ],
+          [
+            'المواضيع اللي اختارتها للخلاصة (مصر، اقتصاد، رياضة، صحة، تكنولوجيا، منوعات)',
+            'إن الخلاصة تعرض اللي يهمك بس',
+            'سيرفرنا الخاص',
+            'لغاية ما تغيّرها أو تحذف الحساب',
+          ],
+          [
             'سجلات السيرفر: عنوان IP، الوقت، المسار المطلوب',
             'تشغيل الموقع وتأمينه وتشخيص الأعطال',
             'سجلات Docker علي سيرفرنا',
@@ -110,6 +122,7 @@ const ar: PrivacyCopy = {
         '• **Google Firebase Cloud Messaging** — توصيل الإشعارات للجهاز. بياخد توكن الجهاز.',
         '• **Google Firebase Crashlytics** — تقارير الأعطال. بياخد بيانات العطل ونوع الجهاز والنظام. مفيش تحليلات استخدام ولا معرّف إعلانات.',
         '• **Resend** — إرسال رسالة توثيق البريد. بياخد البريد ونص الرسالة.',
+        '• **Command Code** (api.commandcode.ai) — بيجهّز خلاصة الأخبار اليومية. بنبعت له نص المقالات المنشورة بس (مش بياناتك ولا حسابك)، وبنطلب عدم الاحتفاظ (zero data retention) مع كل طلب.',
         '• **Google Cloud** — السيرفر اللي بيشغّل الموقع والتطبيق (منطقة us-central1 في الولايات المتحدة).',
         '• **روابط Google News** — بعض المقالات روابطها من Google News؛ لما تفتحها بتخرج لموقع جوجل أو موقع المصدر الأصلي، وسياساتهم بتنطبق هناك.',
         'التطبيق كمان بيفتح روابط المقالات على مواقع المصادر (الجزيرة، اليوم السابع، وغيرها)، ودي مواقع مش بتاعتنا.',
@@ -218,6 +231,18 @@ const en: PrivacyCopy = {
             '90 days',
           ],
           [
+            'Text of public articles, sent to the AI service to build the digest (never your account data)',
+            'Producing the twice-daily digest: summarising and ranking the important stories',
+            'Sent to Command Code with a zero-data-retention request; we do not store it as text',
+            'Not stored — used only during the build',
+          ],
+          [
+            'The digest topics you choose (Egypt, economy, sport, health, technology, misc)',
+            'So the digest shows only what matters to you',
+            'Our own server',
+            'Until you change them or delete the account',
+          ],
+          [
             'Server logs: IP address, time, request path',
             'Running and securing the site, diagnosing faults',
             'Docker logs on our server',
@@ -233,6 +258,7 @@ const en: PrivacyCopy = {
         '• **Google Firebase Cloud Messaging** — notification delivery. Receives the device token.',
         '• **Google Firebase Crashlytics** — crash reports. Receives crash data, device and OS info. No usage analytics, no advertising id.',
         '• **Resend** — sends the email-verification message. Receives the address and the message.',
+        '• **Command Code** (api.commandcode.ai) — builds the twice-daily news digest. It receives the text of published articles only (never your account or data), and every request asks for zero data retention.',
         '• **Google Cloud** — the server that runs the site and app (us-central1, United States).',
         '• **Google News links** — some articles link to Google News; opening one takes you to Google or the original publisher, where their policies apply.',
         'The app also opens article links on publisher sites (Al Jazeera, Youm7 and others). Those are not our sites.',

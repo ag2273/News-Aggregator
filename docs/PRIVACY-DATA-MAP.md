@@ -21,7 +21,22 @@ this inventory is `apps/server/src/privacy.ts`, served at `/privacy`.
 | Aggregate usage counts: opens, shares, source page views, search query text, saves, follows, mutes, sign-ups | Understanding real usage | `DATA_DIR/analytics.json` | 90 days | `apps/server/src/analytics.ts` |
 | Server/access logs: client IP, time, path | Running, securing, diagnosing | Docker `json-file` logs on the VM (no rotation configured at the time of writing) | Bounded by the Docker log configuration; not used for behaviour analysis | `deploy/Caddyfile` (`log`), `docker-compose.yml` |
 | Rate-limit state: client IP → request timestamps | Throttling beacons and admin logins | **In memory only**, never written to disk | Until the process restarts | `apps/server/src/analytics.ts` (`beaconHits`), `apps/server/src/adminReactions.ts` (`failures`) |
+| **Article text sent to the AI service** (public news only; never account data) | Building the twice-daily digest | Command Code `api.commandcode.ai`, `x-cmd-zdr: 1` on every call | Not stored as text; used during the build only | `apps/server/src/digestAi.ts` |
+| Digest topics per reader | Filtering the digest | `DATA_DIR/digests.json` | Until changed or account deletion | `apps/server/src/digestStore.ts` |
 | Article content: titles, summaries, images, links | Displaying news | `DATA_DIR/news.json` (public RSS only; full articles are not stored) | Rolling store of recent items | `apps/server/src/db.ts` |
+
+## Digest (twice daily)
+
+The digest adds one third party and one store:
+
+- **Command Code** builds it. What leaves: the public article text and nothing
+  else — no email, user id, install id or IP is ever in the request, and the
+  prompt carries no identity. `x-cmd-zdr: 1` asks for zero data retention and no
+  training on every call (verified working on the chosen model).
+- The **only** personal data the digest stores is the reader's topic choice, in
+  `DATA_DIR/digests.json`. The digests themselves are public article summaries.
+- Push: a new `digest` FCM channel with its own on-by-default switch, separate
+  from the breaking-news modes.
 
 ## What is deliberately absent
 
