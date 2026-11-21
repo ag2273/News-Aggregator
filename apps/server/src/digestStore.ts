@@ -126,6 +126,17 @@ export function slotDueAt(ms: number, slot: DigestSlot): number {
   return utc - CAIRO_OFFSET_MS;
 }
 
+/**
+ * When a slot key became due, in epoch ms. `2026-11-21T09:00` is a Cairo local
+ * time, so this subtracts the offset.
+ */
+export function slotKeyDueAt(key: string): number {
+  const [date, time] = key.split('T');
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  const [hh, mm] = time.split(':').map(Number) as [number, number];
+  return Date.UTC(y, m - 1, d, hh, mm) - CAIRO_OFFSET_MS;
+}
+
 /** Every stored digest, newest first. */
 export function allDigests(): StoredDigest[] {
   return Object.values(load().digests).sort((a, b) => (a.slot < b.slot ? 1 : -1));

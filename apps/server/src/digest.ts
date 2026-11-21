@@ -24,6 +24,7 @@ import { analyzeCandidates, MAX_CANDIDATES, type AiCallResult, type StoryVerdict
 import {
   saveDigest,
   slotKeyFor,
+  slotKeyDueAt,
   type DigestItem,
   type DigestSlot,
   type StoredDigest,
@@ -73,7 +74,14 @@ export interface BuildOptions {
   slot: DigestSlot;
   now?: number;
   articles: Article[];
-  /** When the previous digest was built, so candidates are "since then". */
+  /**
+   * When the previous digest's WINDOW started, so candidates are "since then".
+   *
+   * Deliberately the slot's due time, not its build time: a digest rebuilt late
+   * (a forced rebuild, a deploy, a retry) has a `builtAt` long after its slot,
+   * and using that truncated the next digest's window. Measured: a 09:00 slot
+   * rebuilt at 16:00 left the 18:00 digest with 4 candidates instead of 30.
+   */
   since?: number;
   apiKey?: string | null;
   fetchImpl?: typeof fetch;

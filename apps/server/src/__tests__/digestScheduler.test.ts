@@ -8,7 +8,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tick, _resetScheduler, state, TICK_MS } from '../digestScheduler.js';
-import { saveDigest, latestDigest, _resetDigestCache, type StoredDigest } from '../digestStore.js';
+import {
+  saveDigest,
+  latestDigest,
+  slotKeyDueAt,
+  _resetDigestCache,
+  type StoredDigest,
+} from '../digestStore.js';
 import type { BuildResult } from '../digest.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -153,4 +159,34 @@ describe('digestScheduler', () => {
   it('checks once a minute', () => {
     expect(TICK_MS).toBe(60 * 1000);
   });
+
+describe('digestScheduler: the candidate window', () => {
+  it('starts the window at the previous SLOT, not at a late rebuild time', async () => {
+    // The bug: a 09:00 digest rebuilt by hand at 16:00 has builtAt 16:00, so the
+    // 18:00 run looked only at the last 10 minutes and produced 4 candidates
+    // instead of 30. The window must start when the slot was DUE.
+    const rebuiltLate: StoredDigest = {
+      slot: '2026-11-21T09:00',
+      builtAt: Date.UTC(2026, 10, 21, 14, 0), // 16:00 Cairo
+      considered: 30,
+      analysed: 30,
+      failedSources: {},
+      model: 't',
+      items: [],
+    };
+    saveDigest(rebuiltLate);
+    let since: number | undefined;
+    await tick({
+      now: EVENING,
+      build: (async (opts: { since?: number }) => {
+        since = opts.since;
+        return { digest: null, error: 'stop here', considered: 0, analysed: 0 };
+      }) as never,
+    });
+    // Due at 09:00 Cairo = 07:00Z, NOT the 14:00Z rebuild.
+    expect(since).toBe(slotKeyDueAt('2026-11-21T09:00'));
+    expect(since).toBe(Date.UTC(2026, 10, 21, 7, 0));
+    expect(since).not.toBe(rebuiltLate.builtAt);
+  });
+});
 });

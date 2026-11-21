@@ -6,7 +6,14 @@
 // is built at most once. That is enforced by asking the store whether the slot
 // key already exists, not by remembering the last tick.
 
-import { dueSlot, digestForSlot, latestDigest, type DigestSlot } from './digestStore.js';
+import {
+  CAIRO_OFFSET_MS,
+  dueSlot,
+  digestForSlot,
+  latestDigest,
+  slotKeyDueAt,
+  type DigestSlot,
+} from './digestStore.js';
 import { buildDigest, describeBuild } from './digest.js';
 import { getFeedArticles } from './ingest.js';
 import { loadApiKey } from './digestAi.js';
@@ -74,11 +81,15 @@ export async function tick(
     const apiKey = options.apiKey === undefined ? loadApiKey() : options.apiKey;
     const articles = (options.articles ?? getFeedArticles)();
     const previous = latestDigest();
+    // Window start = when the previous slot became due, never when it happened to
+    // be built. A late rebuild would otherwise starve this run: measured, a
+    // 09:00 slot rebuilt at 16:00 left the 18:00 digest 4 candidates.
+    const since = previous ? slotKeyDueAt(previous.slot) : undefined;
     const result = await (options.build ?? buildDigest)({
       slot: due.slot,
       now,
       articles,
-      since: previous?.builtAt,
+      since,
       apiKey,
       fetchText: options.fetchText,
       fetchImpl: options.fetchImpl,
