@@ -32,6 +32,12 @@ const KEYWORDS: Record<(typeof CATEGORY_ORDER)[number], string[]> = {
     'playstation', 'xbox', 'nintendo', 'steam', 'gta', 'metacritic',
     'chatgpt', 'openai', 'tesla', 'huawei', 'oppo', 'vivo', 'realme',
     'laptop', 'gpu', 'cpu', 'ssd', 'usb', 'wifi', 'ios',
+    // Named titles and products from the live tech feeds that carry no Arabic
+    // tech word at all ("غراند ثفت أوتو", "تنزيل ببجي موبايل").
+    'غراند ثفت أوتو', 'ببجي', 'بوبجي', 'فورتنايت', 'ماين كرافت', 'روبلوكس',
+    'هوانغ', 'إنفيديا', 'واتساب', 'تويتر', 'فيسبوك', 'دوج كوين', 'بتكوين',
+    'كريبتو', 'بلوكتشين', 'تيك توك', 'يوتيوب', 'إنستغرام', 'سناب شات',
+    'ببجي موبايل', 'mobile lite', 'super mario', 'resident evil', 'pubg',
     'هاتف',
     'آيفون',
     'سامسونج',
@@ -146,10 +152,13 @@ const KEYWORDS: Record<(typeof CATEGORY_ORDER)[number], string[]> = {
 };
 
 export function categorize(title: string, summary?: string | null): string {
-  const text = `${title ?? ''} ${summary ?? ''}`;
+  // Lowercased once: the vocabulary has Latin tech words ("Xiaomi", "iPhone",
+  // "GTA") and a case-sensitive match missed every one of them at the start of a
+  // headline or in an all-caps spelling.
+  const text = `${title ?? ''} ${summary ?? ''}`.toLowerCase();
   for (const id of CATEGORY_ORDER) {
     const words = KEYWORDS[id];
-    if (words.some((w) => text.includes(w))) return id;
+    if (words.some((w) => text.includes(w.toLowerCase()))) return id;
   }
   return 'misc';
 }
