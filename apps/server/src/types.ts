@@ -275,20 +275,5 @@ export const SOURCES: Source[] = [
     breaking: false,
     type: 'google-news',
   },
-  // --- Added 2026-11-21, batch 2. The only one of the seven that is both
-  // reachable and really news: see the batch-2 report for the six that are not
-  // (five reset connections from the server, and الوقت is 36/36 price and
-  // prayer-time filler rather than reporting).
-  {
-    id: 'alwatan-sa',
-    name: 'Al Watan (Saudi)',
-    nameAr: 'الوطن',
-    url: 'https://www.alwatan.com.sa',
-    rssUrl:
-      'https://news.google.com/rss/search?q=site:alwatan.com.sa&hl=ar&gl=EG&ceid=EG:ar',
-    country: 'SA',
-    intervalMinutes: 30,
-    breaking: false,
-    type: 'google-news',
-  },
+
 ];
