@@ -11,7 +11,7 @@ import { SOURCES } from '../types.js';
 import { dueSources, applySourceBreaking, getSources } from '../ingest.js';
 import { insertArticles, getAllArticles, _resetDbCache } from '../db.js';
 import { detectBreaking } from '../categorize.js';
-import { isSectionPageTitle, fetchSource } from '../fetcher.js';
+import { isSectionPageTitle } from '../fetcher.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env['DATA_DIR']
@@ -216,10 +216,20 @@ describe('sources: breaking stays off for new outlets', () => {
     }
   });
 
-  it('drops a section front from a real feed', async () => {
-    // The live وهاشتاق feed really contains one; the mapper must skip it.
-    const src = SOURCES.find((s) => s.id === 'hashtagarabi') as never;
-    const rows = await fetchSource(src);
-    expect(rows.every((r) => !isSectionPageTitle(r.title))).toBe(true);
-  }, 120_000);
+  it('filters fronts out of a parsed feed, without touching the network', () => {
+    // The suite stays deterministic: no live fetch here. This mirrors what the
+    // parser does with the real items, and the live check runs outside the suite.
+    const titles = [
+      'مقالات - ArabGamerZ',
+      'تقنية DLSS 4.5 تصل إلى EVE Vanguard',
+      'الرئيسية - هاشتاق عربي - هاشتاق عربي',
+      'ماهو الترند على تويتر ؟وكيف اعرف الترند العالمي',
+      'تواصل معنا - ArabGamerZ',
+    ];
+    const kept = titles.filter((t) => !isSectionPageTitle(t));
+    expect(kept).toEqual([
+      'تقنية DLSS 4.5 تصل إلى EVE Vanguard',
+      'ماهو الترند على تويتر ؟وكيف اعرف الترند العالمي',
+    ]);
+  });
 });

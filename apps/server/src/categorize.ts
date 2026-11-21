@@ -25,6 +25,13 @@ const KEYWORDS: Record<(typeof CATEGORY_ORDER)[number], string[]> = {
     'تكنولوجيا',
     'تقنية',
     'الذكاء الاصطناعي',
+    // Latin-script tech words: Arabic tech outlets write "Xiaomi", "iPhone",
+    // "GTA" untranslated, and the list was Arabic-only.
+    'xiaomi', 'iphone', 'ipad', 'samsung', 'galaxy', 'android', 'windows',
+    'microsoft', 'google', 'apple', 'nvidia', 'intel', 'amd', 'qualcomm',
+    'playstation', 'xbox', 'nintendo', 'steam', 'gta', 'metacritic',
+    'chatgpt', 'openai', 'tesla', 'huawei', 'oppo', 'vivo', 'realme',
+    'laptop', 'gpu', 'cpu', 'ssd', 'usb', 'wifi', 'ios',
     'هاتف',
     'آيفون',
     'سامسونج',

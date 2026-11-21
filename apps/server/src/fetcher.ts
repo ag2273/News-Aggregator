@@ -75,7 +75,9 @@ function parseDate(val: unknown): number {
  */
 const SECTION_WORDS: readonly string[] = [
   'الرئيسية', 'الصفحة الرئيسية', 'مقالات', 'ألعاب', 'أخبار', 'فريق',
-  'من نحن', 'اتصل بنا', 'سياسة الخصوصية', 'شروط الاستخدام', 'الأقسام',
+  'من نحن', 'اتصل بنا', 'تواصل معنا', 'سياسة الخصوصية', 'بيان الخصوصية',
+  'شروط الاستخدام', 'الأقسام', 'انمي', 'أنمي', 'نصائح', 'newsletter',
+  'archives', 'ارشيف', 'أرشيف', 'اتصل', 'اعلن معنا', 'أعلن معنا',
 ] as const;
 
 export function isSectionPageTitle(title: string): boolean {
