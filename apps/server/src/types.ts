@@ -59,7 +59,7 @@ export const SOURCES: Source[] = [
     // (538 bytes, no <item>), so it contributed nothing for months while looking
     // healthy. Google News RSS for the site works, so use that instead.
     rssUrl:
-      'https://news.google.com/rss/search?q=site:youm7.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:youm7.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
     intervalMinutes: 10,
     breaking: true,
@@ -127,7 +127,7 @@ export const SOURCES: Source[] = [
     nameAr: 'العربية',
     url: 'https://www.alarabiya.net',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:alarabiya.net&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:alarabiya.net+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'AE',
     intervalMinutes: 10,
     breaking: true,
@@ -139,7 +139,7 @@ export const SOURCES: Source[] = [
     nameAr: 'الأهرام',
     url: 'https://www.ahram.org.eg',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:ahram.org.eg&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:ahram.org.eg+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
     intervalMinutes: 30,
     breaking: true,
@@ -151,7 +151,7 @@ export const SOURCES: Source[] = [
     nameAr: 'المصري اليوم',
     url: 'https://www.almasryalyoum.com',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:almasryalyoum.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:almasryalyoum.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
     intervalMinutes: 10,
     breaking: true,
@@ -163,7 +163,7 @@ export const SOURCES: Source[] = [
     nameAr: 'مصراوي',
     url: 'https://www.masrawy.com',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:masrawy.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:masrawy.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
     intervalMinutes: 30,
     breaking: true,
@@ -179,7 +179,7 @@ export const SOURCES: Source[] = [
     nameAr: 'الشرق الأوسط',
     url: 'https://aawsat.com',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:aawsat.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:aawsat.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'SA',
     intervalMinutes: 10,
     breaking: false,
@@ -194,7 +194,7 @@ export const SOURCES: Source[] = [
     nameAr: 'الخليج',
     url: 'https://www.alkhaleej.ae',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:alkhaleej.ae&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:alkhaleej.ae+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'AE',
     intervalMinutes: 10,
     breaking: false,
@@ -209,7 +209,7 @@ export const SOURCES: Source[] = [
     nameAr: 'النهار',
     url: 'https://www.alnaharegypt.com',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:alnaharegypt.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:alnaharegypt.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
     intervalMinutes: 30,
     breaking: false,
@@ -224,7 +224,7 @@ export const SOURCES: Source[] = [
     nameAr: 'عكاظ',
     url: 'https://www.okaz.com.sa',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:okaz.com.sa&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:okaz.com.sa+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'SA',
     intervalMinutes: 30,
     breaking: false,
@@ -239,7 +239,7 @@ export const SOURCES: Source[] = [
     nameAr: 'الشروق',
     url: 'https://www.shorouknews.com',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:shorouknews.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:shorouknews.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
     intervalMinutes: 10,
     breaking: false,
@@ -254,7 +254,7 @@ export const SOURCES: Source[] = [
     nameAr: 'الدستور',
     url: 'https://www.dostor.org',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:dostor.org&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:dostor.org+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
     intervalMinutes: 10,
     breaking: false,
@@ -269,7 +269,7 @@ export const SOURCES: Source[] = [
     nameAr: 'الوطن نيوز',
     url: 'https://www.elwatannews.com',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:elwatannews.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:elwatannews.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
     intervalMinutes: 10,
     breaking: false,
@@ -288,7 +288,7 @@ export const SOURCES: Source[] = [
     nameAr: 'التقنية بلا حدود',
     url: 'https://tech-wd.com',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:tech-wd.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:tech-wd.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'SA',
     intervalMinutes: 30,
     breaking: false,
@@ -300,7 +300,7 @@ export const SOURCES: Source[] = [
     nameAr: 'هاشتاق عربي',
     url: 'https://hashtagarabi.com',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:hashtagarabi.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:hashtagarabi.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'SA',
     intervalMinutes: 30,
     breaking: false,
@@ -312,7 +312,7 @@ export const SOURCES: Source[] = [
     nameAr: 'عرب هاردوير',
     url: 'https://arabhardware.net',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:arabhardware.net&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:arabhardware.net+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'SA',
     intervalMinutes: 30,
     breaking: false,
@@ -324,7 +324,7 @@ export const SOURCES: Source[] = [
     nameAr: 'عرب جيمرز',
     url: 'https://arabgamerz.com',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:arabgamerz.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:arabgamerz.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'SA',
     intervalMinutes: 60,
     breaking: false,
@@ -336,7 +336,7 @@ export const SOURCES: Source[] = [
     nameAr: 'البوابة العربية للأخبار التقنية',
     url: 'https://aitnews.com',
     rssUrl:
-      'https://news.google.com/rss/search?q=site:aitnews.com&hl=ar&gl=EG&ceid=EG:ar',
+      'https://news.google.com/rss/search?q=site:aitnews.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'AE',
     intervalMinutes: 60,
     breaking: false,

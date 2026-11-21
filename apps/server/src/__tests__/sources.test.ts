@@ -252,4 +252,14 @@ describe('sources: breaking stays off for new outlets', () => {
     // A general paper's misc stays misc: the fix must not sweep the corpus.
     expect(rows.find((r) => r.id === 'g-misc')?.category).toBe('misc');
   });
+
+  it('every Google News feed asks for a recent window', () => {
+    // Without a date filter Google returns years of backlog, which fills the
+    // 50-item cap and crowds out today's stories: measured, hashtagarabi's
+    // newest item was 261h old and tech-wd's median was 121h.
+    for (const s of SOURCES) {
+      if (s.type !== 'google-news') continue;
+      expect(s.rssUrl).toMatch(/when:\d+d/);
+    }
+  });
 });
