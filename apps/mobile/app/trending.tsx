@@ -115,7 +115,7 @@ export default function TrendingScreen() {
           />
         )}
 
-        <FloatingDock t={t} active="digest" />
+        <FloatingDock t={t} active="video" />
       </SafeAreaView>
     </LinearGradient>
   );

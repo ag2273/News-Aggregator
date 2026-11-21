@@ -44,6 +44,8 @@ export interface DigestItem {
   publishedAt: number;
   /** Prove how the summary was produced, so the UI never overstates. */
   textSource: 'full' | 'snippet';
+  /** Distinct outlets carrying this story; >1 means several desks ran it. */
+  sourceCount?: number;
 }
 
 export interface StoredDigest {

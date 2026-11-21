@@ -25,7 +25,13 @@ import {
   _resetDigestCache,
   type StoredDigest,
 } from '../digestStore.js';
-import { selectCandidates, buildDigest, describeBuild, MAX_PER_SOURCE } from '../digest.js';
+import {
+  selectCandidates,
+  groupByStory,
+  buildDigest,
+  describeBuild,
+  MAX_PER_SOURCE,
+} from '../digest.js';
 import type { Article } from '../types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -428,4 +434,153 @@ describe('digest: building and failure policy', () => {
     expect(res.digest?.items).toHaveLength(1);
     expect(res.digest?.items[0].textSource).toBe('snippet');
   });
+
+describe('digest: cross-source repetition as an importance signal', () => {
+  const now = Date.UTC(2026, 10, 21, 12, 0);
+  function article(
+    id: string,
+    sourceId: string,
+    sourceName: string,
+    title: string,
+    publishedAt = now - 60_000,
+  ): Article {
+    return {
+      id,
+      title,
+      summary: 'ملخص',
+      imageUrl: null,
+      url: `https://example.com/${id}`,
+      sourceId,
+      sourceName,
+      category: 'egypt',
+      country: 'EG',
+      publishedAt,
+      isBreaking: false,
+    };
+  }
+
+  // The same event, as three outlets worded it.
+  const shared = 'مقتل 7 مدنيين وإصابة 4 آخرين في هجمات أوكرانية على لوغانسك خلال يوم';
+
+  it('groups one story covered by three outlets into a single candidate', () => {
+    const groups = groupByStory([
+      article('a', 'rt-arabic', 'آر تي عربي', shared),
+      article('b', 'aljazeera', 'الجزيرة', shared),
+      article('c', 'skynews-arabia', 'سكاي نيوز عربية', shared),
+      article('d', 'youm7', 'اليوم السابع', 'خبر مختلف تمامًا عن الاقتصاد المصري وأسعار الفائدة'),
+    ]);
+    expect(groups).toHaveLength(2);
+    const multi = groups.find((g) => g.members.length > 1);
+    expect(multi?.sourceCount).toBe(3);
+    expect(multi?.members).toHaveLength(3);
+    // The other outlets are available for the prompt.
+    expect(multi?.otherSources.length).toBe(2);
+  });
+
+  it('sends the source count to the model, so the judgement can weigh it', async () => {
+    const prompts: string[] = [];
+    const aiFetch = (async (_u: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
+      prompts.push(body.messages[1].content);
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  important: true,
+                  category: 'misc',
+                  summary: 'ملخص',
+                  why: 'سبب',
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ) as Response;
+    }) as unknown as typeof fetch;
+
+    await buildDigest({
+      slot: '09:00',
+      now,
+      articles: [
+        article('a', 'rt-arabic', 'آر تي عربي', shared),
+        article('b', 'aljazeera', 'الجزيرة', shared),
+        article('c', 'skynews-arabia', 'سكاي نيوز عربية', shared),
+      ],
+      apiKey: 'k',
+      fetchText: async () => ({ text: 'نص كامل '.repeat(50), source: 'full' as const, resolvedUrl: 'u' }),
+      fetchImpl: aiFetch,
+    });
+
+    // One call for the story, not one per outlet.
+    expect(prompts).toHaveLength(1);
+    // ...and the prompt states the coverage explicitly.
+    expect(prompts[0]).toContain('3 مصادر مستقلة');
+  });
+
+  it('stores one digest item per story, carrying its source count', async () => {
+    const aiFetch = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ important: true, category: 'misc', summary: 'ملخص', why: 'سبب' }),
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const res = await buildDigest({
+      slot: '09:00',
+      now,
+      articles: [
+        article('a', 'rt-arabic', 'آر تي عربي', shared),
+        article('b', 'aljazeera', 'الجزيرة', shared),
+        article('c', 'skynews-arabia', 'سكاي نيوز عربية', shared),
+      ],
+      apiKey: 'k',
+      fetchText: async () => ({ text: 'نص كامل '.repeat(50), source: 'full' as const, resolvedUrl: 'u' }),
+      fetchImpl: aiFetch,
+    });
+    // The same story three times is ONE item.
+    expect(res.digest?.items).toHaveLength(1);
+    expect(res.digest?.items[0].sourceCount).toBe(3);
+  });
+
+  it('sends no coverage line for a story only one outlet carried', async () => {
+    const prompts: string[] = [];
+    const aiFetch = (async (_u: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
+      prompts.push(body.messages[1].content);
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ important: true, category: 'egypt', summary: 'س', why: 'و' }) } }],
+        }),
+        { status: 200 },
+      ) as Response;
+    }) as unknown as typeof fetch;
+    await buildDigest({
+      slot: '09:00',
+      now,
+      articles: [article('solo', 'youm7', 'اليوم السابع', 'خبر منفرد عن أسعار الذهب في مصر اليوم')],
+      apiKey: 'k',
+      fetchText: async () => ({ text: 'نص كامل '.repeat(50), source: 'full' as const, resolvedUrl: 'u' }),
+      fetchImpl: aiFetch,
+    });
+    expect(prompts[0]).not.toContain('مصادر مستقلة');
+  });
+
+  it('does not merge two different stories that share a word', () => {
+    const groups = groupByStory([
+      article('a', 'youm7', 'اليوم السابع', 'ارتفاع أسعار الذهب في مصر اليوم بعد قرار البنك المركزي'),
+      article('b', 'almasry', 'المصري اليوم', 'اجتماع مجلس الوزراء لمناقشة موازنة التعليم الجديدة'),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.every((g) => g.sourceCount === 1)).toBe(true);
+  });
+});
 });

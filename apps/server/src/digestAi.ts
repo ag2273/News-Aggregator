@@ -88,11 +88,35 @@ export const SYSTEM_PROMPT = `أنت محرر أخبار عربي محترف ي�
 - كن متوسطًا لا متشددًا: معظم أخبار السياسة والاقتصاد والأمن مهمة.
 - summary: بالعربية الفصحى المبسطة، من النص نفسه فقط. لا تخترع تفاصيل أو أرقامًا غير موجودة فيه.
 - why: لماذا يهم القارئ العربي تحديدًا.
+- لو الخبر مذكور إنه منشور في أكتر من مصدر مستقل، خد ده في الاعتبار: تغطية عدة مصادر لقصة واحدة مؤشر قوي على أهميتها.
 - category: اختر التصنيف الأنسب من القائمة حرفيًا.`;
 
-/** The user message for one story. Text is capped by the fetcher, not here. */
-export function buildPrompt(title: string, sourceName: string, text: string): string {
-  return `العنوان: ${title}\nالمصدر: ${sourceName}\n\nالنص:\n${text}`;
+/** How many independent outlets carry this story, when known. */
+export interface Coverage {
+  sources: number;
+  /** The other outlets' names, for the prompt only. */
+  others: string[];
+}
+
+/**
+ * The user message for one story.
+ *
+ * `coverage.sources > 1` means the same event is running on several outlets, which
+ * is an importance signal: independent desks all judged it worth publishing. The
+ * model is told the count explicitly rather than left to infer it, so the signal
+ * actually reaches the judgement.
+ */
+export function buildPrompt(
+  title: string,
+  sourceName: string,
+  text: string,
+  coverage?: Coverage,
+): string {
+  const covered =
+    coverage && coverage.sources > 1
+      ? `\nتغطية: الخبر ده منشور في ${coverage.sources} مصادر مستقلة (${[sourceName, ...coverage.others].slice(0, 6).join('، ')}) — تكرار الخبر في أكتر من مصدر مؤشر على أهميته.`
+      : '';
+  return `العنوان: ${title}\nالمصدر: ${sourceName}${covered}\n\nالنص:\n${text}`;
 }
 
 /**
@@ -138,7 +162,7 @@ export interface AiCallResult {
  * would pay twice for the same nonsense).
  */
 export async function analyzeStory(
-  story: { title: string; sourceName: string; text: string },
+  story: { title: string; sourceName: string; text: string; coverage?: Coverage },
   options: {
     apiKey?: string | null;
     fetchImpl?: typeof fetch;
@@ -156,7 +180,10 @@ export async function analyzeStory(
     model,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: buildPrompt(story.title, story.sourceName, story.text) },
+      {
+        role: 'user',
+        content: buildPrompt(story.title, story.sourceName, story.text, story.coverage),
+      },
     ],
     temperature: 0.1,
     max_tokens: 400,
@@ -218,7 +245,9 @@ export async function analyzeStory(
  * Run the pass over selected candidates with a hard concurrency cap, so one slow
  * provider cannot open 30 sockets at once.
  */
-export async function analyzeCandidates<T extends { title: string; sourceName: string; text: string }>(
+export async function analyzeCandidates<
+  T extends { title: string; sourceName: string; text: string; coverage?: Coverage },
+>(
   stories: T[],
   options: { apiKey?: string | null; fetchImpl?: typeof fetch; concurrency?: number } = {},
 ): Promise<Array<{ story: T; result: AiCallResult }>> {

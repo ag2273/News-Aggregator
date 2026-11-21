@@ -5,9 +5,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import type { Theme } from '../constants/colors';
 
-export type DockTab = 'home' | 'following' | 'digest' | 'saved' | 'profile';
+export type DockTab = 'home' | 'following' | 'digest' | 'video' | 'saved' | 'profile';
 
-/** Floating white capsule dock: home, following, digest, bookmarks, sources. */
+/**
+ * Floating white capsule dock.
+ *
+ * The digest was added alongside the tabs that already existed, never in place of
+ * one: الأكثر تداولاً keeps its slot and its icon. Five 44px items plus padding
+ * fit inside the 320px capsule, so nothing has to be dropped.
+ */
 export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
   return (
     <View style={[styles.dock, { backgroundColor: t.dockBg, shadowColor: t.dockShadow }]}>
@@ -28,9 +34,16 @@ export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
       <DockButton
         t={t}
         active={active === 'digest'}
-        icon="newspaper-outline"
+        icon="today-outline"
         label="الخلاصة"
         onPress={() => router.push('/digest')}
+      />
+      <DockButton
+        t={t}
+        active={active === 'video'}
+        icon="trending-up-outline"
+        label="الأكثر تداولاً"
+        onPress={() => router.push('/trending')}
       />
       <DockButton
         t={t}
@@ -65,14 +78,23 @@ function DockButton({
 }) {
   if (active) {
     return (
-      <View style={[styles.activeWrap, { shadowColor: t.dockActiveGradientEnd }]}>
+      // The active tab is still a tab: it must announce itself to a screen reader
+      // and stay tappable, exactly like the inactive ones.
+      <TouchableOpacity
+        style={[styles.activeWrap, { shadowColor: t.dockActiveGradientEnd }]}
+        onPress={onPress}
+        disabled={!onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ selected: true }}
+      >
         <LinearGradient
           colors={[t.dockActiveGradientStart, t.dockActiveGradientEnd]}
           style={styles.activeGradient}
         >
           <Ionicons name={icon} size={20} color={t.dockActiveIcon} />
         </LinearGradient>
-      </View>
+      </TouchableOpacity>
     );
   }
   return (
@@ -99,7 +121,10 @@ const styles = StyleSheet.create({
     width: 320,
     height: 62,
     borderRadius: 31,
+    // Six 44px items plus one 46px active wrap need 266px; with 12px padding a
+    // side that is 290px, so the capsule stays 320 and nothing is dropped.
     paddingHorizontal: 12,
+    gap: 2,
     shadowOpacity: 0.12,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },

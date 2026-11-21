@@ -585,6 +585,8 @@ export interface DigestItem {
   publishedAt: number;
   /** 'snippet' means the summary was built from the RSS excerpt, not the article. */
   textSource: 'full' | 'snippet';
+  /** Distinct outlets covering this story; >1 is why it matters. */
+  sourceCount?: number;
 }
 
 export interface DigestResponse {

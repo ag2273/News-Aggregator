@@ -193,7 +193,11 @@ export default function DigestScreen() {
                       عاجل
                     </Text>
                   ) : null}
-                  <Text style={[styles.source, { color: t.textMuted }]}>{item.sourceName}</Text>
+                  <Text style={[styles.source, { color: t.textMuted }]}>
+                    {item.sourceCount && item.sourceCount > 1
+                      ? `${item.sourceName} · ${item.sourceCount} مصادر`
+                      : item.sourceName}
+                  </Text>
                   <Text style={[styles.topic, { color: t.accent }]}>
                     {DIGEST_TOPIC_LABEL[item.category]}
                   </Text>
