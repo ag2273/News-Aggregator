@@ -39,8 +39,8 @@ function reset(): void {
 beforeEach(reset);
 
 describe('sources: registry', () => {
-  it('has 17 sources after batch 1, all with an interval and a breaking flag', () => {
-    expect(SOURCES).toHaveLength(17);
+  it('has 18 sources after batch 2, all with an interval and a breaking flag', () => {
+    expect(SOURCES).toHaveLength(18);
     for (const s of SOURCES) {
       expect(s.intervalMinutes).toBeGreaterThan(0);
       expect(typeof s.breaking).toBe('boolean');
@@ -53,6 +53,7 @@ describe('sources: registry', () => {
 
   it('adds the seven batch-1 outlets', () => {
     for (const id of NEW_IDS) expect(SOURCES.some((s) => s.id === id)).toBe(true);
+    expect(SOURCES.some((s) => s.id === 'alwatan-sa')).toBe(true);
   });
 
   it('starts every NEW source with breaking disabled, and keeps the original ten on', () => {
@@ -62,6 +63,7 @@ describe('sources: registry', () => {
     // The ten that rule G was measured on keep working as before.
     expect(SOURCES.find((s) => s.id === 'aljazeera')?.breaking).toBe(true);
     expect(SOURCES.find((s) => s.id === 'almasry')?.breaking).toBe(true);
+    expect(SOURCES.find((s) => s.id === 'alwatan-sa')?.breaking).toBe(false);
     expect(SOURCES.filter((s) => s.breaking)).toHaveLength(10);
   });
 
