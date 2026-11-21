@@ -7,6 +7,20 @@ import { SOURCES } from './types.js';
 
 /** Sources whose titles may be flagged breaking; every other outlet is pinned off. */
 const BREAKING_ENABLED = new Set(SOURCES.filter((s) => s.breaking).map((s) => s.id));
+
+/**
+ * Sources whose whole beat is technology. Their `misc` rows are re-classified on
+ * load after a vocabulary change, because those are precisely the rows a fixed
+ * classifier can now file correctly. A general paper's `misc` is left alone: a
+ * later vocabulary change should not silently re-label the wider corpus.
+ */
+const TECH_SOURCES = new Set([
+  'tech-wd',
+  'hashtagarabi',
+  'arabhardware',
+  'arabgamerz',
+  'aitnews',
+]);
 import { decodeHtmlEntities } from './text.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,9 +46,21 @@ function migrate(rows: StoredArticle[]): { rows: StoredArticle[]; changed: boole
   let changed = false;
   const out = rows.map((r) => {
     let row = r;
-    if (!row.category || row.category === 'general') {
-      row = { ...row, category: categorize(row.title, row.summary) };
-      changed = true;
+    // Re-classify when the category is missing, legacy 'general', or when the
+    // stored label is `misc` under a source that now has real vocabulary. Without
+    // the last case a classifier fix only ever reaches NEW rows: measured, the
+    // 24h tech count stayed at 4.4% after the vocabulary shipped because every
+    // stored `misc` row kept its old label.
+    const reclassify =
+      !row.category ||
+      row.category === 'general' ||
+      (row.category === 'misc' && TECH_SOURCES.has(row.sourceId));
+    if (reclassify) {
+      const next = categorize(row.title, row.summary);
+      if (next !== row.category) {
+        row = { ...row, category: next };
+        changed = true;
+      }
     }
     const title = decodeHtmlEntities(row.title);
     const summary = row.summary === null ? null : decodeHtmlEntities(row.summary) || null;

@@ -232,4 +232,24 @@ describe('sources: breaking stays off for new outlets', () => {
       'ماهو الترند على تويتر ؟وكيف اعرف الترند العالمي',
     ]);
   });
+
+  it('re-labels a stored misc row from a tech source after a vocabulary fix', () => {
+    // A classifier fix must reach rows already in the store, or the count never
+    // moves: measured, 24h tech stayed at 4.4% after the vocabulary shipped.
+    insertArticles([
+      { id: 't-misc', title: 'إطلاق سلسلة Xiaomi 18 Pro عالميًا', summary: null,
+        imageUrl: null, url: 'https://example.com/t1', sourceId: 'tech-wd',
+        sourceName: 'التقنية بلا حدود', category: 'misc', country: 'SA',
+        publishedAt: Date.now(), isBreaking: false },
+      { id: 'g-misc', title: 'ماذا يحدث في البرلمان اليوم', summary: null,
+        imageUrl: null, url: 'https://example.com/t2', sourceId: 'almasry',
+        sourceName: 'المصري اليوم', category: 'misc', country: 'EG',
+        publishedAt: Date.now(), isBreaking: false },
+    ]);
+    _resetDbCache();
+    const rows = getAllArticles();
+    expect(rows.find((r) => r.id === 't-misc')?.category).toBe('tech');
+    // A general paper's misc stays misc: the fix must not sweep the corpus.
+    expect(rows.find((r) => r.id === 'g-misc')?.category).toBe('misc');
+  });
 });
