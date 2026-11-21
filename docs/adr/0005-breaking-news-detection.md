@@ -73,7 +73,19 @@ mechanical fixes, no new tier:
 3. tighten the label tier with the markers that caused all 5 false positives
    («ندين»، «ستعالج»، «عن مصادر»، «تهمة»، institutional attribution).
 
-**That 100% is in-sample, not a forecast.** G's markers and nouns were chosen
+### Hold-out result (2026-11-21 16:00Z) — G SHIPPED
+The hold-out check ran on **18.38 h / 1,199 rows fetched after the tuning
+cutoff 2026-11-20T21:36Z**, which G had never seen:
+
+- **7 flags, 7 hand-labelled ✓ = 100% precision** (1.2× the 85% bar), 9.14/day;
+- screened non-flagged titles with a stated toll ≥ 3: **0 misses**;
+- per source: الجزيرة 4, سكاي 2, آر تي 1, all others 0.
+
+At that volume 100% has wide error bars, so the honest reading is "no failure
+observed in ~1.2k unseen titles", not "provably 100%". The gate was 85% and it
+cleared it; G is shipped on that basis and stays under observation.
+
+**That in-sample 100% was not a forecast.** G's markers and nouns were chosen
 while reading this same 3.25-day corpus, so it is scored on the data it was
 tuned on. If G is approved, the ship must include a hold-out check on articles
 fetched after 2026-11-20T21:36Z (the tuning cutoff) before the threshold is
