@@ -39,8 +39,8 @@ function reset(): void {
 beforeEach(reset);
 
 describe('sources: registry', () => {
-  it('has 17 sources after batch 2 (one of the seven was viable, see the report)', () => {
-    expect(SOURCES).toHaveLength(17);
+  it('has 22 sources after round 2 batch 1 (the tech five)', () => {
+    expect(SOURCES).toHaveLength(22);
     for (const s of SOURCES) {
       expect(s.intervalMinutes).toBeGreaterThan(0);
       expect(typeof s.breaking).toBe('boolean');
@@ -175,5 +175,19 @@ describe('sources: breaking stays off for new outlets', () => {
     expect(ids).toContain('aljazeera');
     // The old rows are untouched: only the listing changes.
     expect(getAllArticles().some((a) => a.id === 'ghost-1')).toBe(true);
+  });
+
+  it('adds the five tech sources with breaking disabled', () => {
+    const TECH = ['tech-wd', 'hashtagarabi', 'arabhardware', 'arabgamerz', 'aitnews'];
+    for (const id of TECH) {
+      const s = SOURCES.find((x) => x.id === id) as { breaking: boolean; rssUrl: string };
+      expect(s).toBeTruthy();
+      // Rule G was measured on the original ten only.
+      expect(s.breaking).toBe(false);
+      // Tech outlets are single-topic by nature: their whole feed is the tech desk.
+      expect(s.rssUrl).toContain('news.google.com/rss/search?q=site:');
+    }
+    // Still exactly the original ten may raise breaking.
+    expect(SOURCES.filter((x) => x.breaking)).toHaveLength(10);
   });
 });

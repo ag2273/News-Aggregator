@@ -276,4 +276,70 @@ export const SOURCES: Source[] = [
     type: 'google-news',
   },
 
+
+  // --- Added 2026-11-21, batch 1 of round 2: the TECH sources. The user's
+  // complaint was that every source was a general paper, so تكنولوجيا only
+  // filled when one of them happened to run a tech story.
+  // Measured: these five contribute 39 Arabic tech articles/day, and every
+  // sampled article gave full text (3/3 each).
+  {
+    id: 'tech-wd',
+    name: 'Tech Without Borders',
+    nameAr: 'التقنية بلا حدود',
+    url: 'https://tech-wd.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:tech-wd.com&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'SA',
+    intervalMinutes: 30,
+    breaking: false,
+    type: 'google-news',
+  },
+  {
+    id: 'hashtagarabi',
+    name: 'Hashtag Arabi',
+    nameAr: 'هاشتاق عربي',
+    url: 'https://hashtagarabi.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:hashtagarabi.com&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'SA',
+    intervalMinutes: 30,
+    breaking: false,
+    type: 'google-news',
+  },
+  {
+    id: 'arabhardware',
+    name: 'Arab Hardware',
+    nameAr: 'عرب هاردوير',
+    url: 'https://arabhardware.net',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:arabhardware.net&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'SA',
+    intervalMinutes: 30,
+    breaking: false,
+    type: 'google-news',
+  },
+  {
+    id: 'arabgamerz',
+    name: 'Arab Gamerz',
+    nameAr: 'عرب جيمرز',
+    url: 'https://arabgamerz.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:arabgamerz.com&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'SA',
+    intervalMinutes: 60,
+    breaking: false,
+    type: 'google-news',
+  },
+  {
+    id: 'aitnews',
+    name: 'AIT News',
+    nameAr: 'البوابة العربية للأخبار التقنية',
+    url: 'https://aitnews.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:aitnews.com&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'AE',
+    intervalMinutes: 60,
+    breaking: false,
+    type: 'google-news',
+  },
 ];
