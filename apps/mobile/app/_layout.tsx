@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useRootNavigationState } from 'expo-router';
 import { useEffect } from 'react';
 import { AppState, I18nManager, ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { initCrashReporting } from '../lib/crash';
 import { beaconPing } from '../lib/analytics';
 import {
   addNotificationResponseListener,
+  handleInitialNotification,
   addPushTokenRefreshListener,
   ensureNotificationChannels,
 } from '../lib/notifications';
@@ -56,8 +57,21 @@ export default function RootLayout() {
     Cairo_700Bold,
   });
 
-  // Open the article a tapped notification refers to.
+  // Open the article a tapped notification refers to, while the app is running.
   useEffect(() => addNotificationResponseListener(), []);
+  // ...and the tap that LAUNCHED the app. The listener above only fires while
+  // the app is alive, so a cold start from a push (the usual case: the phone was
+  // asleep) used to fall through and open the default screen. Wait for the
+  // router to mount, then route to the digest/article the push pointed at.
+  const navigationState = useRootNavigationState();
+  useEffect(() => {
+    if (!navigationState?.key) return;
+    void handleInitialNotification(async () => {
+      // One tick after the root navigator exists, so a push during mount lands.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    // Only once per mount: the response is cleared inside the handler.
+  }, [navigationState?.key]);
 
   // Crash reporting only (no analytics). Failure here must never block startup.
   useEffect(() => {

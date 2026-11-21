@@ -295,20 +295,61 @@ export function addPushTokenRefreshListener(
   return () => sub.remove();
 }
 
+/** Where a notification tap should land, from its `data` payload. */
+export type NotificationTarget =
+  | { kind: 'digest' }
+  | { kind: 'article'; articleId: string }
+  | { kind: 'webview'; url: string }
+  | null;
+
 /**
- * Navigate to the article a notification refers to.
- * The server sends data { articleId }.
+ * Decide the destination for a tapped notification.
+ *
+ * The server sends THREE payload shapes and this is the one place they are read:
+ *   - digest:   { digest: '1', slot }   -> the الخلاصة screen
+ *   - article:  { articleId }           -> that article
+ *   - keyword:  { articleId, keyword }  -> that article
+ *   - webview:  { url }                 -> in-app browser
+ *
+ * Pure, so the routing decision is testable without a running app. A digest tap
+ * used to fall through to "no destination", which left the user on whatever
+ * screen was already open — the bug this fixes.
  */
-export function openNotificationArticle(data: Record<string, unknown> | undefined): void {
-  const articleId = data?.['articleId'];
+export function notificationTarget(data: Record<string, unknown> | undefined): NotificationTarget {
+  if (!data) return null;
+  // Check the digest first: its payload has no articleId, but a future one might
+  // carry both, and the digest is the more specific destination.
+  if (data['digest'] === '1' || data['digest'] === 1 || data['digest'] === true) {
+    return { kind: 'digest' };
+  }
+  const articleId = data['articleId'];
   if (typeof articleId === 'string' && articleId.length > 0) {
-    router.push({ pathname: '/article', params: { id: articleId } });
-    return;
+    return { kind: 'article', articleId };
   }
-  const url = data?.['url'];
+  const url = data['url'];
   if (typeof url === 'string' && url.startsWith('http')) {
-    router.push({ pathname: '/webview', params: { url } });
+    return { kind: 'webview', url };
   }
+  return null;
+}
+
+/**
+ * Navigate to what a notification refers to.
+ *
+ * Returns the destination it used, so a caller (and a test) can assert the tap
+ * was honoured rather than inferring it from side effects.
+ */
+export function openNotificationArticle(data: Record<string, unknown> | undefined): NotificationTarget {
+  const target = notificationTarget(data);
+  if (!target) return null;
+  if (target.kind === 'digest') {
+    router.push('/digest');
+  } else if (target.kind === 'article') {
+    router.push({ pathname: '/article', params: { id: target.articleId } });
+  } else {
+    router.push({ pathname: '/webview', params: { url: target.url } });
+  }
+  return target;
 }
 
 /** Subscribe to taps while the app is running. Returns an unsubscribe fn. */
@@ -317,4 +358,36 @@ export function addNotificationResponseListener(): () => void {
     openNotificationArticle(response.notification.request.content.data as Record<string, unknown>);
   });
   return () => sub.remove();
+}
+
+/**
+ * Handle the tap that LAUNCHED the app.
+ *
+ * `addNotificationResponseReceivedListener` only fires while the app is already
+ * running, so a cold start (the common case: the phone is asleep, the user taps
+ * the push) never reached the handler at all and the app opened on its default
+ * screen. This reads the response the launch carried and routes it.
+ *
+ * The router must be mounted before pushing, so callers pass `waitForRouter`.
+ * Returns the destination, or null when the launch was not a notification tap.
+ */
+export async function handleInitialNotification(
+  waitForRouter?: () => Promise<void>,
+): Promise<NotificationTarget> {
+  try {
+    const response = await Notifications.getLastNotificationResponseAsync();
+    if (!response) return null;
+    const data = response.notification.request.content.data as Record<string, unknown>;
+    const target = notificationTarget(data);
+    if (!target) return null;
+    if (waitForRouter) await waitForRouter();
+    openNotificationArticle(data);
+    // Clear it, so a later foreground/background cycle does not re-navigate to
+    // the same digest every time the app is resumed.
+    await Notifications.clearLastNotificationResponseAsync?.();
+    return target;
+  } catch (err) {
+    console.warn('[notifications] cold-start routing failed:', err);
+    return null;
+  }
 }
