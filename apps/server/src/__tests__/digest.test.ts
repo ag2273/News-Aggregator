@@ -443,10 +443,14 @@ describe('digest: cross-source repetition as an importance signal', () => {
     sourceName: string,
     title: string,
     publishedAt = now - 60_000,
-  ): Article {
+    text?: string,
+  ): Article & { text?: string } {
     return {
       id,
       title,
+      // The body is what the deduper compares; without one a candidate is
+      // deliberately not merged (see MIN_COMPARABLE_CHARS).
+      text,
       summary: 'ملخص',
       imageUrl: null,
       url: `https://example.com/${id}`,
@@ -459,15 +463,20 @@ describe('digest: cross-source repetition as an importance signal', () => {
     };
   }
 
-  // The same event, as three outlets worded it.
+  // The same event, as three outlets worded it: identical bodies over different
+  // headlines is exactly what the text comparator exists to catch.
   const shared = 'مقتل 7 مدنيين وإصابة 4 آخرين في هجمات أوكرانية على لوغانسك خلال يوم';
+  const DUPLICATE_BODY =
+    'قتل سبعة مدنيين وأصيب أربعة آخرون في هجمات على منطقة لوغانسك خلال اليوم، حسب ما أعلنت السلطات المحلية هناك. وقالت كييف إن الدفاعات الجوية أسقطت ثلاث مسيرات.';
 
   it('groups one story covered by three outlets into a single candidate', () => {
+    const body = 'قتل سبعة مدنيين وأصيب أربعة آخرون في هجمات على منطقة لوغانسك خلال اليوم، حسب ما أعلنت السلطات المحلية هناك، في حين أعلنت كييف أن الدفاعات الجوية أسقطت مسيرات.';
     const groups = groupByStory([
-      article('a', 'rt-arabic', 'آر تي عربي', shared),
-      article('b', 'aljazeera', 'الجزيرة', shared),
-      article('c', 'skynews-arabia', 'سكاي نيوز عربية', shared),
-      article('d', 'youm7', 'اليوم السابع', 'خبر مختلف تمامًا عن الاقتصاد المصري وأسعار الفائدة'),
+      article('a', 'rt-arabic', 'آر تي عربي', shared, now - 60_000, body),
+      article('b', 'aljazeera', 'الجزيرة', shared, now - 120_000, body),
+      article('c', 'skynews-arabia', 'سكاي نيوز عربية', shared, now - 180_000, body),
+      article('d', 'youm7', 'اليوم السابع', 'خبر مختلف تمامًا عن الاقتصاد المصري وأسعار الفائدة',
+        now - 60_000, 'أعلن البنك المركزي المصري تثبيت أسعار الفائدة دون تغيير، في قرار يخص الاقتصاد المصري وأسعار الفائدة على الجنيه.'),
     ]);
     expect(groups).toHaveLength(2);
     const multi = groups.find((g) => g.members.length > 1);
@@ -510,7 +519,7 @@ describe('digest: cross-source repetition as an importance signal', () => {
         article('c', 'skynews-arabia', 'سكاي نيوز عربية', shared),
       ],
       apiKey: 'k',
-      fetchText: async () => ({ text: 'نص كامل '.repeat(50), source: 'full' as const, resolvedUrl: 'u' }),
+      fetchText: async () => ({ text: DUPLICATE_BODY, source: 'full' as const, resolvedUrl: 'u' }),
       fetchImpl: aiFetch,
     });
 
@@ -543,7 +552,7 @@ describe('digest: cross-source repetition as an importance signal', () => {
         article('c', 'skynews-arabia', 'سكاي نيوز عربية', shared),
       ],
       apiKey: 'k',
-      fetchText: async () => ({ text: 'نص كامل '.repeat(50), source: 'full' as const, resolvedUrl: 'u' }),
+      fetchText: async () => ({ text: DUPLICATE_BODY, source: 'full' as const, resolvedUrl: 'u' }),
       fetchImpl: aiFetch,
     });
     // The same story three times is ONE item.
@@ -576,8 +585,10 @@ describe('digest: cross-source repetition as an importance signal', () => {
 
   it('does not merge two different stories that share a word', () => {
     const groups = groupByStory([
-      article('a', 'youm7', 'اليوم السابع', 'ارتفاع أسعار الذهب في مصر اليوم بعد قرار البنك المركزي'),
-      article('b', 'almasry', 'المصري اليوم', 'اجتماع مجلس الوزراء لمناقشة موازنة التعليم الجديدة'),
+      article('a', 'youm7', 'اليوم السابع', 'ارتفاع أسعار الذهب في مصر اليوم بعد قرار البنك المركزي',
+        now - 60_000, 'ارتفع سعر الذهب عيار 21 في مصر اليوم بعد قرار البنك المركزي برفع أسعار الفائدة، وسجل الجرام نحو 4200 جنيه.'),
+      article('b', 'almasry', 'المصري اليوم', 'اجتماع مجلس الوزراء لمناقشة موازنة التعليم الجديدة',
+        now - 60_000, 'عقد مجلس الوزراء اجتماعا لمناقشة موازنة التعليم الجديدة للعام المقبل، بحضور وزير التربية والتعليم والمالية.'),
     ]);
     expect(groups).toHaveLength(2);
     expect(groups.every((g) => g.sourceCount === 1)).toBe(true);

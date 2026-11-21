@@ -30,7 +30,24 @@ import { Agent, request } from 'undici';
  */
 export const H2_ENABLED = true;
 
-export const h2Agent = new Agent({ allowH2: H2_ENABLED, connections: 4 });
+/**
+ * Per-page deadline. A digest builds 30 of these in parallel and must finish
+ * inside the hour between slots, so one unresponsive publisher cannot hold the
+ * whole run: measured, a single hung connection stalled it indefinitely.
+ */
+export const PAGE_TIMEOUT_MS = 20_000;
+
+/**
+ * One shared HTTP/2-capable dispatcher for the whole process. The deadlines are
+ * on the agent, not per request: creating an Agent per call would leak sockets,
+ * and undici's `request` has no per-call signal.
+ */
+export const h2Agent = new Agent({
+  allowH2: H2_ENABLED,
+  connections: 4,
+  headersTimeout: PAGE_TIMEOUT_MS,
+  bodyTimeout: PAGE_TIMEOUT_MS,
+});
 
 /**
  * Hosts that answer 403 over HTTP/2 but 200 over HTTP/1.1 (bbc.com) — the mirror
@@ -57,11 +74,19 @@ export async function fetchPage(
   fetchImpl?: typeof fetch,
 ): Promise<{ ok: boolean; status: number; text: string }> {
   if (fetchImpl) {
-    const res = await fetchImpl(url, { headers: BROWSER_HEADERS, redirect: 'follow' });
+    const res = await fetchImpl(url, {
+      headers: BROWSER_HEADERS,
+      redirect: 'follow',
+      signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
+    });
     return { ok: res.ok, status: res.status, text: await res.text() };
   }
   if (prefersHttp1(url)) {
-    const res = await fetch(url, { headers: BROWSER_HEADERS, redirect: 'follow' });
+    const res = await fetch(url, {
+      headers: BROWSER_HEADERS,
+      redirect: 'follow',
+      signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
+    });
     return { ok: res.ok, status: res.status, text: await res.text() };
   }
   let current = url;
@@ -247,6 +272,27 @@ function paragraphTexts(html: string): string[] {
 }
 
 /**
+ * Remove what is not the article: JSON-LD schema blobs, URLs, and repeated outlet
+ * signage. Measured on production pages, several bodies began with a ~500-char
+ * `{"@context":"https://schema.org"...}` block, which then became the first thing
+ * the model read and the text a duplicate comparison was made on.
+ */
+export function stripBoilerplate(text: string): string {
+  let out = text;
+  // Embedded data objects, repeatedly: schema blobs nest.
+  for (let i = 0; i < 6; i += 1) {
+    const next = out.replace(/\{\s*"[^{}]*\}/g, ' ');
+    if (next === out) break;
+    out = next;
+  }
+  return out
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/\s*\|\s*(?:أخبار|الجزيرة نت|المصري اليوم|اليوم السابع|بوابة الأهرام|سكاي نيوز عربية|العربية|آر تي عربي|بي بي سي عربي|سي إن إن عربي|مصراوي|Masrawy)\s*/g, ' . ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * The article body, without menu chrome. Empty string when the page has none.
  *
  * Readability is the primary path, but it refuses some pages that plainly have a
@@ -267,27 +313,28 @@ export function extractArticleText(html: string): string {
     const fromContent = article?.content ? paragraphTexts(article.content) : [];
     const unique = dedupe(fromContent);
     if (unique.length && arabicLength(unique.join(' ')) >= MIN_BODY_ARABIC) {
-      return unique.join(' ');
+      return stripBoilerplate(unique.join(' '));
     }
     const text = (article?.textContent ?? '').replace(/\s+/g, ' ').trim();
     if (text) {
       // A single string, so it must be split before de-duplicating: a body
       // rendered twice is the same block back-to-back. Find the smallest period
       // that reproduces the whole text (only worth trying for long bodies).
-      const period = repeatedPeriod(text);
-      if (period) return text.slice(0, period).trim();
+      const clean = stripBoilerplate(text);
+      const period = repeatedPeriod(clean);
+      if (period) return stripBoilerplate(clean.slice(0, period).trim());
       const sentences = text
         .split(/(?<=[.!?؟\u06D4])\s+/)
         .map((s) => s.trim())
         .filter(Boolean);
-      return dedupe(sentences).join(' ');
+      return stripBoilerplate(dedupe(sentences).join(' '));
     }
   } catch {
     /* fall through to the crude extraction */
   }
   const paragraphs = paragraphTexts(strippedHtml);
   if (paragraphs.length) {
-    const joined = dedupe(paragraphs).join(' ');
+    const joined = stripBoilerplate(dedupe(paragraphs).join(' '));
     if (arabicLength(joined) >= MIN_BODY_ARABIC) return joined;
   }
   // Block-page or unusual markup: last resort, still strip scripts and styles.
@@ -298,7 +345,12 @@ export function extractArticleText(html: string): string {
     .replace(/&[a-z#0-9]+;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return stripped;
+  const clean = stripBoilerplate(stripped);
+  // A "page" that is 137k of scripts and 38 Arabic letters is a photo gallery or a
+  // block page. Return nothing so the caller falls back to the snippet instead of
+  // summarising JavaScript.
+  if (arabicLength(clean) < MIN_BODY_ARABIC) return '';
+  return clean;
 }
 
 /**

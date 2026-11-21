@@ -10,7 +10,15 @@
 // digest stays and the failure is logged. The app must never show a blank screen.
 
 import type { Article } from './types.js';
-import { clusterArticles } from './cluster.js';
+import { groupByText, type StoryCandidate } from './digestSimilarity.js';
+
+/** A story and the other outlets covering it, as the builder sees it. */
+export interface StoryGroup {
+  lead: Article;
+  members: Article[];
+  sourceCount: number;
+  otherSources: string[];
+}
 import { fetchArticleText, type TextSource } from './articleText.js';
 import { analyzeCandidates, MAX_CANDIDATES, type AiCallResult, type StoryVerdict } from './digestAi.js';
 import {
@@ -27,52 +35,38 @@ export const DEFAULT_WINDOW_MS = 12 * 60 * 60 * 1000;
 /** How many from one outlet, so one prolific source cannot fill the digest. */
 export const MAX_PER_SOURCE = 4;
 
-/**
- * A story and the other outlets covering it.
- *
- * Several outlets publishing the same event is an importance signal — independent
- * desks all judged it worth running — so the count travels with the candidate into
- * the prompt, and the duplicate articles are dropped instead of being summarised
- * three times and shown three times.
- */
-export interface StoryGroup {
-  /** The article that represents the story: the newest member. */
-  lead: Article;
-  /** Every article covering it, lead included. */
-  members: Article[];
-  /** Distinct outlets, which is the signal. */
-  sourceCount: number;
-  /** Outlets other than the lead's, for the prompt. */
-  otherSources: string[];
-}
+/** Pages fetched at once. Enough to be quick, few enough not to look like a bot. */
+export const TEXT_CONCURRENCY = 6;
 
 /**
- * Group candidates by story using the same conservative clustering the feed uses
- * for its «من N مصادر» card, so the digest and the feed agree on what "one story"
- * means. Order follows the leads' recency.
+ * Group candidates that are the same story by comparing their ARTICLE TEXT.
+ *
+ * Deliberately not `cluster.ts`: that groups titles for the feed's «من N مصادر»
+ * card and stays exactly as shipped. The digest holds the full body of every
+ * candidate, which catches the same event written under different headlines.
+ *
+ * A story covered by several outlets is an importance signal, so the count
+ * travels into the prompt; and the duplicates are merged, so one model call and
+ * one digest item stand for the event.
  */
 export function groupByStory(articles: Article[]): StoryGroup[] {
-  if (articles.length < 2) {
-    return articles.map((a) => ({ lead: a, members: [a], sourceCount: 1, otherSources: [] }));
-  }
-  const byId = new Map(articles.map((a) => [a.id, a]));
-  const clusters = clusterArticles(articles);
-  const groups: StoryGroup[] = [];
-  for (const cluster of clusters) {
-    const members = cluster.members.map((m) => byId.get(m.id) ?? m);
-    const outlets = [...new Set(members.map((m) => m.sourceId))];
-    const lead = members.reduce((newest, m) => (m.publishedAt > newest.publishedAt ? m : newest), members[0] as Article);
-    groups.push({
-      lead,
-      members,
-      sourceCount: outlets.length,
-      otherSources: members
-        .filter((m) => m.sourceId !== lead.sourceId)
-        .map((m) => m.sourceName)
-        .filter((name, i, all) => all.indexOf(name) === i),
-    });
-  }
-  return groups.sort((a, b) => b.lead.publishedAt - a.lead.publishedAt);
+  const candidates: StoryCandidate[] = articles.map((a) => ({
+    id: a.id,
+    title: a.title,
+    sourceId: a.sourceId,
+    sourceName: a.sourceName,
+    publishedAt: a.publishedAt,
+    // The body when the fetcher had one (set by the caller below); the title is a
+    // last resort that only ever merges identical headlines.
+    text: (a as Article & { text?: string }).text ?? a.summary ?? a.title,
+    textSource: 'full' as StoryCandidate['textSource'],
+  }));
+  return groupByText(candidates).map((g) => ({
+    lead: articles.find((a) => a.id === g.lead.id) as Article,
+    members: g.members.map((m) => articles.find((a) => a.id === m.id) as Article),
+    sourceCount: g.sourceCount,
+    otherSources: g.otherSources,
+  }));
 }
 
 export interface BuildOptions {
@@ -167,37 +161,57 @@ export async function buildDigest(options: BuildOptions): Promise<BuildResult> {
     return { digest: null, error: 'no candidates in the window', considered: 0, analysed: 0 };
   }
 
-  // One candidate per STORY, not per article: the same event on three outlets is
-  // one item that says so, and one model call instead of three.
-  const groups = groupByStory(candidates);
-  const stories0 = groups.map((g) => g.lead);
-
-  // Fetch text for every candidate in parallel: each is one page, and the whole
-  // run must finish well inside the hour between digests.
-  const texts = await Promise.all(
-    stories0.map((article) =>
-      fetchText({ url: article.url, summary: article.summary }, options.fetchImpl).catch(() => ({
-        text: article.summary ?? '',
-        source: 'snippet' as TextSource,
-        resolvedUrl: null,
-        reason: 'fetch threw',
-      })),
-    ),
+  // Fetch text FIRST, then dedupe on it: the whole point is that bodies catch
+  // duplicates the headlines miss, so grouping before this would be the old
+  // title-based behaviour with extra steps.
+  // Each page has its own deadline (articleText.ts) and the batch is capped, so
+  // one unreachable publisher costs one candidate, not the run.
+  const texts: Array<{ text: string; source: TextSource; resolvedUrl: string | null }> = new Array(
+    candidates.length,
+  );
+  let cursor = 0;
+  const workers = Math.min(TEXT_CONCURRENCY, candidates.length);
+  await Promise.all(
+    Array.from({ length: workers }, async () => {
+      for (;;) {
+        const index = cursor;
+        cursor += 1;
+        if (index >= candidates.length) return;
+        const article = candidates[index] as Article;
+        try {
+          texts[index] = await fetchText(
+            { url: article.url, summary: article.summary },
+            options.fetchImpl,
+          );
+        } catch {
+          texts[index] = { text: article.summary ?? '', source: 'snippet', resolvedUrl: null };
+        }
+      }
+    }),
   );
 
   const failedSources: Record<string, number> = {};
-  const stories = stories0.map((article, i) => {
-    const text = texts[i];
-    if (text.source !== 'full') {
-      failedSources[article.sourceId] = (failedSources[article.sourceId] ?? 0) + 1;
-    }
-    const group = groups[i] as StoryGroup;
+  const withText = candidates.map((article, i) => {
+    const text = texts[i] as { text: string; source: TextSource };
+    if (text.source !== 'full') failedSources[article.sourceId] = (failedSources[article.sourceId] ?? 0) + 1;
+    // Stash the body on a copy so the deduper reads the real article text.
+    return { ...article, text: text.text || article.summary || article.title } as Article & { text: string };
+  });
+
+  // One candidate per STORY: the same event on three outlets is one item that
+  // says so, and one model call instead of three.
+  const groups = groupByStory(withText);
+  const stories0 = groups.map((g) => g.lead as Article & { text: string });
+
+  const stories = stories0.map((article) => {
+    const group = groups.find((g) => g.lead.id === article.id) as StoryGroup;
+    const found = texts[candidates.findIndex((c) => c.id === article.id)];
     return {
       article,
-      textSource: text.source,
+      textSource: (found?.source ?? 'snippet') as TextSource,
       title: article.title,
       sourceName: article.sourceName,
-      text: text.text || article.summary || article.title,
+      text: article.text || article.summary || article.title,
       sourceCount: group.sourceCount,
       otherSources: group.otherSources,
     };
