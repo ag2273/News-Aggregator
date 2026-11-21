@@ -61,6 +61,41 @@ function parseDate(val: unknown): number {
   return isNaN(d.getTime()) ? Date.now() : d.getTime();
 }
 
+/**
+ * Titles that are a section front, not a story.
+ *
+ * Measured on the tech feeds: `مقالات - ArabGamerZ`, `ألعاب - Arabhardware`,
+ * `الرئيسية - هاشتاق عربي` and `فريق عرب جيمرز` all resolve to the outlet's
+ * homepage or a category page. Google News indexes those fronts as if they were
+ * articles, so 29 of 150 tech rows were navigation, and they were landing in the
+ * digest as "news".
+ *
+ * Two rules, both narrow: the FIRST word before the outlet suffix is a
+ * navigation word, or the whole title is just the outlet name.
+ */
+const SECTION_WORDS: readonly string[] = [
+  'الرئيسية', 'الصفحة الرئيسية', 'مقالات', 'ألعاب', 'أخبار', 'فريق',
+  'من نحن', 'اتصل بنا', 'سياسة الخصوصية', 'شروط الاستخدام', 'الأقسام',
+] as const;
+
+export function isSectionPageTitle(title: string): boolean {
+  const trimmed = title.trim();
+  // "الرئيسية - هاشتاق عربي - هاشتاق عربي": the suffix is appended by Google
+  // News, so look at the first segment only.
+  const head = trimmed.split(/\s+[-–|]\s+/)[0]?.trim() ?? trimmed;
+  if (SECTION_WORDS.includes(head)) return true;
+  // "فريق عرب جيمرز" is the outlet's own team page: a navigation word followed by
+  // the outlet name and nothing else. Deliberately NOT applied to a headline like
+  // "الرئيسية: الحكومة تعلن…", where the word is followed by a real sentence.
+  const firstToken = head.split(/\s+/)[0] ?? head;
+  const rest = head.slice(firstToken.length).trim();
+  if (SECTION_WORDS.includes(firstToken) && rest.length > 0 && rest.split(/\s+/).length <= 3) {
+    return true;
+  }
+  // A title with no room for a headline beyond the outlet name is a front.
+  return head.length === 0;
+}
+
 export async function fetchSource(source: Source): Promise<Article[]> {
   const articles: Article[] = [];
 
@@ -116,6 +151,9 @@ export async function fetchSource(source: Source): Promise<Article[]> {
 
     const cleanTitle = decodeHtmlEntities(title);
     if (!cleanTitle) continue;
+    // A section front is not a story: it resolves to the outlet's own homepage or
+    // category page, and it was reaching the digest as "news".
+    if (isSectionPageTitle(cleanTitle)) continue;
 
     const rawSummary = extractText(item['description'] ?? item['summary'] ?? '').replace(
       /<[^>]+>/g,

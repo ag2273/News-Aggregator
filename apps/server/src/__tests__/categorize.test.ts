@@ -36,6 +36,24 @@ describe('categorize: title+summary → category id', () => {
   });
 });
 
+describe('categorize: tech vocabulary from the new tech sources', () => {
+  it('files game and hardware reviews as tech', () => {
+    // Real titles from عرب هاردوير / عرب جيمرز that used to land in `misc`.
+    expect(categorize('مراجعة لعبة Grand Theft Auto 6 - Arabhardware')).toBe('tech');
+    expect(categorize('لعبة Rise of the Ronin في التطوير منذ 7 سنوات - ArabGamerZ')).toBe('tech');
+    expect(categorize('تقنية DLSS 4.5 تصل إلى EVE Vanguard وAssetto Corsa Rally')).toBe('tech');
+    expect(categorize('عرض بلايستيشن الجديد يكشف موعد الإطلاق')).toBe('tech');
+    expect(categorize('كرت شاشة جديد من إنفيديا بذاكرة أكبر')).toBe('tech');
+  });
+
+  it('does not steal sport or economy stories', () => {
+    // The vocabulary must not reclassify the general papers' output.
+    expect(categorize('الأهلي يفوز على الزمالك في مباراة القمة بالدوري')).toBe('sports');
+    expect(categorize('البنك المركزي يرفع أسعار الفائدة 2%')).toBe('economy');
+    expect(categorize('مقتل 5 في انفجار بوسط بغداد')).not.toBe('tech');
+  });
+});
+
 describe('normalizeCategory', () => {
   it('passes through known ids', () => {
     expect(normalizeCategory('tech')).toBe('tech');

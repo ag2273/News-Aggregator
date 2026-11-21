@@ -11,6 +11,7 @@ import { SOURCES } from '../types.js';
 import { dueSources, applySourceBreaking, getSources } from '../ingest.js';
 import { insertArticles, getAllArticles, _resetDbCache } from '../db.js';
 import { detectBreaking } from '../categorize.js';
+import { isSectionPageTitle, fetchSource } from '../fetcher.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env['DATA_DIR']
@@ -190,4 +191,35 @@ describe('sources: breaking stays off for new outlets', () => {
     // Still exactly the original ten may raise breaking.
     expect(SOURCES.filter((x) => x.breaking)).toHaveLength(10);
   });
+
+  it('rejects section fronts, which are not stories', () => {
+    // Measured: these four resolve to the outlet's homepage or a category page.
+    for (const t of [
+      'مقالات - ArabGamerZ',
+      'ألعاب - Arabhardware',
+      'الرئيسية - هاشتاق عربي - هاشتاق عربي',
+      'فريق عرب جيمرز - ArabGamerZ',
+      'الرئيسية - Arabhardware - Arabhardware',
+    ]) {
+      expect(isSectionPageTitle(t)).toBe(true);
+    }
+    // ...and does not touch real headlines, including ones that merely start
+    // with a word that appears in the list.
+    for (const t of [
+      'ألعاب الفيديو تحقق أرقامًا قياسية في 2026',
+      'مقالات الرأي تثير جدلًا في البرلمان',
+      'الرئيسية: الحكومة تعلن حزمة إجراءات جديدة',
+      'تقنية DLSS 4.5 تصل إلى EVE Vanguard',
+      'العربية عاجل | مقتل 19 في تحطم طائرة',
+    ]) {
+      expect(isSectionPageTitle(t)).toBe(false);
+    }
+  });
+
+  it('drops a section front from a real feed', async () => {
+    // The live وهاشتاق feed really contains one; the mapper must skip it.
+    const src = SOURCES.find((s) => s.id === 'hashtagarabi') as never;
+    const rows = await fetchSource(src);
+    expect(rows.every((r) => !isSectionPageTitle(r.title))).toBe(true);
+  }, 120_000);
 });
