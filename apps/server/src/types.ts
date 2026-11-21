@@ -31,6 +31,21 @@ export interface Source {
   rssUrl: string;
   country: string;
   type: 'direct' | 'google-news';
+  /**
+   * How often this outlet is polled. Chosen from its measured volume so a
+   * 100-a-day paper is not on the same cycle as a 15-a-day one: the refresh
+   * ticker is 10 minutes, and a source with a longer interval is skipped until
+   * its own timer is due.
+   */
+  intervalMinutes: number;
+  /**
+   * Whether titles from this outlet may be flagged as breaking.
+   *
+   * New sources start false: rule G was tuned and measured on the original ten,
+   * and an unmeasured outlet must not be able to fire a push. A source is
+   * enabled only after it is hand-labelled against the same 85% gate.
+   */
+  breaking: boolean;
 }
 
 export const SOURCES: Source[] = [
@@ -46,6 +61,8 @@ export const SOURCES: Source[] = [
     rssUrl:
       'https://news.google.com/rss/search?q=site:youm7.com&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
+    intervalMinutes: 10,
+    breaking: true,
     type: 'google-news',
   },
   {
@@ -55,6 +72,8 @@ export const SOURCES: Source[] = [
     url: 'https://www.aljazeera.net',
     rssUrl: 'https://www.aljazeera.net/aljazeerarss',
     country: 'QA',
+    intervalMinutes: 10,
+    breaking: true,
     type: 'direct',
   },
   {
@@ -64,6 +83,8 @@ export const SOURCES: Source[] = [
     url: 'https://www.bbc.com/arabic',
     rssUrl: 'https://feeds.bbci.co.uk/arabic/rss.xml',
     country: 'GB',
+    intervalMinutes: 30,
+    breaking: true,
     type: 'direct',
   },
   {
@@ -73,6 +94,8 @@ export const SOURCES: Source[] = [
     url: 'https://arabic.cnn.com',
     rssUrl: 'https://arabic.cnn.com/rss',
     country: 'AE',
+    intervalMinutes: 30,
+    breaking: true,
     type: 'direct',
   },
   {
@@ -82,6 +105,8 @@ export const SOURCES: Source[] = [
     url: 'https://www.skynewsarabia.com',
     rssUrl: 'https://www.skynewsarabia.com/rss',
     country: 'AE',
+    intervalMinutes: 30,
+    breaking: true,
     type: 'direct',
   },
   {
@@ -91,6 +116,8 @@ export const SOURCES: Source[] = [
     url: 'https://arabic.rt.com',
     rssUrl: 'https://www.rtarabic.com/rss',
     country: 'RU',
+    intervalMinutes: 30,
+    breaking: true,
     type: 'direct',
   },
   // --- Google News RSS (site: filter) ---
@@ -102,6 +129,8 @@ export const SOURCES: Source[] = [
     rssUrl:
       'https://news.google.com/rss/search?q=site:alarabiya.net&hl=ar&gl=EG&ceid=EG:ar',
     country: 'AE',
+    intervalMinutes: 10,
+    breaking: true,
     type: 'google-news',
   },
   {
@@ -112,6 +141,8 @@ export const SOURCES: Source[] = [
     rssUrl:
       'https://news.google.com/rss/search?q=site:ahram.org.eg&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
+    intervalMinutes: 30,
+    breaking: true,
     type: 'google-news',
   },
   {
@@ -122,6 +153,8 @@ export const SOURCES: Source[] = [
     rssUrl:
       'https://news.google.com/rss/search?q=site:almasryalyoum.com&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
+    intervalMinutes: 10,
+    breaking: true,
     type: 'google-news',
   },
   {
@@ -132,6 +165,114 @@ export const SOURCES: Source[] = [
     rssUrl:
       'https://news.google.com/rss/search?q=site:masrawy.com&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
+    intervalMinutes: 30,
+    breaking: true,
+    type: 'google-news',
+  },
+
+  // --- Added 2026-11-21, batch 1. Polled at its own measured interval, and
+  // breaking starts DISABLED: rule G is only measured on the original ten, so an
+  // unmeasured outlet must not be able to fire a push.
+  {
+    id: 'asharqalawsat',
+    name: 'Asharq Al-Awsat',
+    nameAr: 'الشرق الأوسط',
+    url: 'https://aawsat.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:aawsat.com&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'SA',
+    intervalMinutes: 10,
+    breaking: false,
+    type: 'google-news',
+  },
+  // --- Added 2026-11-21, batch 1. Polled at its own measured interval, and
+  // breaking starts DISABLED: rule G is only measured on the original ten, so an
+  // unmeasured outlet must not be able to fire a push.
+  {
+    id: 'alkhaleej',
+    name: 'Al Khaleej',
+    nameAr: 'الخليج',
+    url: 'https://www.alkhaleej.ae',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:alkhaleej.ae&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'AE',
+    intervalMinutes: 10,
+    breaking: false,
+    type: 'google-news',
+  },
+  // --- Added 2026-11-21, batch 1. Polled at its own measured interval, and
+  // breaking starts DISABLED: rule G is only measured on the original ten, so an
+  // unmeasured outlet must not be able to fire a push.
+  {
+    id: 'alnahar',
+    name: 'Al Nahar',
+    nameAr: 'النهار',
+    url: 'https://www.alnaharegypt.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:alnaharegypt.com&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'EG',
+    intervalMinutes: 30,
+    breaking: false,
+    type: 'google-news',
+  },
+  // --- Added 2026-11-21, batch 1. Polled at its own measured interval, and
+  // breaking starts DISABLED: rule G is only measured on the original ten, so an
+  // unmeasured outlet must not be able to fire a push.
+  {
+    id: 'okaz',
+    name: 'Okaz',
+    nameAr: 'عكاظ',
+    url: 'https://www.okaz.com.sa',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:okaz.com.sa&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'SA',
+    intervalMinutes: 30,
+    breaking: false,
+    type: 'google-news',
+  },
+  // --- Added 2026-11-21, batch 1. Polled at its own measured interval, and
+  // breaking starts DISABLED: rule G is only measured on the original ten, so an
+  // unmeasured outlet must not be able to fire a push.
+  {
+    id: 'alshorouk',
+    name: 'Al Shorouk',
+    nameAr: 'الشروق',
+    url: 'https://www.shorouknews.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:shorouknews.com&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'EG',
+    intervalMinutes: 10,
+    breaking: false,
+    type: 'google-news',
+  },
+  // --- Added 2026-11-21, batch 1. Polled at its own measured interval, and
+  // breaking starts DISABLED: rule G is only measured on the original ten, so an
+  // unmeasured outlet must not be able to fire a push.
+  {
+    id: 'aldostor',
+    name: 'Al Dostor',
+    nameAr: 'الدستور',
+    url: 'https://www.dostor.org',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:dostor.org&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'EG',
+    intervalMinutes: 10,
+    breaking: false,
+    type: 'google-news',
+  },
+  // --- Added 2026-11-21, batch 1. Polled at its own measured interval, and
+  // breaking starts DISABLED: rule G is only measured on the original ten, so an
+  // unmeasured outlet must not be able to fire a push.
+  {
+    id: 'elwatannews',
+    name: 'El Watan News',
+    nameAr: 'الوطن نيوز',
+    url: 'https://www.elwatannews.com',
+    rssUrl:
+      'https://news.google.com/rss/search?q=site:elwatannews.com&hl=ar&gl=EG&ceid=EG:ar',
+    country: 'EG',
+    intervalMinutes: 10,
+    breaking: false,
     type: 'google-news',
   },
 ];

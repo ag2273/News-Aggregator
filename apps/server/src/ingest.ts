@@ -16,6 +16,36 @@ import { countsFor, myReaction, reactionWeight } from './reactions.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 let lastFetchTime = 0;
+/**
+ * When each source was last polled. The ticker is 10 minutes; a source whose
+ * `intervalMinutes` has not elapsed is skipped, so a 100-a-day paper is not
+ * fetched as often as a 1,600-a-day one. Staggered by the registry order, so the
+ * run never fires every source at once.
+ */
+const lastFetchBySource = new Map<string, number>();
+
+/**
+ * Strip the breaking flag for a source that is not allowed to set it.
+ *
+ * Two guards exist on purpose: this one stops the flag being written, and the
+ * migration in db.ts stops it coming back on the next load. Either alone would
+ * do for a fresh row, but the migration re-runs the rule over the whole store,
+ * so both are needed.
+ */
+export function applySourceBreaking<T extends { isBreaking: boolean }>(
+  rows: T[],
+  source: { breaking: boolean },
+): T[] {
+  return source.breaking ? rows : rows.map((a) => ({ ...a, isBreaking: false }));
+}
+
+/** Which sources are due at `now`. Exported for the tests and the load check. */
+export function dueSources(now: number = Date.now()): typeof SOURCES {
+  return SOURCES.filter((source) => {
+    const last = lastFetchBySource.get(source.id) ?? 0;
+    return now - last >= source.intervalMinutes * 60 * 1000;
+  });
+}
 /** The first refresh after boot is a backfill, never a push trigger. */
 let firstRefreshDone = false;
 
@@ -28,17 +58,26 @@ export async function refreshAll(): Promise<void> {
   }
 
   lastFetchTime = now;
-  console.log('[ingest] fetching', SOURCES.length, 'sources in parallel…');
+  const due = dueSources(now);
+  if (!due.length) {
+    console.log('[ingest] nothing due this tick');
+    return;
+  }
+  console.log('[ingest] fetching', due.length, 'of', SOURCES.length, 'sources…');
 
-  const results = await Promise.allSettled(SOURCES.map((s) => fetchSource(s)));
+  const results = await Promise.allSettled(due.map((s) => fetchSource(s)));
 
   let totalNew = 0;
   const freshArticles: Article[] = [];
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
-    const src = SOURCES[i];
+    const src = due[i] as (typeof SOURCES)[number];
+    lastFetchBySource.set(src.id, now);
     if (r.status === 'fulfilled') {
-      const inserted = insertArticlesDetailed(r.value);
+      // A source with breaking disabled ingests normally but never carries the
+      // flag, so it cannot reach the urgent push. See `Source.breaking`.
+      const rows = applySourceBreaking(r.value, src);
+      const inserted = insertArticlesDetailed(rows);
       freshArticles.push(...inserted);
       console.log(`[ingest] ${src.id}: ${r.value.length} articles, ${inserted.length} new`);
       totalNew += inserted.length;

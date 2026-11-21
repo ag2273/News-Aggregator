@@ -3,6 +3,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Article } from './types.js';
 import { categorize, detectBreaking } from './categorize.js';
+import { SOURCES } from './types.js';
+
+/** Sources whose titles may be flagged breaking; every other outlet is pinned off. */
+const BREAKING_ENABLED = new Set(SOURCES.filter((s) => s.breaking).map((s) => s.id));
 import { decodeHtmlEntities } from './text.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -38,7 +42,9 @@ function migrate(rows: StoredArticle[]): { rows: StoredArticle[]; changed: boole
       row = { ...row, title, summary };
       changed = true;
     }
-    const isBreaking = detectBreaking(row.title);
+    // The rule re-runs on every load, so a source whose breaking is disabled has
+    // to be pinned here too — otherwise the migration would quietly re-enable it.
+    const isBreaking = BREAKING_ENABLED.has(row.sourceId) && detectBreaking(row.title);
     if (row.isBreaking !== isBreaking) {
       row = { ...row, isBreaking };
       changed = true;
