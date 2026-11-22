@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   arabicTeam,
   cairoClock,
+  arabicChannel,
   hasLiveForReader,
   isFootballLeague,
   minuteOf,
@@ -226,5 +227,28 @@ describe('header live dot', () => {
         [],
       ),
     ).toBe(false);
+  });
+});
+
+describe('broadcast channels', () => {
+  it('translates the Latin brand names the source mixes into Arabic rows', () => {
+    // Measured on the real day page: beIN arrives in Latin script.
+    expect(arabicChannel('beIN SPORTS 2')).toBe('بي إن سبورتس 2');
+    expect(arabicChannel('beIN SPORTS 4')).toBe('بي إن سبورتس 4');
+    expect(arabicChannel('beIN SPORTS')).toBe('بي إن سبورتس');
+  });
+
+  it('leaves an already-Arabic channel name alone', () => {
+    expect(arabicChannel('الكأس 7')).toBe('الكأس 7');
+  });
+
+  it('passes null through', () => {
+    expect(arabicChannel(null)).toBeNull();
+  });
+
+  it('keeps SSC, which is the brand name in the region', () => {
+    // SSC is written in Latin script even in Arabic copy; translating it would be
+    // more confusing than leaving it.
+    expect(arabicChannel('SSC 1')).toBe('SSC 1');
   });
 });

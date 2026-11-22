@@ -233,7 +233,7 @@ export function parseYallakoraDay(html: string, date: string): MatchRow[] {
       url: link ? `${YALLAKORA_BASE}${link.split('#')[0]}` : undefined,
       minute: minuteOf(statusWord),
       dataSource: 'yallakora',
-      channel: channel || null,
+      channel: arabicChannel(channel),
     });
   }
   return rows;
@@ -511,6 +511,25 @@ export const ESPN_TEAM_AR: Record<string, string> = {
 /** Arabic name for an ESPN club, or the original when we have no entry. */
 export function arabicTeam(name: string): string {
   return ESPN_TEAM_AR[name] ?? name;
+}
+
+/**
+ * Arabic for the Latin channel names the source sometimes sends.
+ *
+ * Measured: the Arabic day page returns «beIN SPORTS 2» and «beIN SPORTS 4»
+ * verbatim for European fixtures, while its own Arabic pages call them
+ * «بي إن سبورتس». An English brand name inside an Arabic row is the same defect
+ * as an English club name, so it is mapped here.
+ */
+export function arabicChannel(channel: string | null): string | null {
+  if (!channel) return null;
+  const digits = channel.match(/(\d+)\s*$/)?.[1];
+  if (/be\s*in/i.test(channel)) return digits ? `بي إن سبورتس ${digits}` : 'بي إن سبورتس';
+  if (/^ssc/i.test(channel)) return digits ? `SSC ${digits}` : 'SSC';
+  if (/^ad sports|abu dhabi/i.test(channel)) return 'أبوظبي الرياضية';
+  if (/dubai/i.test(channel)) return 'دبي الرياضية';
+  if (/alkass|al kass/i.test(channel)) return 'الكأس';
+  return channel;
 }
 
 /** Normalised team name for matching a match against our news corpus. */
