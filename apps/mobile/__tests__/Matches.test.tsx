@@ -169,4 +169,16 @@ describe('follow teams screen', () => {
     expect(screen.getByText('+15')).toBeTruthy();
     expect(screen.getByText(/بدون تفصيل الفوز والتعادل والخسارة/)).toBeTruthy();
   });
+
+  it('labels an article that covers both teams', async () => {
+    mockMatch.mockResolvedValue({
+      match: match(),
+      news: [
+        { id: 'n1', title: 'الأهلي يستعد لمواجهة بيراميدز', sourceName: 'اليوم السابع', url: 'https://x', publishedAt: 1, team: 'both' },
+      ],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText(/الفريقان/)).toBeTruthy());
+  });
 });

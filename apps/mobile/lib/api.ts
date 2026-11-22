@@ -700,15 +700,30 @@ export async function fetchMatches(date: string, token?: string | null): Promise
   return ((await res.json()) as { data: MatchesDay }).data;
 }
 
+/** An article about one of a match's two clubs, from our own corpus. */
+export interface MatchNews {
+  id: string;
+  title: string;
+  sourceName: string;
+  url: string;
+  publishedAt: number;
+  /** `both` when the article names the two clubs in the same piece. */
+  team: 'home' | 'away' | 'both';
+}
+
 export async function fetchMatch(
   id: string,
   date: string,
-): Promise<{ match: FootballMatch; news: Array<{ id: string; title: string; sourceName: string; url: string; publishedAt: number; team: 'home' | 'away' }>; unavailable: boolean }> {
+): Promise<{
+  match: FootballMatch;
+  news: MatchNews[];
+  unavailable: boolean;
+}> {
   const res = await fetch(
     `${API_BASE}/api/football/matches/${encodeURIComponent(id)}?date=${encodeURIComponent(date)}`,
   );
   if (!res.ok) throw await apiError(res);
-  return ((await res.json()) as { data: { match: FootballMatch; news: never[]; unavailable: boolean } }).data;
+  return ((await res.json()) as { data: { match: FootballMatch; news: MatchNews[]; unavailable: boolean } }).data;
 }
 
 export async function fetchStandings(competitionId: string): Promise<{ unavailable: boolean; tables: StandingsTable[] }> {

@@ -512,20 +512,3 @@ export function normalizeTeam(name: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
-
-/**
- * Words that identify a club in a headline without matching half the corpus.
- *
- * Article text is normalised, so the tokens must be normalised too — otherwise
- * «الأهلي» never matches the corpus's «الاهلي». Measured: leaving the article
- * form out returned 1 hit; with it, the real coverage appears.
- *
- * Generic words are dropped, and one-letter Arabic words along with them
- * («ر.» for ريال, «إف» in باريس إف سي) or they match everything.
- */
-export function teamTokens(name: string): string[] {
-  const n = normalizeTeam(name);
-  return n
-    .split(' ')
-    .filter((w) => w.length >= 3 && !['منتخب', 'فريق', 'نادي', 'club'].includes(w));
-}

@@ -23,9 +23,10 @@ import {
   unfollowFootballTeam,
   isNetworkFailure,
   type FootballMatch,
+  type MatchNews,
 } from '../../lib/api';
 
-type NewsItem = { id: string; title: string; sourceName: string; url: string; publishedAt: number; team: 'home' | 'away' };
+type NewsItem = MatchNews;
 
 const TABS = [
   { id: 'news', label: 'الأخبار والكواليس' },
@@ -183,7 +184,10 @@ export default function MatchCenterScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={n.title}
                   >
-                    <Text style={[styles.newsSource, { color: t.accent }]}>{n.sourceName}</Text>
+                    <Text style={[styles.newsSource, { color: t.accent }]}>
+                      {n.sourceName}
+                      {n.team === 'both' ? ' · الفريقان' : ''}
+                    </Text>
                     <Text style={[styles.newsTitle, { color: t.textPrimary }]} numberOfLines={2}>{n.title}</Text>
                   </TouchableOpacity>
                 ))

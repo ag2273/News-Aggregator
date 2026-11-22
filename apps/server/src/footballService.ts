@@ -18,7 +18,6 @@ import {
   parseFullStandings,
   parseYallakoraDay,
   parseYallakoraStandings,
-  teamTokens,
   YALLAKORA_BASE,
   type Competition,
   type MatchRow,
@@ -33,7 +32,7 @@ import {
   type StandingsCache,
 } from './footballStore.js';
 import { getAllArticles } from './db.js';
-import { normalizeForSearch } from './text.js';
+import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
 
 /**
  * Load one day's fixtures, from cache when fresh.
@@ -126,63 +125,18 @@ export async function loadStandings(
 /**
  * Articles about a match's two teams, from our own corpus.
  *
- * No AI call: the same Arabic normalisation the classifier uses, and a team only
- * counts when at least one of its identifying words appears. A missed article is
- * cheap; a wrong one is what the user would notice.
+ * The matching rules (whole-word, false-friend rejecting) live in `matchNews.ts`
+ * with their tests; this only supplies the corpus.
  */
 export function relatedNews(
   home: string,
   away: string,
-  options: {
-    limit?: number;
-    articles?: Array<{
-      id: string;
-      title: string;
-      summary: string | null;
-      sourceName: string;
-      url: string;
-      publishedAt: number;
-    }>;
-  } = {},
-): Array<{
-  id: string;
-  title: string;
-  sourceName: string;
-  url: string;
-  publishedAt: number;
-  team: 'home' | 'away';
-}> {
-  const articles = options.articles ?? getAllArticles();
-  const limit = options.limit ?? 10;
-  const homeTokens = teamTokens(home);
-  const awayTokens = teamTokens(away);
-
-  const hits: Array<{
-    id: string;
-    title: string;
-    sourceName: string;
-    url: string;
-    publishedAt: number;
-    team: 'home' | 'away';
-  }> = [];
-  const seen = new Set<string>();
-  for (const article of articles) {
-    const haystack = `${normalizeForSearch(article.title)} ${normalizeForSearch(article.summary ?? '')}`;
-    const inHome = homeTokens.some((t) => haystack.includes(t));
-    const inAway = awayTokens.some((t) => haystack.includes(t));
-    if (!inHome && !inAway) continue;
-    if (seen.has(article.id)) continue;
-    seen.add(article.id);
-    hits.push({
-      id: article.id,
-      title: article.title,
-      sourceName: article.sourceName,
-      url: article.url,
-      publishedAt: article.publishedAt,
-      team: inHome ? 'home' : 'away',
-    });
-  }
-  return hits.sort((a, b) => b.publishedAt - a.publishedAt).slice(0, limit);
+  options: { limit?: number; articles?: ArticleLike[] } = {},
+): RelatedArticle[] {
+  return relatedNewsFrom(home, away, {
+    limit: options.limit,
+    articles: options.articles ?? getAllArticles(),
+  });
 }
 
 /** The matches involving a followed team, across the cached days. */

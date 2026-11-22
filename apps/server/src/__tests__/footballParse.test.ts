@@ -12,7 +12,6 @@ import {
   parseYallakoraDay,
   parseYallakoraStandings,
   statusOf,
-  teamTokens,
   type Competition,
 } from '../football.js';
 
@@ -186,17 +185,5 @@ describe('ESPN fallback', () => {
 
   it('shifts a late kickoff across midnight', () => {
     expect(cairoClock('2026-11-22T22:30Z')).toBe('00:30');
-  });
-});
-
-describe('team tokens for corpus matching', () => {
-  it('normalises the article form so «الأهلي» matches «الاهلي»', () => {
-    // The corpus is normalised before matching, so the tokens must be too.
-    expect(teamTokens('الأهلي')).toContain('الاهلي');
-  });
-
-  it('drops one-letter fragments that would match everything', () => {
-    expect(teamTokens('باريس إف سي')).not.toContain('اف');
-    expect(teamTokens('ر.سانتاندير').every((t) => t.length >= 3)).toBe(true);
   });
 });
