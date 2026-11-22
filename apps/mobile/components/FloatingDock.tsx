@@ -5,14 +5,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import type { Theme } from '../constants/colors';
 
-export type DockTab = 'home' | 'following' | 'digest' | 'video' | 'saved' | 'profile';
+export type DockTab = 'home' | 'digest' | 'saved' | 'profile';
 
 /**
- * Floating white capsule dock.
+ * Floating capsule dock — four tabs.
  *
- * The digest was added alongside the tabs that already existed, never in place of
- * one: الأكثر تداولاً keeps its slot and its icon. Five 44px items plus padding
- * fit inside the 320px capsule, so nothing has to be dropped.
+ * «أخباري» was removed by explicit user decision (#27): it showed the same content
+ * as «مصادري», so it was duplication rather than a destination. «الأكثر تداولاً»
+ * left the dock at the same time and lives in the header next to the profile.
+ * The user authorised touching this dock for that change, which overrides the
+ * earlier "never touch the dock" rule for this one edit.
  */
 export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
   return (
@@ -26,24 +28,10 @@ export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
       />
       <DockButton
         t={t}
-        active={active === 'following'}
-        icon="sparkles-outline"
-        label="أخباري"
-        onPress={() => router.push('/following')}
-      />
-      <DockButton
-        t={t}
         active={active === 'digest'}
         icon="today-outline"
         label="الخلاصة"
         onPress={() => router.push('/digest')}
-      />
-      <DockButton
-        t={t}
-        active={active === 'video'}
-        icon="trending-up-outline"
-        label="الأكثر تداولاً"
-        onPress={() => router.push('/trending')}
       />
       <DockButton
         t={t}

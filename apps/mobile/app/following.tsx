@@ -56,7 +56,7 @@ export default function FollowingScreen() {
       setError(
         isNetworkFailure(err)
           ? 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت.'
-          : 'تعذّر تحميل أخباري. حاول مرة أخرى.',
+          : 'تعذّر تحميل أخبار مصادرك. حاول مرة أخرى.',
       );
     }
   }, [token, emailVerified]);
@@ -98,7 +98,7 @@ export default function FollowingScreen() {
             >
               <Ionicons name="arrow-forward" size={18} color={t.textPrimary} />
             </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: t.textPrimary }]}>أخباري</Text>
+            <Text style={[styles.headerTitle, { color: t.textPrimary }]}>أخبار مصادرك</Text>
             <View style={styles.circleSpacer} />
           </View>
 
@@ -109,7 +109,7 @@ export default function FollowingScreen() {
               </View>
 
               <Text style={[styles.cardTitle, { color: t.textPrimary }]}>
-                سجّل الدخول لعرض أخباري
+                سجّل الدخول لعرض أخبار مصادرك
               </Text>
               <Text style={[styles.cardSub, { color: t.textMuted }]}>
                 تابع مصادرك المفضلة لعرض الأخبار المخصصة لك في مكان واحد
@@ -125,7 +125,7 @@ export default function FollowingScreen() {
             </View>
           </View>
 
-          <FloatingDock t={t} active="following" />
+          <FloatingDock t={t} active="profile" />
         </SafeAreaView>
       </LinearGradient>
     );
@@ -148,7 +148,7 @@ export default function FollowingScreen() {
             <Ionicons name="arrow-forward" size={18} color={t.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerTitleWrap}>
-            <Text style={[styles.headerTitle, { color: t.textPrimary }]}>أخباري</Text>
+            <Text style={[styles.headerTitle, { color: t.textPrimary }]}>أخبار مصادرك</Text>
             {articles.length > 0 && (
               <Text style={[styles.headerSub, { color: t.accent }]}>
                 {`${articles.length} خبر`}
@@ -170,7 +170,7 @@ export default function FollowingScreen() {
             t={t}
             icon="sparkles-outline"
             title="وثّق بريدك أولاً"
-            subtitle="أخباري متاح بعد توثيق بريدك. افتح الرابط اللي وصلك على الإيميل."
+            subtitle="أخبار مصادرك متاحة بعد توثيق بريدك. افتح الرابط اللي وصلك على الإيميل."
           />
         ) : loading ? (
           <View style={styles.center}>
@@ -233,7 +233,7 @@ export default function FollowingScreen() {
           </View>
         )}
 
-        <FloatingDock t={t} active="following" />
+        <FloatingDock t={t} active="profile" />
       </SafeAreaView>
     </LinearGradient>
   );

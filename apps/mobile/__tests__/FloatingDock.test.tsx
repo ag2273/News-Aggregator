@@ -1,9 +1,13 @@
 /**
- * The dock must keep every tab the reader already uses.
+ * The dock after the approved navigation restructure (#27).
  *
- * A regression shipped once: الخلاصة was added by REPLACING الأكثر تداولاً, and it
- * reused مصادري's icon. These tests exist so that cannot happen again — the dock
- * renders all six tabs, each with a distinct icon, and trending is still there.
+ * The user removed «أخباري» from the dock — it showed the same content as
+ * «مصادري» — and moved «الأكثر تداولاً» into the header. So the dock is four
+ * tabs, and this file exists to prove both halves of that: the removed tab is
+ * really gone, and nothing else was quietly dropped with it.
+ *
+ * A regression shipped once before: الخلاصة was added by REPLACING another tab.
+ * These tests are the guard that a future edit cannot repeat that.
  */
 
 import React from 'react';
@@ -38,25 +42,21 @@ function iconFor(label: string): string | null {
 }
 
 describe('FloatingDock', () => {
-  it('renders every tab, including الأكثر تداولاً and مصادري', () => {
+  it('renders exactly the four approved tabs', () => {
     render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
-    for (const label of [
-      'الرئيسية',
-      'أخباري',
-      'الخلاصة',
-      'الأكثر تداولاً',
-      'المحفوظات',
-      'مصادري',
-    ]) {
+    for (const label of ['الرئيسية', 'الخلاصة', 'المحفوظات', 'مصادري']) {
       expect(screen.getByLabelText(label)).toBeTruthy();
     }
   });
 
-  it('keeps trending pointing at /trending', () => {
+  it('no longer shows «أخباري» (#27)', () => {
     render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
-    (router.push as jest.Mock).mockClear();
-    fireEvent.press(screen.getByLabelText('الأكثر تداولاً'));
-    expect(router.push).toHaveBeenCalledWith('/trending');
+    expect(screen.queryByLabelText('أخباري')).toBeNull();
+  });
+
+  it('no longer shows «الأكثر تداولاً» in the dock — it moved to the header (#27)', () => {
+    render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
+    expect(screen.queryByLabelText('الأكثر تداولاً')).toBeNull();
   });
 
   it('opens the digest from its own tab', () => {
@@ -66,17 +66,12 @@ describe('FloatingDock', () => {
     expect(router.push).toHaveBeenCalledWith('/digest');
   });
 
-  it('gives every tab a distinct icon', () => {
+  it('gives every remaining tab a distinct icon', () => {
     render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
-    const icons = ['الرئيسية', 'أخباري', 'الخلاصة', 'الأكثر تداولاً', 'المحفوظات', 'مصادري'].map(
-      (label) => iconFor(label),
-    );
+    const labels = ['الرئيسية', 'الخلاصة', 'المحفوظات', 'مصادري'];
+    const icons = labels.map((label) => iconFor(label));
     expect(icons.every(Boolean)).toBe(true);
-    // The digest icon must not be مصادري's icon again.
-    const digestIcon = iconFor('الخلاصة');
-    const sourcesIcon = iconFor('مصادري');
-    expect(digestIcon).not.toBe(sourcesIcon);
-    // No two tabs share an icon at all.
+    // No two tabs share an icon.
     expect(new Set(icons).size).toBe(icons.length);
   });
 });

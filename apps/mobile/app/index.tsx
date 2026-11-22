@@ -245,18 +245,18 @@ export default function FeedScreen() {
             </Text>
           </View>
           <View style={styles.headerActions}>
-            {/* Football pill: the ONLY entry point, per the spec. The bottom dock
-                is untouched — a hard rule from the user. */}
+            {/* Football entry: the design's direct, filled treatment — not a faint
+                pill. It is the primary sports action in the header. */}
             <TouchableOpacity
-              style={[styles.circleBtn, { backgroundColor: t.surface }]}
+              style={[styles.footballBtn, { backgroundColor: t.accent }]}
               onPress={() => router.push('/matches')}
               accessibilityRole="button"
-              accessibilityLabel={footballLive ? 'نتائج المباريات — مباراة جارية الآن' : 'نتائج المباريات'}
+              accessibilityLabel={footballLive ? 'المباريات — مباراة جارية الآن' : 'المباريات'}
             >
-              <Ionicons name="football-outline" size={19} color={t.accent} />
+              <Ionicons name="football" size={20} color="#062014" />
               {footballLive ? (
                 <Animated.View
-                  style={[styles.liveDot, { backgroundColor: t.accent, opacity: dotOpacity }]}
+                  style={[styles.liveDotOnAccent, { opacity: dotOpacity }]}
                 />
               ) : null}
             </TouchableOpacity>
@@ -268,13 +268,23 @@ export default function FeedScreen() {
             >
               <Ionicons name="search" size={18} color={t.textSecondary} />
             </TouchableOpacity>
+            {/* «الأكثر تداولاً» moved here from the dock (#27), next to the profile:
+                same destination, one tap from any screen. */}
+            <TouchableOpacity
+              style={[styles.circleBtn, { backgroundColor: t.surface }]}
+              onPress={() => router.push('/trending')}
+              accessibilityRole="button"
+              accessibilityLabel="الأكثر تداولاً"
+            >
+              <Ionicons name="trending-up" size={18} color={t.accent} />
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.circleBtn, { backgroundColor: t.surface }]}
               onPress={() => router.push('/account')}
               accessibilityRole="button"
               accessibilityLabel="حسابي"
             >
-              <Ionicons name="person-outline" size={18} color={t.textSecondary} />
+              <Ionicons name="person" size={18} color={t.accent} />
             </TouchableOpacity>
           </View>
         </View>
@@ -372,6 +382,23 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
+  },
+  // The live dot on the filled football button needs the dark ink, not the accent.
+  liveDotOnAccent: {
+    position: 'absolute',
+    top: 7,
+    insetInlineEnd: 7,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#062014',
+  },
+  footballBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   circleBtn: {
     width: 44,
