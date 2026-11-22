@@ -108,14 +108,14 @@ describe('match center', () => {
     mockMatch.mockResolvedValue({ match: match(), news: [{ id: 'n1', title: 'كولر يتحدث قبل القمة', sourceName: 'اليوم السابع', url: 'https://x', publishedAt: 1, team: 'home' }], unavailable: false });
     render(<MatchCenterScreen />);
     await waitFor(() => expect(screen.getByText('كولر يتحدث قبل القمة')).toBeTruthy());
-    expect(screen.getByText('الأخبار والكواليس')).toBeTruthy();
+    expect(screen.getByText('الأخبار')).toBeTruthy();
   });
 
   it('says plainly when there is no timeline yet', async () => {
     mockMatch.mockResolvedValue({ match: match(), news: [], unavailable: false });
     render(<MatchCenterScreen />);
-    await waitFor(() => expect(screen.getByText('أحداث المباراة')).toBeTruthy());
-    fireEvent.press(screen.getByText('أحداث المباراة'));
+    await waitFor(() => expect(screen.getByText('الأحداث')).toBeTruthy());
+    fireEvent.press(screen.getByText('الأحداث'));
     await waitFor(() => expect(screen.getByText(/لم تبدأ المباراة بعد/)).toBeTruthy());
   });
 

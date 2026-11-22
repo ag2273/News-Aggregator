@@ -30,8 +30,10 @@ import {
 type NewsItem = MatchNews;
 
 const TABS = [
-  { id: 'news', label: 'الأخبار والكواليس' },
-  { id: 'events', label: 'أحداث المباراة' },
+  // Short labels because four tabs share a 360dp width (~78dp each), where
+  // «الأخبار والكواليس» was cut to «الأخبار والك...».
+  { id: 'news', label: 'الأخبار' },
+  { id: 'events', label: 'الأحداث' },
   { id: 'lineups', label: 'التشكيل' },
   { id: 'standings', label: 'الترتيب' },
 ] as const;
@@ -188,19 +190,32 @@ export default function MatchCenterScreen() {
               </View>
             ) : null}
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+            {/* Four tabs share the width instead of scrolling: in RTL a horizontal
+                strip starts at the right edge, so the last tab sat permanently
+                half-cut on a 360dp phone. */}
+            <View style={styles.tabs}>
               {TABS.map((x) => (
                 <TouchableOpacity
                   key={x.id}
                   onPress={() => setTab(x.id)}
-                  style={[styles.tab, { backgroundColor: x.id === tab ? t.accent : t.pillInactiveBg }]}
+                  style={[
+                    styles.tab,
+                    { backgroundColor: x.id === tab ? t.accent : t.pillInactiveBg },
+                  ]}
                   accessibilityRole="tab"
                   accessibilityState={{ selected: x.id === tab }}
                 >
-                  <Text style={[styles.tabText, { color: x.id === tab ? '#FFFFFF' : t.textSecondary }]}>{x.label}</Text>
+                  <Text
+                    style={[styles.tabText, { color: x.id === tab ? '#FFFFFF' : t.textSecondary }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                  >
+                    {x.label}
+                  </Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
+            </View>
 
             {tab === 'news' ? (
               news.length ? (
@@ -316,9 +331,12 @@ const styles = StyleSheet.create({
   detailText: { fontSize: 11 },
   coachBox: { borderRadius: 14, padding: 12, gap: 4, marginBottom: 10, alignSelf: 'stretch' },
   coachLine: { fontSize: 12 },
-  tabs: { gap: 8, paddingVertical: 6 },
-  tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
-  tabText: { fontSize: 12, fontWeight: '600' },
+  // A horizontal strip inside a column flex needs its own height (the same trap
+  // that stretched the day ribbon), and trailing padding so the last tab can
+  // scroll clear of the edge instead of sitting half-cut.
+  tabs: { flexDirection: 'row', gap: 6, paddingVertical: 6 },
+  tab: { flex: 1, paddingHorizontal: 6, paddingVertical: 8, borderRadius: 16, alignItems: 'center' },
+  tabText: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   newsCard: { borderRadius: 16, padding: 12, gap: 4 },
   newsSource: { fontSize: 11, fontWeight: '700' },
   newsTitle: { fontSize: 14, fontWeight: '600', lineHeight: 22, flexShrink: 1 },
