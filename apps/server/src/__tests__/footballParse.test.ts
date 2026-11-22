@@ -270,3 +270,20 @@ describe('fetching a live page', () => {
     expect(String(seen!['Pragma'])).toBe('no-cache');
   });
 });
+
+describe('the live-minute ceiling', () => {
+  it('exposes no minute for a live match from either source', () => {
+    // Measured during 25 minutes of live polling and by reading both the day page
+    // and the match page payload: neither source publishes a trustworthy minute.
+    // FilGoal's payload has `IsCounterEnabled` and `TimeElapsed`, but on a live
+    // match those came back with negative minute values (-72) against the server
+    // clock, so a computed minute would be a guess. The probe found no "67'" style
+    // minute on either day page.
+    //
+    // Consequence for the app, which is the honest ceiling: live score + half
+    // («الشوط الثاني»), never a minute.
+    const live = parseYallakoraDay(fixture('day-live.html'), '2026-11-22').filter((m) => m.status === 'live');
+    expect(live.length).toBeGreaterThan(0);
+    for (const m of live) expect(m.minute).toBeNull();
+  });
+});
