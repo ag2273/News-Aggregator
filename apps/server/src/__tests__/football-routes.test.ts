@@ -6,7 +6,7 @@ import { app } from '../index.js';
 import { createUser, _resetUsersCache } from '../users.js';
 import { createToken } from '../auth.js';
 import { _resetFootballCache, followTeam, getTeamFollows } from '../footballStore.js';
-import { parseEspnScoreboard } from '../football.js';
+import { parseEspnScoreboard, cairoClock } from '../football.js';
 import { insertArticles, _resetDbCache } from '../db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -126,5 +126,34 @@ describe('football API', () => {
     });
     expect(res.status).toBe(403);
     expect(getTeamFollows('fu-2')).toHaveLength(0);
+  });
+
+  it('shows an ESPN kickoff in Cairo time, not raw UTC', () => {
+    // ESPN sends `2026-11-22T14:00Z`; Cairo is UTC+2, so the app must show 16:00.
+    // Asserted through the parser, because that is the value the app renders.
+    const competition = { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', provider: 'espn' as const, espnSlug: 'eng.1', country: 'GB' };
+    const rows = parseEspnScoreboard(
+      {
+        events: [
+          {
+            id: '9',
+            date: '2026-11-22T14:00Z',
+            competitions: [
+              {
+                status: { type: { state: 'pre' }, displayClock: "0'" },
+                competitors: [
+                  { homeAway: 'home', team: { displayName: 'Hull City' }, score: '0' },
+                  { homeAway: 'away', team: { displayName: 'Brighton' }, score: '0' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      competition,
+    );
+    expect(rows[0]!.kickoff).toBe('16:00');
+    expect(cairoClock('2026-11-22T22:30Z')).toBe('00:30');
+    expect(cairoClock('not-a-date')).toBeNull();
   });
 });

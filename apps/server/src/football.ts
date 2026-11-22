@@ -211,6 +211,14 @@ export function parseYallakoraStandings(html: string, competitionId: string): St
   return tables;
 }
 
+/** `HH:MM` Cairo-local from an ISO instant, e.g. ESPN's `2026-11-22T14:00Z`. */
+export function cairoClock(iso: string): string | null {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  const local = new Date(ms + 2 * 60 * 60 * 1000);
+  return local.toISOString().slice(11, 16);
+}
+
 /**
  * Parse one ESPN scoreboard day.
  *
@@ -250,7 +258,7 @@ export function parseEspnScoreboard(json: unknown, competition: Competition): Ma
       // Arabic, like every other user-visible string: the app never renders the
       // English "Sun, November 22nd at 9:00 AM EST" ESPN sends.
       statusText: state === 'in' ? 'مباشر' : state === 'post' ? 'انتهت' : 'لم تبدأ',
-      kickoff: String(event['date'] ?? '').slice(11, 16) || null,
+      kickoff: cairoClock(String(event['date'] ?? '')),
       round: null,
       minute: state === 'in' && typeof clock === 'string' ? Number(clock.replace(/[^\d]/g, '')) || null : null,
     });
