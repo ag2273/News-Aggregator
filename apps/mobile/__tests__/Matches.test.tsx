@@ -122,6 +122,8 @@ describe('match center', () => {
     await waitFor(() => expect(screen.getByText('الأحداث')).toBeTruthy());
     fireEvent.press(screen.getByText('الأحداث'));
     await waitFor(() => expect(screen.getByText(/لم تبدأ المباراة بعد/)).toBeTruthy());
+    // It must not promise an event feed the sources do not publish.
+    expect(screen.queryByText(/ستظهر الأهداف والكروت هنا فور انطلاقها/)).toBeNull();
   });
 
   it('shows no coverage message instead of a blank tab', async () => {

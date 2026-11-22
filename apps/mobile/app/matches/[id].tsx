@@ -261,10 +261,15 @@ export default function MatchCenterScreen() {
 
             {tab === 'events' ? (
               <View style={styles.centerInline}>
+                {/* Measured: neither source publishes a goal timeline — no
+                    MatchEvents, no scorer names, no minutes, and Yallakora's
+                    minute endpoint returns 500. So this never promises an
+                    event feed that cannot arrive; it states the score and that
+                    the timeline is not published. */}
                 <Text style={[styles.emptyBody, { color: t.textMuted }]}>
                   {match.status === 'upcoming'
-                    ? 'لم تبدأ المباراة بعد — ستظهر الأهداف والكروت هنا فور انطلاقها.'
-                    : 'المصدر لا يوفّر شريط أحداث لهذه المباراة.'}
+                    ? 'لم تبدأ المباراة بعد. النتيجة ستظهر هنا، أما شريط الأهداف فالمصدر لا يوفّره.'
+                    : 'المصدر يوفّر النتيجة فقط، ولا يوفّر شريط أحداث (هدافين أو دقائق) لهذه المباراة.'}
                 </Text>
               </View>
             ) : null}
