@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mentionsTeam, normalizeArabic, relatedNews, teamWords } from '../matchNews.js';
+import { cleanTitle, mentionsTeam, normalizeArabic, relatedNews, stripPublisher, teamWords } from '../matchNews.js';
 
 const article = (id: string, title: string, summary: string | null = null) => ({
   id,
@@ -143,5 +143,31 @@ describe('institutional names are not clubs', () => {
     expect(mentionsTeam('أشتون كوتشر.. من هوليوود إلى استثمارات وادي السيليكون', 'وادي دجلة')).toBe(false);
     expect(mentionsTeam('تعادل وادي السير والكتة بدوري اليد', 'وادي دجلة')).toBe(false);
     expect(mentionsTeam('وادي دجلة يضم مهاجما جديدا', 'وادي دجلة')).toBe(true);
+  });
+});
+
+describe('article titles', () => {
+  it('drops a trailing URL so a card never reads as junk', () => {
+    // Measured: a match-news card was titled «الجمارك تحذر ... - www.dostor.org».
+    expect(cleanTitle('الجمارك تحذر من الصفحات - www.dostor.org')).toBe('الجمارك تحذر من الصفحات');
+    expect(stripPublisher('خبر - المصري اليوم', 'المصري اليوم')).toBe('خبر');
+  });
+
+  it('keeps a dash that is part of the sentence', () => {
+    // A score or a real dash inside the title must not be mistaken for the tail.
+    expect(stripPublisher('مباراة تنتهي 2-1 - فيوتشر', 'المصري اليوم')).toBe('مباراة تنتهي 2-1 - فيوتشر');
+    expect(stripPublisher('عنوان فيه شرطة - داخل الجملة - نهاية', 'الغد')).toBe('عنوان فيه شرطة - داخل الجملة - نهاية');
+  });
+});
+
+describe('clubs whose name is an institution', () => {
+  it('does not fill a customs club with the customs authority', () => {
+    // Measured on «الجمارك × شباب بلوزداد»: all eight articles were about Egypt's
+    // customs service. The name has no distinctive word, so it is matched only
+    // when the text also says نادي/فريق/مباراة.
+    expect(mentionsTeam('الجمارك تحذر المواطنين من النصب باسم تقنين السيارات', 'الجمارك')).toBe(false);
+    expect(mentionsTeam('رئيس مصلحة الجمارك يستعرض جهود تيسير الإجراءات', 'الجمارك')).toBe(false);
+    expect(mentionsTeam('نادي الجمارك يتعاقد مع مدرب جديد', 'الجمارك')).toBe(true);
+    expect(mentionsTeam('فريق الجمارك يفوز في الدوري الموريتاني', 'الجمارك')).toBe(true);
   });
 });

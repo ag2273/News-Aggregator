@@ -59,6 +59,15 @@ describe('FilGoal day page', () => {
     expect(b.some((r) => r.competitionId === 'egyptian-premier')).toBe(true);
   });
 
+  it('never reads an age group as a score', () => {
+    // «الدنمارك | تحت 17» — reading the first number in the block took the 17 and
+    // served a real match as 17-17. The score now comes from the side's own <b>.
+    for (const r of rows.filter((x) => x.home.includes('تحت') || x.away.includes('تحت'))) {
+      expect(r.homeScore ?? 0).toBeLessThan(17);
+      expect(r.awayScore ?? 0).toBeLessThan(17);
+    }
+  });
+
   it('shows no false score before kickoff', () => {
     for (const r of rows.filter((x) => x.status === 'upcoming')) {
       expect(r.homeScore).toBeNull();

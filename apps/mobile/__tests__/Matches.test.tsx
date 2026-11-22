@@ -49,6 +49,7 @@ const match = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockFollows.mockResolvedValue([]);
   mockCompetitions.mockResolvedValue([
     { id: 'egyptian-premier', nameAr: 'الدوري المصري', country: 'EG', isCup: false },
     { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', country: 'GB', isCup: false },
@@ -281,7 +282,7 @@ describe('upcoming fixtures screen', () => {
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
     fireEvent.press(screen.getByText('الفرق المتابعة'));
-    await waitFor(() => expect(screen.getByText('لا توجد مباريات بهذه الحالة')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('لا توجد مباريات لفرقك المفضلة اليوم')).toBeTruthy());
     expect(screen.getByText('عرض كل المباريات')).toBeTruthy();
   });
 
@@ -314,5 +315,43 @@ describe('upcoming fixtures screen', () => {
     render(<MatchCenterScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
     expect(screen.queryByText(/المعلق/)).toBeNull();
+  });
+
+  it('gives each empty filter its own honest sentence', async () => {
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [match()] });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+    fireEvent.press(screen.getByText('انتهت'));
+    await waitFor(() => expect(screen.getByText('لم تنتهِ أي مباراة اليوم بعد')).toBeTruthy());
+  });
+
+  it('says which channel a match is on, not merged with the round', async () => {
+    // «الجولة الثانية · الكأس 9» read like a garbled round name; the second part
+    // is a broadcaster.
+    mockMatches.mockResolvedValue({
+      date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [],
+      matches: [match({ round: 'الجولة الثانية', channel: 'الكأس 9' })],
+    });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('الجولة الثانية')).toBeTruthy());
+    expect(screen.getByText('تُنقل على الكأس 9')).toBeTruthy();
+    expect(screen.queryByText(/الجولة الثانية · الكأس/)).toBeNull();
+  });
+
+  it('shows the match even when the follows lookup fails', async () => {
+    // The screen the user photographed: a big «تعذّر تحميل المباراة» over an empty
+    // page. The match had loaded fine; a failed follows request replaced it.
+    mockMatch.mockResolvedValue({ match: match(), detail: null, news: [{ id: 'n1', title: 'خبر', sourceName: 's', url: 'u', publishedAt: 1, team: 'home' }], unavailable: false });
+    mockFollows.mockRejectedValue(new Error('boom'));
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+    expect(screen.queryByText('تعذّر تحميل المباراة.')).toBeNull();
+    expect(screen.getByText('خبر')).toBeTruthy();
+  });
+
+  it('says there is no coverage, without offering anything misleading', async () => {
+    mockMatch.mockResolvedValue({ match: match(), detail: null, news: [], unavailable: false });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText(/لا توجد تغطية صحفية لهذه المباراة/)).toBeTruthy());
   });
 });

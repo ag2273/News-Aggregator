@@ -55,6 +55,17 @@ export function normalizeArabic(input: string): string {
  */
 const PLACE_WORDS = new Set(['وادي', 'وادى', 'مدينه', 'مدينة', 'شباب', 'اتحاد', 'نادي']);
 
+/**
+ * Club names that are also ordinary institutional nouns, with no distinctive word
+ * of their own to fall back on.
+ *
+ * «الجمارك» (customs) is the whole name of a real club and also the name of an
+ * authority: on a real fixture, all eight articles were about Egypt's customs
+ * service. There is no second word to lean on, so the honest answer is to match
+ * it only when the club's own context appears — and otherwise show no articles.
+ */
+const AMBIGUOUS_ONLY_NAMES = new Set(['الجمارك', 'الشرطه', 'البنك', 'المصرف']);
+
 const INSTITUTIONAL_WORDS = new Set([
   'الاتحاد',
   'اتحاد',
@@ -96,6 +107,9 @@ const FALSE_FRIENDS: Record<string, string[]> = {
     'البنك', 'بنك', 'الجامعه', 'جامعه', 'المدرسه', 'مدرسه',
     'الشركه', 'شركه', 'المستشفي', 'مستشفي', 'فندق', 'الحي', 'حي',
   ],
+  // Measured on a real match «الجمارك × شباب بلوزداد»: all eight articles were
+  // about مصر's customs authority (مصلحة الجمارك), not the Mauritanian club.
+  الجمارك: ['مصلحه', 'مصلحة', 'مصر', 'المصريه', 'المصري', 'عن', 'من', 'في', 'باسم'],
   الاتحاد: [
     'بنك', 'البنك', 'شركه', 'الشركه', 'نقابه', 'النقابه', 'الاوروبي',
     'الافريقي', 'الدولي', 'العام', 'المصري', 'الرياضي', 'الرياضيه',
@@ -167,8 +181,16 @@ export function mentionsTeam(text: string, team: string, words: string[] = teamW
   // Distinctive words first: a club with any non-generic word is matched only by
   // those, never by the generic part. This is the fix for the European Union.
   const distinctive = words.filter((w) => !isInstitutional(w) && !PLACE_WORDS.has(w));
-  const searchWords = distinctive.length ? distinctive : words.filter((w) => !PLACE_WORDS.has(w));
+  let searchWords = distinctive.length ? distinctive : words.filter((w) => !PLACE_WORDS.has(w));
   if (!searchWords.length) return false;
+  // A name that is only ever an institution cannot identify a club. Unless the
+  // text also carries a club word (نادي، فريق، مباراة), there is nothing to stand
+  // on, and guessing would fill the tab with the customs authority.
+  if (searchWords.every((w) => AMBIGUOUS_ONLY_NAMES.has(w) || AMBIGUOUS_ONLY_NAMES.has(stripPrefixes(w)))) {
+    if (!/\b(?:نادي|نادى|فريق|مباراه|مباراة|ملعب)\b/.test(haystack) && !/ (نادي|نادى|فريق|مباراه|مباراة|ملعب) /.test(` ${haystack} `)) {
+      return false;
+    }
+  }
 
   for (const word of searchWords) {
     for (let i = 0; i < tokens.length; i += 1) {
@@ -190,6 +212,35 @@ export interface ArticleLike {
   sourceName: string;
   url: string;
   publishedAt: number;
+}
+
+/**
+ * A title with the source's trailing site-name or URL removed.
+ *
+ * Measured on production: Google-News style titles arrive as
+ * «الجمارك تحذر ... - www.dostor.org» and «... - المصري اليوم». The trailing
+ * fragment is the publisher, and the card already prints the source name above
+ * the title, so the tail is duplicated noise — and when it is a bare URL it
+ * reads as a broken title.
+ */
+export function cleanTitle(title: string): string {
+  let out = title.trim();
+  // A trailing «- domain.tld» or «- www.domain.tld», with or without a scheme.
+  out = out.replace(/\s*[-–|]\s*(?:https?:\/\/)?(?:www\.)?[\w-]+(?:\.[\w-]+)+\/?\s*$/i, '').trim();
+  // A trailing «– Site Name» is the publisher; a short Arabic tail after a dash is
+  // only stripped when it matches the article's own source name.
+  return out;
+}
+
+/** Drop a trailing publisher tail when it duplicates `sourceName`. */
+export function stripPublisher(title: string, sourceName: string): string {
+  const cleaned = cleanTitle(title);
+  if (!sourceName) return cleaned;
+  const tail = cleaned.match(/\s*[-–|]\s*([^-–|]{2,40})$/);
+  if (tail && tail[1]!.trim() === sourceName.trim()) {
+    return cleaned.slice(0, tail.index).trim();
+  }
+  return cleaned;
 }
 
 export interface RelatedArticle {
@@ -227,7 +278,7 @@ export function relatedNews(
     if (!inHome && !inAway) continue;
     hits.push({
       id: article.id,
-      title: article.title,
+      title: stripPublisher(article.title, article.sourceName),
       sourceName: article.sourceName,
       url: article.url,
       publishedAt: article.publishedAt,

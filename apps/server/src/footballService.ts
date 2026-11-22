@@ -318,6 +318,10 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
               // A trailing founding-year suffix («05», «04») is part of the club's
               // registered name, not a different club.
               .replace(/\s+0?[1-9]\d?$/, '')
+              // «ستاد رين» and «رين» are the same club: «ستاد» is the word for
+              // stadium, not part of the name. Without this the fixture appeared
+              // twice, once from each source.
+              .replace(/^ستاد\s+/, '')
               .replace(/\s+/g, ' ')
               .trim(),
           ),

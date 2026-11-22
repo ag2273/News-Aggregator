@@ -62,19 +62,28 @@ export default function MatchCenterScreen() {
     if (!id) return;
     setLoading(true);
     setError(null);
+    // The match itself is fetched first, and a failure there is the only thing
+    // that makes this screen an error. The follow-star lookup is a nicety: it used
+    // to sit in the same try, so one failed follows request replaced a perfectly
+    // good match with «تعذّر تحميل المباراة» — the screen the user photographed.
+    let loaded: FootballMatch | null = null;
     try {
       const data = await fetchMatch(id, date ?? '');
+      loaded = data.match;
       setMatch(data.match);
       setDetail(data.detail ?? null);
       setNews(data.news);
-      if (token) {
-        const follows = await fetchTeamFollows(token);
-        setFollowing(follows.some((f) => f.name === data.match.home || f.name === data.match.away));
-      }
     } catch (err) {
       setError(isNetworkFailure(err) ? 'تعذّر الاتصال. حاول مرة أخرى.' : 'تعذّر تحميل المباراة.');
     } finally {
       setLoading(false);
+    }
+    if (!token || !loaded) return;
+    try {
+      const follows = await fetchTeamFollows(token);
+      setFollowing(follows.some((f) => f.name === loaded!.home || f.name === loaded!.away));
+    } catch {
+      /* the star stays unfilled; the match is already on screen */
     }
   }, [id, date, token]);
 
@@ -223,7 +232,10 @@ export default function MatchCenterScreen() {
                       {n.sourceName}
                       {n.team === 'both' ? ' · الفريقان' : ''}
                     </Text>
-                    <Text style={[styles.newsTitle, { color: t.textPrimary }]} numberOfLines={2}>{n.title}</Text>
+                    {/* Three lines: two clipped real headlines mid-sentence («... جر»). The
+                      card is the only place a reader sees the story, so it gets
+                      room to finish. */}
+                    <Text style={[styles.newsTitle, { color: t.textPrimary }]} numberOfLines={3}>{n.title}</Text>
                   </TouchableOpacity>
                 ))
               ) : (
@@ -309,7 +321,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 12, fontWeight: '600' },
   newsCard: { borderRadius: 16, padding: 12, gap: 4 },
   newsSource: { fontSize: 11, fontWeight: '700' },
-  newsTitle: { fontSize: 14, fontWeight: '600', lineHeight: 22 },
+  newsTitle: { fontSize: 14, fontWeight: '600', lineHeight: 22, flexShrink: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 28 },
   centerInline: { padding: 20, alignItems: 'center' },
   emptyTitle: { fontSize: 15, fontWeight: '700', textAlign: 'center' },

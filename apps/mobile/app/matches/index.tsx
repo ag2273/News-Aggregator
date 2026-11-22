@@ -141,9 +141,18 @@ export default function MatchesScreen() {
             <Text style={[styles.liveText, { color: t.accent }]}>مباشر</Text>
           </View>
         ) : null}
-        {m.round || m.channel ? (
-          <Text style={[styles.round, { color: t.textMuted }]}>
-            {[m.round, m.channel].filter(Boolean).join(' · ')}
+        {/* Round and channel are different facts and are labelled as such. The
+            old line joined them with a dot, so a card read «الجولة الثانية ·
+            الكأس 9» and looked like a garbled round name. The channel name
+            («الكأس 9») is a broadcaster, not a stadium or a round. */}
+        {m.round ? (
+          <Text style={[styles.round, { color: t.textMuted }]} numberOfLines={1}>
+            {m.round}
+          </Text>
+        ) : null}
+        {m.channel ? (
+          <Text style={[styles.round, { color: t.textMuted }]} numberOfLines={1}>
+            {`تُنقل على ${m.channel}`}
           </Text>
         ) : null}
         {followed.has(m.home) || followed.has(m.away) ? (
@@ -251,7 +260,15 @@ export default function MatchesScreen() {
           <ScrollView contentContainerStyle={styles.stateScroll}>
             <Ionicons name="football-outline" size={34} color={t.textMuted} />
             <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>
-              {filter === 'all' ? 'لا توجد مباريات مجدولة اليوم في بطولاتك المفضلة' : 'لا توجد مباريات بهذه الحالة'}
+              {filter === 'all'
+                ? 'لا توجد مباريات مجدولة اليوم في بطولاتك المفضلة'
+                : filter === 'followed'
+                  ? 'لا توجد مباريات لفرقك المفضلة اليوم'
+                  : filter === 'live'
+                    ? 'لا توجد مباريات مباشرة الآن'
+                    : filter === 'finished'
+                      ? 'لم تنتهِ أي مباراة اليوم بعد'
+                      : 'لا توجد مباريات قادمة اليوم'}
             </Text>
             {filter === 'all' ? (
               <TouchableOpacity style={[styles.retry, { borderColor: t.accent }]} onPress={() => setOffset(1)} accessibilityRole="button">
@@ -349,7 +366,9 @@ const styles = StyleSheet.create({
     paddingVertical: 36,
   },
   stateWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle: { fontSize: 15, fontWeight: '700', textAlign: 'center' },
-  emptyBody: { fontSize: 12, lineHeight: 20, textAlign: 'center' },
+  // A fixed line height on a variable number of lines is what clipped a sentence
+  // at large system fonts. These let the text grow and wrap instead.
+  emptyTitle: { fontSize: 15, fontWeight: '700', textAlign: 'center', flexShrink: 1, lineHeight: 24 },
+  emptyBody: { fontSize: 12, textAlign: 'center', flexShrink: 1, lineHeight: 20 },
   retry: { marginTop: 6, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, borderWidth: 1 },
 });

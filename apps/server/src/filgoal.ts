@@ -138,11 +138,22 @@ export function parseFilGoalBlock(block: string, competitionName = ''): FilGoalM
   const status = filGoalStatus(statusText);
 
   // Score: the `<b>` next to each team, which holds " 2 " or just " - ".
+  /**
+   * The score from one side's own `<b>`.
+   *
+   * Only the `<b>` is read, never the block's text: an age-group team is named
+   * «الدنمارك | تحت 17», and reading the first number in the block picked up that
+   * 17 as the score — a real match was served as 17-17.
+   */
   const scoreOf = (side: 'f' | 's'): number | null => {
-    const row = block.match(new RegExp(`class="${side}"[\\s\\S]{0,600}?<\\/div>|<div class="${side}">[\\s\\S]{0,600}?<\\/div>`));
-    const frag = row ? row[0] : '';
-    const digits = text(frag).match(/\d+/);
-    return digits ? Number(digits[0]) : null;
+    const open = block.indexOf(`<div class="${side}">`);
+    if (open < 0) return null;
+    // The side's markup ends at the next side block or the status block.
+    const rest = block.slice(open);
+    const end = rest.search(/<div class="(?:m|s|match-aux)">/);
+    const fragment = end > 0 ? rest.slice(0, end) : rest.slice(0, 900);
+    const bold = fragment.match(/<b>\s*(?:<text>\s*<\/text>)?\s*(\d+)\s*[^<]*<\/b>/);
+    return bold ? Number(bold[1]) : null;
   };
   const homeScore = status === 'upcoming' ? null : scoreOf('f');
   const awayScore = status === 'upcoming' ? null : scoreOf('s');
