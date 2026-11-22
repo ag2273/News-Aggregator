@@ -28,7 +28,8 @@ describe('football API', () => {
   it('lists the competitions', async () => {
     const res = await app.request('/api/football/competitions');
     const { data } = (await res.json()) as { data: Array<{ id: string; nameAr: string }> };
-    expect(data.length).toBe(10);
+    // 11 competitions now: كأس الكونفدرالية was added with the FilGoal batch.
+    expect(data.length).toBe(11);
     expect(data.map((x) => x.id)).toContain('egyptian-premier');
     expect(data.find((x) => x.id === 'egyptian-premier')?.nameAr).toBe('الدوري المصري');
   });

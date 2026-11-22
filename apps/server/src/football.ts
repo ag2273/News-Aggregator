@@ -44,6 +44,7 @@ export const COMPETITIONS: Competition[] = [
   { id: 'egyptian-premier', nameAr: 'الدوري المصري', yallakoraName: 'الدوري المصري', yallakoraTourId: '160', country: 'EG' },
   { id: 'egypt-cup', nameAr: 'كأس مصر', yallakoraName: 'كأس مصر', yallakoraTourId: '111', country: 'EG', isCup: true },
   { id: 'caf-champions', nameAr: 'دوري أبطال إفريقيا', yallakoraName: 'دوري أبطال أفريقيا', yallakoraTourId: '87', espnSlug: 'caf.champions', country: 'AF' },
+  { id: 'caf-confederation', nameAr: 'كأس الكونفدرالية', yallakoraName: 'الكونفيدرالية الأفريقية', yallakoraTourId: '70', country: 'AF' },
   { id: 'uefa-champions', nameAr: 'دوري أبطال أوروبا', yallakoraName: 'دوري أبطال أوروبا', yallakoraTourId: '105', espnSlug: 'uefa.champions', country: 'EU' },
   { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', yallakoraName: 'الدوري الإنجليزي', yallakoraTourId: '93', espnSlug: 'eng.1', country: 'GB' },
   { id: 'esp-la-liga', nameAr: 'الدوري الإسباني', yallakoraName: 'الدوري الإسباني', yallakoraTourId: '101', espnSlug: 'esp.1', country: 'ES' },
@@ -75,7 +76,7 @@ export interface MatchRow {
   /** Minute for a live match, when the source gives one. */
   minute: number | null;
   /** Which provider this row came from, so the UI can be honest if it matters. */
-  dataSource: 'yallakora' | 'espn';
+  dataSource: 'yallakora' | 'filgoal' | 'espn';
   /**
    * Broadcasting channel as the source names it («الكأس 7», «بي إن سبورتس 1»).
    *
@@ -85,6 +86,10 @@ export interface MatchRow {
    * invented.
    */
   channel?: string | null;
+  /** Stadium, when the source names one. */
+  stadium?: string | null;
+  /** The provider's own match id, when it has one (FilGoal does). */
+  providerMatchId?: string | null;
 }
 
 export interface StandingRow {
@@ -543,6 +548,32 @@ export function normalizeTeam(name: string): string {
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * The same competition, named the same everywhere.
+ *
+ * Yallakora writes «كأس العالم تحت 17 عاما» and FilGoal «كأس العالم تحت 17», so a
+ * merged day showed one tournament as two groups. Comparison uses the normalised
+ * name, which folds the article and the trailing word.
+ */
+export function canonicalCompetition(name: string): string {
+  const n = normalizeTeam(name);
+  if (/كاس العالم تحت 17/.test(n)) return 'كأس العالم تحت 17';
+  if (/ابطال افريقيا/.test(n)) return 'دوري أبطال أفريقيا';
+  // Normalisation folds ة to ه, so the pattern has to match the folded spelling.
+  // The two sources spell it «كونفيدرالية» and «كونفدرالية», so the extra ي
+  // is optional in the pattern.
+  if (/كونفي?درالي/.test(n)) return 'كأس الكونفدرالية';
+  if (/ابطال اوروبا/.test(n)) return 'دوري أبطال أوروبا';
+  if (/^الدوري الانجليزي|الدوري الانجليزي الممتاز/.test(n)) return 'الدوري الإنجليزي';
+  if (/الدوري الاسباني/.test(n)) return 'الدوري الإسباني';
+  if (/الدوري الايطالي/.test(n)) return 'الدوري الإيطالي';
+  if (/الدوري الالماني/.test(n)) return 'الدوري الألماني';
+  if (/الدوري الفرنسي/.test(n)) return 'الدوري الفرنسي';
+  if (/الدوري السعودي/.test(n)) return 'الدوري السعودي';
+  if (/الدوري المصري/.test(n)) return 'الدوري المصري';
+  return name;
 }
 
 /**

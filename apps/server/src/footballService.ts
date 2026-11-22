@@ -9,6 +9,7 @@
 // Yallakora is Arabic and Cairo-local, ESPN is English and UTC.
 
 import {
+  canonicalCompetition,
   COMPETITIONS,
   cairoDate,
   ESPN_BASE,
@@ -31,8 +32,38 @@ import {
   type DayCache,
   type StandingsCache,
 } from './footballStore.js';
+import { fetchFilGoalDay, type FilGoalMatch } from './filgoal.js';
 import { getAllArticles } from './db.js';
 import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
+
+/**
+ * FilGoal's rows as our own shape.
+ *
+ * FilGoal is the Egyptian results source the user approved, and it carries more
+ * per match than Yallakora (stadium, channel, its own stable id), so its Egyptian
+ * rows replace Yallakora's for the same fixture rather than sitting beside them.
+ */
+export function fromFilGoal(rows: FilGoalMatch[]): MatchRow[] {
+  return rows.map((r) => ({
+    id: `fg-${r.matchId}`,
+    competitionId: r.competitionId,
+    competitionName: r.competitionName,
+    home: r.home,
+    away: r.away,
+    homeScore: r.homeScore,
+    awayScore: r.awayScore,
+    status: r.status,
+    statusText: r.statusText,
+    kickoff: r.kickoff,
+    round: null,
+    url: r.url,
+    minute: null,
+    dataSource: 'filgoal',
+    channel: r.channel,
+    stadium: r.stadium,
+    providerMatchId: r.matchId,
+  }));
+}
 
 /**
  * Load one day's fixtures, from cache when fresh.
@@ -48,18 +79,27 @@ export async function loadDay(
   const cached = getCachedDay(date, options.now ?? Date.now());
   if (cached) return cached;
 
-  const html = await getPage(`${YALLAKORA_BASE}/matches-center?date=${date}`, options.fetchImpl);
-  const fromYallakora = html ? parseYallakoraDay(html, date) : [];
-  if (fromYallakora.length) return storeDay(date, fromYallakora);
+  // FilGoal and Yallakora are fetched together: FilGoal is the better Egyptian
+  // source (stadium, channel, its own id), Yallakora covers the leagues FilGoal
+  // does not list on a given day. Merging means one source's gap is not a blank.
+  const [filGoal, yallakoraHtml] = await Promise.all([
+    fetchFilGoalDay(date, options.fetchImpl).catch(() => null),
+    getPage(`${YALLAKORA_BASE}/matches-center?date=${date}`, options.fetchImpl),
+  ]);
+  const merged = mergeDay(
+    fromFilGoal(filGoal ?? []),
+    yallakoraHtml ? parseYallakoraDay(yallakoraHtml, date) : [],
+  );
+  if (merged.length) return storeDay(date, merged);
 
   // Yallakora gave us nothing (down, blocked, or an empty day). Try ESPN before
   // calling the day unavailable, so one source's outage is not the reader's.
   const fromEspn = await loadEspnDay(date, options.fetchImpl);
   if (fromEspn.length) return storeDay(date, fromEspn);
 
-  // Both empty. If the Yallakora page was readable, the day is genuinely quiet;
-  // if it was not, the day is unavailable. The difference matters to the reader.
-  return storeDay(date, [], !html);
+  // All empty. If either page was readable, the day is quietly empty rather than
+  // unavailable — the difference matters to the reader.
+  return storeDay(date, [], !filGoal && !yallakoraHtml);
 }
 
 /** ESPN scoreboard for one day, used only as the fallback. */
@@ -158,4 +198,43 @@ export function todayCairo(now: number = Date.now()): string {
 /** Parsed standings tables for a competition, for the API. */
 export function standingsRows(tables: StandingsTable[]): StandingsTable[] {
   return tables;
+}
+
+/**
+ * Merge two days of fixtures, preferring the first source for a real duplicate.
+ *
+ * A match is the same match when the two team names normalise to the same pair,
+ * in either order — Yallakora writes «الأهلى» where FilGoal writes «الأهلي», and
+ * the normaliser already folds those together. The preferred row wins whole:
+ * mixing a score from one source with a channel from another would let the screen
+ * show a goal that one source has not reported.
+ */
+export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[] {
+  const key = (m: MatchRow): string => {
+    // FilGoal writes the age group inside the team name («إسبانيا | تحت 17»)
+    // where Yallakora does not, so the qualifier is stripped before comparing.
+    const clean = (name: string): string =>
+      normalizeTeam(name.replace(/\s*\|\s*تحت\s*\d+\s*$/, '').replace(/\s*تحت\s*\d+\s*$/, ''));
+    const pair = [clean(m.home), clean(m.away)].sort();
+    // The competition is part of the key: two clubs can meet in the league and in
+    // a cup on different days, and merging those would lose one tournament.
+    return `${canonicalCompetition(m.competitionName)}|${pair.join('|')}`;
+  };
+  const seen = new Map<string, MatchRow>();
+  for (const m of preferred) seen.set(key(m), { ...m, competitionName: canonicalCompetition(m.competitionName) });
+  for (const m of fallback) {
+    const k = key(m);
+    if (seen.has(k)) continue;
+    seen.set(k, { ...m, competitionName: canonicalCompetition(m.competitionName) });
+  }
+  // A stable, readable order: Egyptian first, then by competition name, then time.
+  return [...seen.values()].sort((a, b) => {
+    const priority = (m: MatchRow): number =>
+      m.competitionId === 'egyptian-premier' ? 0 : m.competitionId === 'other' ? 2 : 1;
+    return (
+      priority(a) - priority(b) ||
+      a.competitionName.localeCompare(b.competitionName, 'ar') ||
+      (a.kickoff ?? '99:99').localeCompare(b.kickoff ?? '99:99')
+    );
+  });
 }
