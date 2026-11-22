@@ -634,3 +634,141 @@ export async function saveDigestTopics(token: string, topics: DigestTopic[]): Pr
   const json = (await res.json()) as { data: { topics: DigestTopic[] } };
   return json.data.topics;
 }
+
+// --- Football: matches, standings, team follows ---
+
+export type MatchStatus = 'live' | 'upcoming' | 'finished' | 'unknown';
+
+export interface FootballMatch {
+  id: string;
+  competitionId: string;
+  competitionName: string;
+  home: string;
+  away: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  status: MatchStatus;
+  statusText: string;
+  kickoff: string | null;
+  round: string | null;
+  url?: string;
+  minute: number | null;
+}
+
+export interface MatchesDay {
+  date: string;
+  unavailable: boolean;
+  fetchedAt: number;
+  followedTeams: string[];
+  matches: FootballMatch[];
+}
+
+export interface StandingRow {
+  position: number;
+  team: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  points: number;
+}
+
+export interface StandingsTable {
+  competitionId: string;
+  group: string | null;
+  rows: StandingRow[];
+}
+
+export interface TeamFollow {
+  name: string;
+  competitionId: string;
+  notifyKickoff: boolean;
+  notifyGoals: boolean;
+  notifyFinal: boolean;
+}
+
+export async function fetchMatches(date: string, token?: string | null): Promise<MatchesDay> {
+  const res = await fetch(`${API_BASE}/api/football/matches?date=${encodeURIComponent(date)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: MatchesDay }).data;
+}
+
+export async function fetchMatch(
+  id: string,
+  date: string,
+): Promise<{ match: FootballMatch; news: Array<{ id: string; title: string; sourceName: string; url: string; publishedAt: number; team: 'home' | 'away' }>; unavailable: boolean }> {
+  const res = await fetch(
+    `${API_BASE}/api/football/matches/${encodeURIComponent(id)}?date=${encodeURIComponent(date)}`,
+  );
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { match: FootballMatch; news: never[]; unavailable: boolean } }).data;
+}
+
+export async function fetchStandings(competitionId: string): Promise<{ unavailable: boolean; tables: StandingsTable[] }> {
+  const res = await fetch(`${API_BASE}/api/football/standings?competition=${encodeURIComponent(competitionId)}`);
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as { data: { unavailable: boolean; tables: StandingsTable[] } };
+  return { unavailable: json.data.unavailable, tables: json.data.tables };
+}
+
+export async function fetchTeamFollows(token: string): Promise<TeamFollow[]> {
+  const res = await fetch(`${API_BASE}/api/football/follows`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { teams: TeamFollow[] } }).data.teams;
+}
+
+export async function followFootballTeam(
+  token: string,
+  team: string,
+  competitionId = 'egyptian-premier',
+): Promise<TeamFollow[]> {
+  const res = await fetch(`${API_BASE}/api/football/follows`, {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify({ team, competitionId }),
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { teams: TeamFollow[] } }).data.teams;
+}
+
+export async function unfollowFootballTeam(token: string, team: string): Promise<TeamFollow[]> {
+  const res = await fetch(`${API_BASE}/api/football/follows/${encodeURIComponent(team)}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { teams: TeamFollow[] } }).data.teams;
+}
+
+export async function setFootballTeamNotify(
+  token: string,
+  team: string,
+  prefs: { notifyKickoff?: boolean; notifyGoals?: boolean; notifyFinal?: boolean },
+): Promise<TeamFollow> {
+  const res = await fetch(`${API_BASE}/api/football/follows/${encodeURIComponent(team)}/notify`, {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify(prefs),
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { follow: TeamFollow } }).data.follow;
+}
+
+/** Teams offered as quick-pick chips, per the spec. */
+export const POPULAR_TEAMS = [
+  'الأهلي', 'الزمالك', 'بيراميدز', 'ليفربول', 'ريال مدريد',
+  'برشلونة', 'مانشستر سيتي', 'أرسنال', 'الهلال', 'النصر', 'منتخب مصر',
+] as const;
+
+/** Competitions shown as tabs in the standings screen. */
+export const STANDING_TABS = [
+  { id: 'egyptian-premier', label: 'الدوري المصري' },
+  { id: 'caf-champions', label: 'دوري أبطال إفريقيا' },
+  { id: 'eng-premier', label: 'الدوري الإنجليزي' },
+  { id: 'esp-la-liga', label: 'الدوري الإسباني' },
+  { id: 'saudi-pro-league', label: 'دوري روشن السعودي' },
+] as const;

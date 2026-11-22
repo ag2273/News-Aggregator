@@ -201,6 +201,17 @@ export default function FeedScreen() {
             </Text>
           </View>
           <View style={styles.headerActions}>
+            {/* Football pill: the ONLY entry point, per the spec. The bottom dock
+                is untouched — a hard rule from the user. */}
+            <TouchableOpacity
+              style={[styles.circleBtn, { backgroundColor: t.surface }]}
+              onPress={() => router.push('/matches')}
+              accessibilityRole="button"
+              accessibilityLabel="نتائج المباريات"
+            >
+              <Ionicons name="football-outline" size={19} color={t.accent} />
+              <View style={[styles.liveDot, { backgroundColor: t.accent }]} />
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.circleBtn, { backgroundColor: t.surface }]}
               onPress={() => router.push('/search')}
@@ -306,6 +317,14 @@ const styles = StyleSheet.create({
   headerTitleWrap: { flex: 1, minWidth: 0, paddingEnd: 8 },
   headerTitle: { fontFamily: 'Cairo_700Bold', fontSize: 26 },
   headerActions: { flexDirection: 'row', gap: 10 },
+  liveDot: {
+    position: 'absolute',
+    top: 9,
+    insetInlineEnd: 9,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
   circleBtn: {
     width: 44,
     height: 44,

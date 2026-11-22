@@ -667,3 +667,72 @@ export async function sendDigestNotifications(
   }
   return sent;
 }
+
+/** The FCM payload for a football event on a followed team. */
+export function buildMatchMessage(
+  token: string,
+  event: { kind: 'kickoff' | 'goal' | 'final'; home: string; away: string; score?: string },
+): FcmMessage {
+  const title =
+    event.kind === 'goal'
+      ? `هدف — ${event.home} × ${event.away}`
+      : event.kind === 'kickoff'
+        ? `انطلاق المباراة — ${event.home} × ${event.away}`
+        : `انتهت المباراة — ${event.home} × ${event.away}`;
+  return {
+    token,
+    notification: {
+      title,
+      body:
+        event.kind === 'goal'
+          ? `النتيجة الآن ${event.score ?? ''}`.trim()
+          : event.kind === 'kickoff'
+            ? 'المباراة بدأت الآن'
+            : `النتيجة النهائية ${event.score ?? ''}`.trim(),
+    },
+    // Its own channel, so a reader can mute football without muting the news.
+    data: { football: '1', kind: event.kind },
+    android: {
+      priority: event.kind === 'goal' ? 'high' : 'normal',
+      notification: { channel_id: 'football', color: '#34D399' },
+    },
+  };
+}
+
+/**
+ * Tell the followers of a team about a match transition.
+ *
+ * Only called for a real change the source reported (a score that moved, a match
+ * that started or ended), never on a guess, and each device's own switches are
+ * respected. Returns how many devices accepted.
+ */
+export async function sendMatchNotifications(
+  event: { kind: 'kickoff' | 'goal' | 'final'; home: string; away: string; score?: string },
+  followers: Array<{ userId: string; follow: { notifyKickoff: boolean; notifyGoals: boolean; notifyFinal: boolean } }>,
+  fetcher: typeof fetch = fetch,
+): Promise<number> {
+  const wanted = followers.filter(({ follow }) =>
+    event.kind === 'goal' ? follow.notifyGoals : event.kind === 'kickoff' ? follow.notifyKickoff : follow.notifyFinal,
+  );
+  if (!wanted.length) return 0;
+  const records = getAllPushRecords().filter(
+    (r) => r.provider === 'fcm' && r.enabled && wanted.some((w) => w.userId === r.userId),
+  );
+  if (!records.length) return 0;
+  const account = loadServiceAccount();
+  if (!account) return 0;
+  let accessToken: string;
+  try {
+    accessToken = await getAccessToken(account, fetcher);
+  } catch (err) {
+    console.error('[push] match: could not get an access token:', err);
+    return 0;
+  }
+  let sent = 0;
+  for (const record of records) {
+    const outcome = await sendFcmMessage(account.project_id, accessToken, buildMatchMessage(record.token, event), fetcher);
+    if (outcome === 'ok') sent += 1;
+    if (outcome === 'dead') unregisterPushToken(record.userId, record.token);
+  }
+  return sent;
+}

@@ -1,0 +1,93 @@
+// Football polling: detect real match transitions and notify followers.
+//
+// The rule that matters: a notification is sent only when the source itself
+// reports a change — a match that moved from upcoming to live, a score that
+// differs from the last poll, or a match that finished. Nothing is guessed from
+// elapsed time, so a stalled feed can never produce a phantom goal.
+
+import { loadDay, todayCairo } from './footballService.js';
+import { followersOf } from './footballStore.js';
+import { sendMatchNotifications } from './push.js';
+import type { MatchRow } from './football.js';
+
+/** Score and state of every match we have already seen, by match id. */
+export interface SeenMatch {
+  status: MatchRow['status'];
+  homeScore: number | null;
+  awayScore: number | null;
+}
+
+export const seen = new Map<string, SeenMatch>();
+
+export function _resetFootballSeen(): void {
+  seen.clear();
+}
+
+export interface Transition {
+  kind: 'kickoff' | 'goal' | 'final';
+  match: MatchRow;
+  score: string;
+}
+
+/**
+ * Compare the current matches with what we saw last time.
+ *
+ * Returns the transitions worth a notification. The first observation of a match
+ * is never a transition (otherwise every deploy would re-announce every goal).
+ */
+export function detectTransitions(matches: MatchRow[]): Transition[] {
+  const out: Transition[] = [];
+  for (const match of matches) {
+    const before = seen.get(match.id);
+    const current: SeenMatch = {
+      status: match.status,
+      homeScore: match.homeScore,
+      awayScore: match.awayScore,
+    };
+    seen.set(match.id, current);
+    if (!before) continue;
+    const score = `${match.homeScore ?? 0}-${match.awayScore ?? 0}`;
+    if (before.status === 'upcoming' && match.status === 'live') {
+      out.push({ kind: 'kickoff', match, score });
+      continue;
+    }
+    if (match.status === 'live' && (before.homeScore !== match.homeScore || before.awayScore !== match.awayScore)) {
+      out.push({ kind: 'goal', match, score });
+      continue;
+    }
+    if (before.status !== 'finished' && match.status === 'finished') {
+      out.push({ kind: 'final', match, score });
+    }
+  }
+  return out;
+}
+
+/** One poll: fetch today, detect transitions, notify each team's followers. */
+export async function pollFootball(options: {
+  now?: number;
+  fetchImpl?: typeof fetch;
+  notify?: typeof sendMatchNotifications;
+} = {}): Promise<{ transitions: number; notified: number }> {
+  const day = await loadDay(todayCairo(options.now ?? Date.now()), options);
+  if (day.unavailable) return { transitions: 0, notified: 0 };
+  const transitions = detectTransitions(day.matches);
+  let notified = 0;
+  for (const t of transitions) {
+    // Both sides' followers care about the event.
+    const followers = [
+      ...followersOf(t.match.home).map((f) => ({ userId: f.userId, follow: f.follow })),
+      ...followersOf(t.match.away).map((f) => ({ userId: f.userId, follow: f.follow })),
+    ];
+    if (!followers.length) continue;
+    try {
+      notified += await (options.notify ?? sendMatchNotifications)(
+        { kind: t.kind, home: t.match.home, away: t.match.away, score: t.score },
+        followers,
+        options.fetchImpl,
+      );
+    } catch (err) {
+      console.error('[football] notification failed:', err);
+    }
+  }
+  return { transitions: transitions.length, notified };
+}
