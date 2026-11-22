@@ -304,7 +304,7 @@ describe('upcoming fixtures screen', () => {
   it('shows the commentator and the two coaches when the provider has them', async () => {
     mockMatch.mockResolvedValue({
       match: match(),
-      detail: { commentator: 'بلال علام', channel: 'أون سبورت ماكس', homeCoach: 'علاء عبد العال', awayCoach: 'معتمد جمال' },
+      detail: { commentator: 'بلال علام', channel: 'أون سبورت ماكس', homeCoach: 'علاء عبد العال', awayCoach: 'معتمد جمال', lineups: null },
       news: [],
       unavailable: false,
     });
@@ -466,5 +466,47 @@ describe('upcoming fixtures screen', () => {
     });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByLabelText('متابعة الدوري المصري')).toBeTruthy());
+  });
+
+  it('shows the real line-up when the source publishes one', async () => {
+    mockMatch.mockResolvedValue({
+      match: match(),
+      detail: {
+        commentator: null, channel: null, homeCoach: null, awayCoach: null,
+        lineups: {
+          homeTeamId: '1', awayTeamId: '2',
+          home: [
+            { personId: 'a', name: 'أليسون بيكر', position: 'حارس مرمى', shirtNumber: 1, isStarter: true, minutesPlayed: 90, teamId: '1' },
+            { personId: 'b', name: 'محمد صلاح', position: 'مهاجم', shirtNumber: 11, isStarter: true, minutesPlayed: 90, teamId: '1' },
+            { personId: 'c', name: 'بديل', position: 'وسط', shirtNumber: 20, isStarter: false, minutesPlayed: 0, teamId: '1' },
+          ],
+          away: [
+            { personId: 'd', name: 'أونانا', position: 'حارس مرمى', shirtNumber: 24, isStarter: true, minutesPlayed: 90, teamId: '2' },
+          ],
+        },
+      },
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('التشكيل')).toBeTruthy());
+    fireEvent.press(screen.getByText('التشكيل'));
+    await waitFor(() => expect(screen.getByText('أليسون بيكر')).toBeTruthy());
+    expect(screen.getByText('محمد صلاح')).toBeTruthy();
+    // A substitute is not in the starting XI.
+    expect(screen.queryByText('بديل')).toBeNull();
+  });
+
+  it('says the line-up is unavailable rather than inventing one', async () => {
+    mockMatch.mockResolvedValue({
+      match: match(),
+      detail: { commentator: null, channel: null, homeCoach: null, awayCoach: null, lineups: null },
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('التشكيل')).toBeTruthy());
+    fireEvent.press(screen.getByText('التشكيل'));
+    await waitFor(() => expect(screen.getByText('التشكيل غير متاح من المصدر لهذه المباراة.')).toBeTruthy());
   });
 });

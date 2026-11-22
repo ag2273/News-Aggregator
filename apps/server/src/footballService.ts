@@ -35,7 +35,13 @@ import {
   type DayCache,
   type StandingsCache,
 } from './footballStore.js';
-import { fetchFilGoalDay, fetchFilGoalDetail, type FilGoalMatch } from './filgoal.js';
+import {
+  fetchFilGoalDay,
+  fetchFilGoalDetail,
+  fetchFilGoalLineups,
+  type FilGoalMatch,
+  type FilGoalLineups,
+} from './filgoal.js';
 import { getAllArticles } from './db.js';
 import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
 
@@ -211,15 +217,26 @@ export function matchesForTeams(matches: MatchRow[], teams: string[]): MatchRow[
 export async function loadMatchDetail(
   match: MatchRow,
   options: { fetchImpl?: typeof fetch } = {},
-): Promise<{ commentator: string | null; channel: string | null; homeCoach: string | null; awayCoach: string | null } | null> {
+): Promise<{
+  commentator: string | null;
+  channel: string | null;
+  homeCoach: string | null;
+  awayCoach: string | null;
+  lineups: FilGoalLineups | null;
+} | null> {
   if (match.dataSource !== 'filgoal' || !match.providerMatchId) return null;
   const detail = await fetchFilGoalDetail(match.providerMatchId, options.fetchImpl);
   if (!detail) return null;
+  // The line-ups come from the same page. Measured: European fixtures carry 40-45
+  // players, Egyptian ones carry none — so `null` here is the honest answer the
+  // screen renders as «غير متاح», not a failure.
+  const lineups = await fetchFilGoalLineups(match.providerMatchId, options.fetchImpl).catch(() => null);
   return {
     commentator: detail.commentator,
     channel: match.channel ?? detail.channel,
     homeCoach: detail.homeCoach,
     awayCoach: detail.awayCoach,
+    lineups,
   };
 }
 

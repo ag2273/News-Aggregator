@@ -320,3 +320,105 @@ export async function fetchFilGoalDetail(
   if (!html) return null;
   return parseFilGoalDetail(html);
 }
+
+/** One player as the match page lists them. */
+export interface FilGoalPlayer {
+  personId: string;
+  name: string;
+  position: string | null;
+  shirtNumber: number | null;
+  /** True when the player started; false for a substitute. */
+  isStarter: boolean;
+  minutesPlayed: number | null;
+  teamId: string;
+}
+
+export interface FilGoalLineups {
+  homeTeamId: string | null;
+  awayTeamId: string | null;
+  home: FilGoalPlayer[];
+  away: FilGoalPlayer[];
+}
+
+/** The JSON array after `"MatchTeamsSquads":`. */
+export function squadArray(html: string): string | null {
+  const marker = '"MatchTeamsSquads":[';
+  const at = html.indexOf(marker);
+  if (at < 0) return null;
+  let depth = 0;
+  for (let i = at + marker.length - 1; i < html.length; i += 1) {
+    if (html[i] === '[') depth += 1;
+    else if (html[i] === ']') {
+      depth -= 1;
+      if (depth === 0) return html.slice(at + marker.length - 1, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * The two line-ups, from the match page's own payload.
+ *
+ * Measured: European fixtures carry 40-45 players each with name, position, shirt
+ * number and minutes; Egyptian fixtures carry **zero** — the array exists but is
+ * empty, and the formation field is null. So this returns an empty list rather than
+ * inventing one, and the screen says the source does not publish it.
+ */
+export function parseFilGoalLineups(html: string): FilGoalLineups | null {
+  const raw = squadArray(html);
+  if (!raw) return null;
+  let players: Array<Record<string, unknown>>;
+  try {
+    players = JSON.parse(raw) as Array<Record<string, unknown>>;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(players) || players.length === 0) return null;
+
+  const mapped: FilGoalPlayer[] = [];
+  for (const p of players) {
+    const name = String(p['PersonName'] ?? '').trim();
+    const teamId = String(p['TeamId'] ?? '');
+    if (!name || !teamId) continue;
+    const shirt = p['ShirtNumber'];
+    const minutes = p['MinutesPlayed'];
+    mapped.push({
+      personId: String(p['PersonId'] ?? ''),
+      name,
+      position: (p['PlayerPositionName'] as string | null) ?? null,
+      shirtNumber: typeof shirt === 'number' ? shirt : null,
+      isStarter: p['IsSpare'] === false,
+      minutesPlayed: typeof minutes === 'number' ? minutes : null,
+      teamId,
+    });
+  }
+  if (!mapped.length) return null;
+
+  // Home/away from the page's own ids, so the sides are not guessed from order.
+  const homeTeamId = html.match(/"HomeTeamId":(\d+)/)?.[1] ?? null;
+  const awayTeamId = html.match(/"AwayTeamId":(\d+)/)?.[1] ?? null;
+  const home = homeTeamId ? mapped.filter((p) => p.teamId === homeTeamId) : [];
+  const away = awayTeamId ? mapped.filter((p) => p.teamId === awayTeamId) : [];
+  if (!home.length || !away.length) {
+    // Fall back to splitting by team id order, never by guesswork about names.
+    const teams = [...new Set(mapped.map((p) => p.teamId))];
+    if (teams.length < 2) return null;
+    return {
+      homeTeamId: teams[0] ?? null,
+      awayTeamId: teams[1] ?? null,
+      home: mapped.filter((p) => p.teamId === teams[0]),
+      away: mapped.filter((p) => p.teamId === teams[1]),
+    };
+  }
+  return { homeTeamId, awayTeamId, home, away };
+}
+
+/** Fetch a match's line-ups. Cached by the caller; null when the source has none. */
+export async function fetchFilGoalLineups(
+  matchId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<FilGoalLineups | null> {
+  const html = await getPage(`${FILGOAL_BASE}/matches/${matchId}`, fetchImpl);
+  if (!html) return null;
+  return parseFilGoalLineups(html);
+}

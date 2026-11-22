@@ -285,9 +285,45 @@ export default function MatchCenterScreen() {
                     ) : null}
                   </View>
                 ) : null}
-                <Text style={[styles.emptyBody, { color: t.textMuted }]}>
-                  التشكيل غير متاح من المصدر لهذه المباراة.
-                </Text>
+                {/* The source publishes line-ups for European fixtures (40-45
+                    players with name, position and shirt number) and none at all
+                    for Egyptian ones — so this renders real players when they
+                    exist and says so plainly when they do not. Never a guessed XI. */}
+                {detail?.lineups ? (
+                  <View style={styles.lineupWrap}>
+                    {([
+                      [match.home, detail.lineups.home.filter((p) => p.isStarter)],
+                      [match.away, detail.lineups.away.filter((p) => p.isStarter)],
+                    ] as const).map(([teamName, players]) => (
+                      <View key={teamName} style={[styles.lineupCard, { backgroundColor: t.surface }]}>
+                        <Text style={[styles.lineupTeam, { color: t.textPrimary }]}>{teamName}</Text>
+                        {players.length === 0 ? (
+                          <Text style={[styles.emptyBody, { color: t.textMuted }]}>
+                            لا توجد تشكيلة معلنة لهذا الفريق.
+                          </Text>
+                        ) : (
+                          players.map((p) => (
+                            <View key={p.personId} style={styles.lineupRow}>
+                              <Text style={[styles.lineupShirt, { color: t.accent }]}>
+                                {p.shirtNumber ?? '—'}
+                              </Text>
+                              <Text style={[styles.lineupName, { color: t.textPrimary }]} numberOfLines={1}>
+                                {p.name}
+                              </Text>
+                              <Text style={[styles.lineupPos, { color: t.textMuted }]} numberOfLines={1}>
+                                {p.position ?? ''}
+                              </Text>
+                            </View>
+                          ))
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={[styles.emptyBody, { color: t.textMuted }]}>
+                    التشكيل غير متاح من المصدر لهذه المباراة.
+                  </Text>
+                )}
               </View>
             ) : null}
 
@@ -328,6 +364,13 @@ const styles = StyleSheet.create({
   detailText: { fontSize: 11 },
   coachBox: { borderRadius: 14, padding: 12, gap: 4, marginBottom: 10, alignSelf: 'stretch' },
   coachLine: { fontSize: 12 },
+  lineupWrap: { alignSelf: 'stretch', gap: 10 },
+  lineupCard: { borderRadius: 16, padding: 12, gap: 6 },
+  lineupTeam: { fontSize: 14, fontWeight: '800', marginBottom: 2 },
+  lineupRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  lineupShirt: { width: 22, fontSize: 12, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  lineupName: { flex: 1, fontSize: 13 },
+  lineupPos: { fontSize: 11 },
   // A horizontal strip inside a column flex needs its own height (the same trap
   // that stretched the day ribbon), and trailing padding so the last tab can
   // scroll clear of the edge instead of sitting half-cut.

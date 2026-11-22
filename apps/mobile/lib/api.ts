@@ -723,12 +723,32 @@ export async function fetchMatches(date: string, token?: string | null): Promise
   return ((await res.json()) as { data: MatchesDay }).data;
 }
 
+/** One player in a line-up. */
+export interface LineupPlayer {
+  personId: string;
+  name: string;
+  position: string | null;
+  shirtNumber: number | null;
+  isStarter: boolean;
+  minutesPlayed: number | null;
+  teamId: string;
+}
+
+export interface Lineups {
+  homeTeamId: string | null;
+  awayTeamId: string | null;
+  home: LineupPlayer[];
+  away: LineupPlayer[];
+}
+
 /** What only the provider's match page knows. */
 export interface MatchDetail {
   commentator: string | null;
   channel: string | null;
   homeCoach: string | null;
   awayCoach: string | null;
+  /** Null when the source publishes no line-up for this match. */
+  lineups: Lineups | null;
 }
 
 /** An article about one of a match's two clubs, from our own corpus. */
