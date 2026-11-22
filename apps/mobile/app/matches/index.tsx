@@ -116,7 +116,7 @@ export default function MatchesScreen() {
         accessibilityLabel={`${m.home} ضد ${m.away}`}
       >
         <View style={styles.cardTop}>
-          <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={1}>
+          <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
             {m.home}
           </Text>
           <View style={styles.scoreWrap}>
@@ -131,7 +131,7 @@ export default function MatchesScreen() {
               {isLive && m.minute ? `${m.minute}'` : m.statusText}
             </Text>
           </View>
-          <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={1}>
+          <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
             {m.away}
           </Text>
         </View>
@@ -214,28 +214,31 @@ export default function MatchesScreen() {
         </ScrollView>
 
         {loading ? (
-          <View style={styles.center}>
+          <View style={styles.stateWrap}>
             <ActivityIndicator color={t.accent} />
           </View>
         ) : error ? (
-          <View style={styles.center}>
+          /* Every non-list state is a scroller with a growing content area, so it
+             stays centered on a tall screen, scrolls on a short one (keyboard,
+             large font), and never collapses into the header above it. */
+          <ScrollView contentContainerStyle={styles.stateScroll}>
             <Ionicons name="cloud-offline-outline" size={30} color={t.textMuted} />
             <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>{error}</Text>
             <TouchableOpacity style={[styles.retry, { borderColor: t.accent }]} onPress={load} accessibilityRole="button">
               <Text style={{ color: t.accent }}>إعادة المحاولة</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         ) : day?.unavailable ? (
-          <View style={styles.center}>
+          <ScrollView contentContainerStyle={styles.stateScroll}>
             <Ionicons name="time-outline" size={30} color={t.textMuted} />
             <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>البيانات غير متاحة حاليًا</Text>
             <Text style={[styles.emptyBody, { color: t.textMuted }]}>مصدر النتائج لم يستجب لهذا اليوم. جرّب يومًا آخر أو أعد المحاولة بعد قليل.</Text>
             <TouchableOpacity style={[styles.retry, { borderColor: t.accent }]} onPress={load} accessibilityRole="button">
               <Text style={{ color: t.accent }}>إعادة المحاولة</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         ) : visible.length === 0 ? (
-          <View style={styles.center}>
+          <ScrollView contentContainerStyle={styles.stateScroll}>
             <Ionicons name="football-outline" size={34} color={t.textMuted} />
             <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>
               {filter === 'all' ? 'لا توجد مباريات مجدولة اليوم في بطولاتك المفضلة' : 'لا توجد مباريات بهذه الحالة'}
@@ -244,8 +247,12 @@ export default function MatchesScreen() {
               <TouchableOpacity style={[styles.retry, { borderColor: t.accent }]} onPress={() => setOffset(1)} accessibilityRole="button">
                 <Text style={{ color: t.accent }}>استعراض مباريات الغد</Text>
               </TouchableOpacity>
-            ) : null}
-          </View>
+            ) : (
+              <TouchableOpacity style={[styles.retry, { borderColor: t.accent }]} onPress={() => setFilter('all')} accessibilityRole="button">
+                <Text style={{ color: t.accent }}>عرض كل المباريات</Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
             {pinned.length ? (
@@ -299,9 +306,14 @@ const styles = StyleSheet.create({
   groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10 },
   groupTitle: { fontSize: 13, fontWeight: '700' },
   card: { borderRadius: 18, padding: 12, borderWidth: 1 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  team: { flex: 1, fontSize: 14, fontWeight: '600', textAlign: 'center' },
-  scoreWrap: { alignItems: 'center', minWidth: 74 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
+  // `flexShrink` plus a smaller base size keeps a long club name («رويال يونيون
+  // سان جيلواز») from being cut mid-glyph on a 360dp phone; the ellipsis is the
+  // last resort, not the first thing that happens.
+  // Two lines, so «رويال يونيون سان جيلواز» fits on a 360dp phone instead of
+  // ending in an ellipsis at 113px. Long names are the norm in Arabic coverage.
+  team: { flex: 1, flexShrink: 1, fontSize: 13, fontWeight: '600', textAlign: 'center', lineHeight: 19 },
+  scoreWrap: { alignItems: 'center', width: 68 },
   score: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   kickoff: { fontSize: 14, fontWeight: '700' },
   status: { fontSize: 10, marginTop: 2 },
@@ -310,7 +322,19 @@ const styles = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 3 },
   liveText: { fontSize: 10, fontWeight: '700' },
   star: { position: 'absolute', top: 8, insetInlineStart: 8 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 28 },
+  // The empty and error states sit in a scrollable container with a generous
+  // minimum height, so they stay centered on a phone and never clip at large
+  // font sizes. `flex:1` on a child of a padded SafeAreaView is what collapsed
+  // the layout; contentContainerStyle owns the centering instead.
+  stateScroll: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 28,
+    paddingVertical: 36,
+  },
+  stateWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: 15, fontWeight: '700', textAlign: 'center' },
   emptyBody: { fontSize: 12, lineHeight: 20, textAlign: 'center' },
   retry: { marginTop: 6, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, borderWidth: 1 },

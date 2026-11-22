@@ -273,4 +273,25 @@ describe('upcoming fixtures screen', () => {
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
     expect(screen.queryByText(/استاد/)).toBeNull();
   });
+
+  it('offers a way back from an empty filter instead of a dead end', async () => {
+    // «الفرق المتابعة» with nothing followed used to show a bare message with no
+    // way out.
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [match()] });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+    fireEvent.press(screen.getByText('الفرق المتابعة'));
+    await waitFor(() => expect(screen.getByText('لا توجد مباريات بهذه الحالة')).toBeTruthy());
+    expect(screen.getByText('عرض كل المباريات')).toBeTruthy();
+  });
+
+  it('keeps the empty message readable at a large font scale', async () => {
+    // The clipped-message finding: the text is inside a growing scroller now, so
+    // it can wrap instead of being cut by a fixed-height box.
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [] });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText(/لا توجد مباريات مجدولة/)).toBeTruthy());
+    const msg = screen.getByText(/لا توجد مباريات مجدولة/);
+    expect(msg.props.numberOfLines).toBeUndefined();
+  });
 });
