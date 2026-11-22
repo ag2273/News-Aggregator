@@ -197,6 +197,17 @@ function isFalseFriend(tokens: string[], index: number, word: string): boolean {
  * six MLS articles about Inter Miami. «إنتر», «مانشستر», «ريال», «باريس»,
  * «الاتحاد» and «الوداد» are all prefixes of more than one club.
  */
+/**
+ * Second words that turn a shared first word into a DIFFERENT club.
+ *
+ * «إنتر ميامي» is not «إنتر ميلان»: the tail is what distinguishes them, so a
+ * match on the shared head alone is rejected when one of these follows it.
+ */
+const OTHER_CLUB_TAILS = new Set([
+  'ميامي', 'ميلان', 'مدريد', 'مانشستر', 'يونايتد', 'سيتي', 'باريس', 'جده',
+  'الرياض', 'ابوظبي', 'دبي', 'الدوحه', 'نيويورك', 'لوس', 'انجلوس',
+]);
+
 const SHARED_PREFIX_WORDS = new Set([
   'انتر', 'مانشستر', 'ريال', 'باريس', 'اتلتيكو', 'بايرن', 'روما', 'ميلان',
   'الاتحاد', 'الوداد', 'الاهلي', 'الشباب', 'التعاون', 'الاتفاق', 'سموحه',
@@ -266,16 +277,24 @@ export function mentionsTeam(
       for (let i = 0; i < tokens.length; i += 1) {
         if (tokens[i] !== only) continue;
         if (isFalseFriend(tokens, i, only)) continue;
-        // The word right after it can name a different club: «إنتر ميامي».
+        // The word right after it can name a different club: «إنتر ميامي» is not
+        // «إنتر ميلان», and the tail is the only thing that tells them apart.
         const after = tokens[i + 1] ?? '';
-        if (SHARED_PREFIX_WORDS.has(after)) continue;
+        if (OTHER_CLUB_TAILS.has(after) || SHARED_PREFIX_WORDS.has(after)) continue;
         return true;
       }
       return false;
     }
     // The short form («إنتر» for «إنتر ميلان») is accepted only when the article
-    // itself places the club in the competition's country.
+    // itself places the club in THIS competition's country — and not in another
+    // country that the same club's lookalike belongs to. Measured: an MLS article
+    // was accepted for an Italian match because its summary said «الدوري
+    // الأمريكي», which is simply a different country's name.
     const hint = country ? COUNTRY_WORDS[country] : undefined;
+    const otherCountry = Object.entries(COUNTRY_WORDS)
+      .filter(([code]) => code !== country)
+      .some(([, words]) => words.some((w) => hasWord(haystack, w)));
+    if (otherCountry) return false;
     if (hint && hint.some((h) => hasWord(haystack, h))) {
       const first = words[0]!;
       for (let i = 0; i < tokens.length; i += 1) {

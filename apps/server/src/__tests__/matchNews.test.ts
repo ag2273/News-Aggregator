@@ -206,4 +206,28 @@ describe('clubs whose name is an institution', () => {
     expect(mentionsTeam('إنتر يفوز على يوفنتوس في الكالتشيو', 'إنتر ميلان', undefined, 'IT')).toBe(true);
     expect(mentionsTeam('إنتر يفوز على يوفنتوس', 'إنتر ميلان', undefined, 'IT')).toBe(false);
   });
+
+  it('rejects an MLS article whose summary is where «إنتر» appears', () => {
+    // The real leak: the title was about Messi, the summary said «إنتر ميامي» and
+    // «الدوري الأمريكي». Both signals point at the other club and the other country.
+    const hits = relatedNews('أتالانتا', 'إنتر', {
+      country: 'IT',
+      articles: [
+        {
+          id: '1',
+          title: 'شاهد.. ميسي يقوم بتصرف خبيث غير رياضي',
+          summary: 'نشرت رابطة الدوري الأمريكي مقطعا لميسي مع إنتر ميامي',
+          sourceName: 's',
+          url: 'u',
+          publishedAt: 1,
+        },
+      ],
+    });
+    expect(hits).toEqual([]);
+  });
+
+  it('rejects an article that names a different country than the match', () => {
+    // «الدوري الأمريكي» in the text is a different country from the Italian match.
+    expect(mentionsTeam('الدوري الأمريكي يعلن أفضل لاعب', 'إنتر', undefined, 'IT')).toBe(false);
+  });
 });
