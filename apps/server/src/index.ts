@@ -1508,7 +1508,18 @@ app.get('/api/football/competitions/:id', async (c) => {
   ]);
   const page = buildCompetitionPage(id);
   if (!page) return c.json({ error: 'unknown competition' }, 404);
-  return c.json({ data: page });
+  // Register each crest's real source URL before the app can ask for it.
+  for (const row of page.standings ?? []) {
+    if (row.logoSource && row.teamId) {
+      registerLogoSource(`yallakora:${row.teamId}`, row.logoSource);
+    }
+  }
+  return c.json({
+    data: {
+      ...page,
+      standings: page.standings?.map(({ logoSource: _s, ...r }) => r) ?? null,
+    },
+  });
 });
 
 /** One match, with the news our own corpus holds about its two teams. */
@@ -1687,6 +1698,9 @@ const logoSources = new Map<string, string>();
 
 app.get('/api/football/logo/:key', async (c) => {
   const key = c.req.param('key');
+  // FilGoal crests are derived from the team id; Yallakora's were registered when
+  // their standings were served. Passing null here lets `getCrest` consult both,
+  // which is why a Yallakora crest used to 404 even though its row carried a logo.
   const sourceUrl = logoSources.get(key) ?? null;
   const crest = await getCrest({ key, sourceUrl });
   if (!crest) return c.body(null, 404);
