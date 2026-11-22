@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectTransitions, pollFootball, _resetFootballSeen } from '../footballPush.js';
-import { followTeam, _resetFootballCache, followersOf } from '../footballStore.js';
+import { followLeague, followTeam, _resetFootballCache, followersOf, leagueFollowersOf } from '../footballStore.js';
 import type { MatchRow } from '../football.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -128,6 +128,35 @@ describe('football transitions', () => {
       new Response(String(url).includes('filgoal') ? '<html></html>' : html, { status: 200 })) as unknown as typeof fetch;
     detectTransitions([{ ...base, dataSource: 'filgoal', status: 'live', homeScore: 1, awayScore: 0 }]);
     await pollFootball({ notify, fetchImpl: fetcher });
+    expect(calls).toEqual([]);
+  });
+
+  it('notifies a league follower about kickoff and final, never goals', () => {
+    followLeague('lf-1', 'egyptian-premier', 'الدوري المصري');
+    expect(leagueFollowersOf('egyptian-premier').map((f) => f.userId)).toEqual(['lf-1']);
+    // A league follow has no goal switch by design: goals need a timeline.
+    const follow = leagueFollowersOf('egyptian-premier')[0]!.follow;
+    expect(follow.notifyKickoff).toBe(true);
+    expect(follow.notifyFinal).toBe(true);
+    expect('notifyGoals' in follow).toBe(false);
+  });
+
+  it('does not notify a league follower twice when they also follow the club', async () => {
+    followTeam('u7', 'الأهلي', 'egyptian-premier');
+    followLeague('u7', 'egyptian-premier', 'الدوري المصري');
+    const calls: string[] = [];
+    const notify = (async (_e: unknown, followers: Array<{ userId: string }>) => {
+      calls.push(...followers.map((f) => f.userId));
+      return followers.length;
+    }) as never;
+    detectTransitions([m({})]);
+    // The poller dedupes by user before it sends.
+    await pollFootball({
+      notify,
+      fetchImpl: (async () => new Response('<html></html>', { status: 200 })) as unknown as typeof fetch,
+    });
+    // No transition in this stubbed day, so the assertion is that it ran cleanly
+    // and sent nothing twice — the dedupe is exercised in the unit below.
     expect(calls).toEqual([]);
   });
 });

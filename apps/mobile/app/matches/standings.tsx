@@ -16,6 +16,7 @@ import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import {
+  FALLBACK_COMPETITIONS,
   fetchCompetitions,
   fetchStandings,
   fetchTeamFollows,
@@ -37,7 +38,7 @@ export default function StandingsScreen() {
   const { token } = useAuth();
   // Tabs come from the server, so the names and the competition list live in one
   // place. A cup is listed but says it has no table, instead of being hidden.
-  const [competitions, setCompetitions] = useState<FootballCompetition[]>([]);
+  const [competitions, setCompetitions] = useState<FootballCompetition[]>(FALLBACK_COMPETITIONS);
   const [competition, setCompetition] = useState<string>('egyptian-premier');
   const [rows, setRows] = useState<StandingRow[]>([]);
   const [group, setGroup] = useState<string | null>(null);
@@ -49,8 +50,8 @@ export default function StandingsScreen() {
 
   useEffect(() => {
     fetchCompetitions()
-      .then(setCompetitions)
-      .catch(() => setCompetitions([]));
+      .then((list) => setCompetitions(list.length ? list : FALLBACK_COMPETITIONS))
+      .catch(() => setCompetitions(FALLBACK_COMPETITIONS));
   }, []);
 
   const load = useCallback(async () => {

@@ -6,7 +6,7 @@
 // elapsed time, so a stalled feed can never produce a phantom goal.
 
 import { loadDay, todayCairo } from './footballService.js';
-import { followersOf } from './footballStore.js';
+import { followersOf, leagueFollowersOf } from './footballStore.js';
 import { sendMatchNotifications } from './push.js';
 import type { MatchRow } from './football.js';
 
@@ -90,11 +90,29 @@ export async function pollFootball(options: {
     // A `score` transition exists only to update what we remember; it is not an
     // event to announce.
     if (t.kind === 'score') continue;
-    // Both sides' followers care about the event.
-    const followers = [
+    // Both sides' followers care about the event, and so does anyone following the
+    // competition. A league follow has no `notifyGoals` switch: goals are only ever
+    // sent where the source has a timeline, and a league notification is about the
+    // season, not a single score.
+    const teamFollowers = [
       ...followersOf(t.match.home).map((f) => ({ userId: f.userId, follow: f.follow })),
       ...followersOf(t.match.away).map((f) => ({ userId: f.userId, follow: f.follow })),
     ];
+    const leagueFollowers = leagueFollowersOf(t.match.competitionId).map((f) => ({
+      userId: f.userId,
+      follow: {
+        notifyKickoff: f.follow.notifyKickoff,
+        notifyGoals: false,
+        notifyFinal: f.follow.notifyFinal,
+      },
+    }));
+    // One person can follow both the club and its league; they get one notification.
+    const seenUsers = new Set<string>();
+    const followers = [...teamFollowers, ...leagueFollowers].filter((f) => {
+      if (seenUsers.has(f.userId)) return false;
+      seenUsers.add(f.userId);
+      return true;
+    });
     if (!followers.length) continue;
     try {
       notified += await (options.notify ?? sendMatchNotifications)(

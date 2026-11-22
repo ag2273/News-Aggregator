@@ -25,6 +25,16 @@ import { cairoDay, ribbonLabel } from '../../lib/dates';
 
 type Filter = 'all' | 'live' | 'followed' | 'finished' | 'upcoming';
 
+/** Spec order: Egypt first, then Africa, then Europe, then everything else. */
+function rank(competitionName: string): number {
+  if (/المصري/.test(competitionName)) return 0;
+  if (/كأس مصر/.test(competitionName)) return 1;
+  if (/أفريقيا|الكونفدرالية/.test(competitionName)) return 2;
+  if (/السعودي/.test(competitionName)) return 3;
+  if (/أوروبا|الإنجليزي|الإسباني|الإيطالي|الألماني|الفرنسي/.test(competitionName)) return 4;
+  return 5;
+}
+
 const FILTERS: Array<{ id: Filter; label: string }> = [
   { id: 'all', label: 'الكل' },
   { id: 'live', label: 'مباشر' },
@@ -68,7 +78,20 @@ export default function MatchesScreen() {
   }, [load]);
 
   const followed = useMemo(() => new Set(day?.followedTeams ?? []), [day]);
+  const followedLeagues = useMemo(() => new Set(day?.followedLeagues ?? []), [day]);
   const matches = day?.matches ?? [];
+
+  /**
+   * Is this match one the reader chose to follow?
+   *
+   * Either club, or the whole competition. A league follow is why a reader follows
+   * «الدوري المصري» in the first place: every Egyptian fixture today, not one club.
+   */
+  const isFavourite = useCallback(
+    (m: FootballMatch): boolean =>
+      followed.has(m.home) || followed.has(m.away) || followedLeagues.has(m.competitionId),
+    [followed, followedLeagues],
+  );
 
   const visible = useMemo(() => {
     switch (filter) {
@@ -79,26 +102,40 @@ export default function MatchesScreen() {
       case 'upcoming':
         return matches.filter((m) => m.status === 'upcoming');
       case 'followed':
-        return matches.filter((m) => followed.has(m.home) || followed.has(m.away));
+        return matches.filter(isFavourite);
       default:
         return matches;
     }
-  }, [matches, filter, followed]);
+  }, [matches, filter, isFavourite]);
 
-  const pinned = visible.filter((m) => followed.has(m.home) || followed.has(m.away));
+  const pinned = visible.filter(isFavourite);
   const liveNow = visible.filter((m) => m.status === 'live' && !pinned.includes(m));
   const rest = visible.filter((m) => !pinned.includes(m) && !liveNow.includes(m));
+  /**
+   * Groups in the order the spec ranks them: Egyptian league first, then Africa,
+   * then Europe, then the rest.
+   *
+   * They used to come out in whatever order the API returned, so the Egyptian
+   * league sat below seven European groups on a busy day — the user's «فين الدوري
+   * المصري؟». Ordering here means it is always the first heading on the screen.
+   */
   const groups = useMemo(() => {
     const map = new Map<string, FootballMatch[]>();
     for (const m of rest) {
       const key = m.competitionName || 'بطولات أخرى';
       map.set(key, [...(map.get(key) ?? []), m]);
     }
-    return [...map.entries()];
+    return [...map.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0], 'ar'));
   }, [rest]);
 
+  /** A competition the reader follows, so its heading can say so. */
+  const leagueFollowed = (name: string): boolean => {
+    const group = groups.find(([n]) => n === name)?.[1];
+    return Boolean(group?.[0] && followedLeagues.has(group[0].competitionId));
+  };
+
   const liveCount = matches.filter((m) => m.status === 'live').length;
-  const followedCount = matches.filter((m) => followed.has(m.home) || followed.has(m.away)).length;
+  const followedCount = matches.filter(isFavourite).length;
 
   const card = (m: FootballMatch) => {
     const isLive = m.status === 'live';
@@ -155,7 +192,7 @@ export default function MatchesScreen() {
             {`تُنقل على ${m.channel}`}
           </Text>
         ) : null}
-        {followed.has(m.home) || followed.has(m.away) ? (
+        {isFavourite(m) ? (
           <Ionicons name="star" size={12} color={t.accent} style={styles.star} />
         ) : null}
       </TouchableOpacity>
@@ -303,7 +340,12 @@ export default function MatchesScreen() {
                   accessibilityState={{ expanded: !collapsed[name] }}
                 >
                   <Ionicons name={collapsed[name] ? 'chevron-back' : 'chevron-down'} size={16} color={t.textMuted} />
-                  <Text style={[styles.groupTitle, { color: t.textSecondary }]}>{name}</Text>
+                  <Text style={[styles.groupTitle, { color: leagueFollowed(name) ? t.accent : t.textSecondary }]}>
+                    {name}
+                  </Text>
+                  {leagueFollowed(name) ? (
+                    <Ionicons name="star" size={11} color={t.accent} />
+                  ) : null}
                 </TouchableOpacity>
                 {collapsed[name] ? null : rows.map(card)}
               </View>

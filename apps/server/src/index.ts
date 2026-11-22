@@ -133,9 +133,13 @@ import {
 } from './footballService.js';
 import { COMPETITIONS, hasLiveForReader } from './football.js';
 import {
+  followLeague,
   followTeam,
+  getLeagueFollows,
   getTeamFollows,
+  setLeagueNotify,
   setTeamNotify,
+  unfollowLeague,
   unfollowTeam,
 } from './footballStore.js';
 import { pollFootball } from './footballPush.js';
@@ -1380,12 +1384,14 @@ app.get('/api/football/matches', async (c) => {
   // them without a second round trip.
   const userId = extractUserId(c.req.header('Authorization'));
   const follows = userId ? getTeamFollows(userId).map((f) => f.name) : [];
+  const leagues = userId ? getLeagueFollows(userId).map((f) => f.competitionId) : [];
   return c.json({
     data: {
       date: day.date,
       unavailable: day.unavailable,
       fetchedAt: day.fetchedAt,
       followedTeams: follows,
+      followedLeagues: leagues,
       matches: day.matches,
     },
   });
@@ -1456,6 +1462,69 @@ app.get('/api/football/standings', async (c) => {
       tables: entry.tables,
     },
   });
+});
+
+// --- Followed leagues ---
+//
+// Same verified gate and same switches as team follows. A league follow is additive:
+// nothing here reads or writes the team-follow list.
+
+/** The caller's followed competitions. */
+app.get('/api/football/league-follows', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ data: { leagues: getLeagueFollows(userId) } });
+});
+
+/** Follow a competition. Verified accounts only, exactly like a team. */
+app.put('/api/football/league-follows', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+
+  let body: { competitionId?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (typeof body.competitionId !== 'string' || !body.competitionId.trim()) {
+    return c.json({ error: 'competitionId is required' }, 400);
+  }
+  const competition = competitionOf(body.competitionId.trim());
+  if (!competition) return c.json({ error: 'unknown competition' }, 400);
+  if (competition.isCup) {
+    // A cup has no league table and its fixtures are not a league season; following
+    // one would promise notifications we cannot honour.
+    return c.json({ error: 'a cup cannot be followed' }, 400);
+  }
+  return c.json({
+    data: { leagues: followLeague(userId, competition.id, competition.nameAr) },
+  });
+});
+
+app.delete('/api/football/league-follows/:competitionId', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ data: { leagues: unfollowLeague(userId, c.req.param('competitionId')) } });
+});
+
+app.put('/api/football/league-follows/:competitionId/notify', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  let body: { notifyKickoff?: unknown; notifyFinal?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  const updated = setLeagueNotify(userId, c.req.param('competitionId'), {
+    notifyKickoff: typeof body.notifyKickoff === 'boolean' ? body.notifyKickoff : undefined,
+    notifyFinal: typeof body.notifyFinal === 'boolean' ? body.notifyFinal : undefined,
+  });
+  if (!updated) return c.json({ error: 'not followed' }, 404);
+  return c.json({ data: { league: updated } });
 });
 
 /** The caller's followed teams. */

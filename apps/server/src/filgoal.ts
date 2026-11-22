@@ -23,7 +23,7 @@
 // Times here are already Cairo-local, written `DD-MM-YYYY - HH:MM`, so the date
 // can be confirmed against the day we asked for.
 
-import { getPage } from './football.js';
+import { competitionForLeague, getPage } from './football.js';
 
 export const FILGOAL_BASE = 'https://www.filgoal.com';
 export const FILGOAL_MATCHES = `${FILGOAL_BASE}/matches`;
@@ -175,7 +175,14 @@ export function parseFilGoalBlock(block: string, competitionName = ''): FilGoalM
 
   return {
     matchId,
-    competitionId: FILGOAL_CHAMPIONS[(block.match(/data-champId="(\d+)"/) ?? [])[1] ?? ''] ?? 'other',
+    // Two lookups, because the champion id alone is incomplete: the page also
+    // carries competitions whose id is not in our map (every measured Spanish and
+    // German row came through as «other» with the right name), and a name that we
+    // do know is worth more than an id we do not. The name is tried first.
+    competitionId:
+      competitionForLeague(competitionName)?.id ??
+      FILGOAL_CHAMPIONS[(block.match(/data-champId="(\d+)"/) ?? [])[1] ?? ''] ??
+      'other',
     competitionName: competitionName || 'بطولات أخرى',
     home,
     away,

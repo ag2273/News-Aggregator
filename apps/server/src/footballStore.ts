@@ -48,10 +48,27 @@ export interface TeamFollow {
   notifyFinal: boolean;
 }
 
+/**
+ * A followed competition.
+ *
+ * Deliberately the same shape as a team follow — same switches, same verified gate
+ * — so the app can treat «الدوري المصري» as a second kind of favourite rather than
+ * a new concept with its own rules.
+ */
+export interface LeagueFollow {
+  competitionId: string;
+  /** The broadcast name, kept for the push copy so a device need not look it up. */
+  nameAr: string;
+  notifyKickoff: boolean;
+  notifyFinal: boolean;
+}
+
 export interface FootballStore {
   days: Record<string, DayCache>;
   standings: Record<string, StandingsCache>;
   follows: Record<string, TeamFollow[]>;
+  /** Followed competitions, per user. Additive: team follows are untouched. */
+  leagueFollows: Record<string, LeagueFollow[]>;
 }
 
 let cache: FootballStore | null = null;
@@ -60,9 +77,14 @@ function load(): FootballStore {
   if (cache) return cache;
   try {
     const parsed = JSON.parse(fs.readFileSync(FOLLOWS_FILE, 'utf8')) as Partial<FootballStore>;
-    cache = { days: parsed.days ?? {}, standings: parsed.standings ?? {}, follows: parsed.follows ?? {} };
+    cache = {
+      days: parsed.days ?? {},
+      standings: parsed.standings ?? {},
+      follows: parsed.follows ?? {},
+      leagueFollows: parsed.leagueFollows ?? {},
+    };
   } catch {
-    cache = { days: {}, standings: {}, follows: {} };
+    cache = { days: {}, standings: {}, follows: {}, leagueFollows: {} };
   }
   return cache;
 }
@@ -77,7 +99,12 @@ function persist(): void {
   // reason they are not cached across a deploy — a stale score is a lie.
   fs.writeFileSync(
     FOLLOWS_FILE,
-    JSON.stringify({ days: {}, standings: store.standings, follows: store.follows }),
+    JSON.stringify({
+      days: {},
+      standings: store.standings,
+      follows: store.follows,
+      leagueFollows: store.leagueFollows,
+    }),
   );
 }
 
@@ -182,6 +209,60 @@ export function followersOf(team: string): Array<{ userId: string; follow: TeamF
   const out: Array<{ userId: string; follow: TeamFollow }> = [];
   for (const [userId, list] of Object.entries(store.follows)) {
     const follow = list.find((f) => f.name === team);
+    if (follow) out.push({ userId, follow });
+  }
+  return out;
+}
+
+// --- league follows ---
+
+export function getLeagueFollows(userId: string): LeagueFollow[] {
+  return load().leagueFollows[userId] ?? [];
+}
+
+/** Follow a league. Idempotent, like a team follow. */
+export function followLeague(userId: string, competitionId: string, nameAr: string): LeagueFollow[] {
+  const store = load();
+  const list = store.leagueFollows[userId] ?? [];
+  if (!list.some((f) => f.competitionId === competitionId)) {
+    list.push({ competitionId, nameAr, notifyKickoff: true, notifyFinal: true });
+  }
+  store.leagueFollows[userId] = list;
+  persist();
+  return list;
+}
+
+export function unfollowLeague(userId: string, competitionId: string): LeagueFollow[] {
+  const store = load();
+  store.leagueFollows[userId] = (store.leagueFollows[userId] ?? []).filter(
+    (f) => f.competitionId !== competitionId,
+  );
+  persist();
+  return store.leagueFollows[userId];
+}
+
+/** Change one league's switches. Returns null when it is not followed. */
+export function setLeagueNotify(
+  userId: string,
+  competitionId: string,
+  prefs: { notifyKickoff?: boolean; notifyFinal?: boolean },
+): LeagueFollow | null {
+  const store = load();
+  const list = store.leagueFollows[userId] ?? [];
+  const found = list.find((f) => f.competitionId === competitionId);
+  if (!found) return null;
+  if (typeof prefs.notifyKickoff === 'boolean') found.notifyKickoff = prefs.notifyKickoff;
+  if (typeof prefs.notifyFinal === 'boolean') found.notifyFinal = prefs.notifyFinal;
+  persist();
+  return found;
+}
+
+/** Every user following a competition, for the push fan-out. */
+export function leagueFollowersOf(competitionId: string): Array<{ userId: string; follow: LeagueFollow }> {
+  const store = load();
+  const out: Array<{ userId: string; follow: LeagueFollow }> = [];
+  for (const [userId, list] of Object.entries(store.leagueFollows ?? {})) {
+    const follow = list.find((f) => f.competitionId === competitionId);
     if (follow) out.push({ userId, follow });
   }
   return out;

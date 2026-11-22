@@ -665,6 +665,8 @@ export interface MatchesDay {
   unavailable: boolean;
   fetchedAt: number;
   followedTeams: string[];
+  /** Competition ids the caller follows; empty for a guest. */
+  followedLeagues: string[];
   matches: FootballMatch[];
 }
 
@@ -686,6 +688,14 @@ export interface StandingsTable {
   rows: StandingRow[];
   /** False when the source shows played/goals/points only — do not print W/D/L. */
   hasFullRecord: boolean;
+}
+
+/** A followed competition. Same switches as a team follow, minus goals. */
+export interface LeagueFollow {
+  competitionId: string;
+  nameAr: string;
+  notifyKickoff: boolean;
+  notifyFinal: boolean;
 }
 
 export interface TeamFollow {
@@ -824,8 +834,69 @@ export async function fetchLiveStatus(
   return ((await res.json()) as { data: { live: boolean; matches: [] } }).data;
 }
 
+/**
+ * The competitions we cover, in spec order, used when the server list cannot be
+ * read. Without a fallback a failed request left the tab strip empty, which reads
+ * to a reader as «the Egyptian league is not in this app».
+ */
+export const FALLBACK_COMPETITIONS: FootballCompetition[] = [
+  { id: 'egyptian-premier', nameAr: 'الدوري المصري', country: 'EG', isCup: false },
+  { id: 'egypt-cup', nameAr: 'كأس مصر', country: 'EG', isCup: true },
+  { id: 'caf-champions', nameAr: 'دوري أبطال إفريقيا', country: 'AF', isCup: false },
+  { id: 'caf-confederation', nameAr: 'كأس الكونفدرالية', country: 'AF', isCup: false },
+  { id: 'uefa-champions', nameAr: 'دوري أبطال أوروبا', country: 'EU', isCup: false },
+  { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', country: 'GB', isCup: false },
+  { id: 'esp-la-liga', nameAr: 'الدوري الإسباني', country: 'ES', isCup: false },
+  { id: 'ita-serie-a', nameAr: 'الدوري الإيطالي', country: 'IT', isCup: false },
+  { id: 'ger-bundesliga', nameAr: 'الدوري الألماني', country: 'DE', isCup: false },
+  { id: 'fra-ligue-1', nameAr: 'الدوري الفرنسي', country: 'FR', isCup: false },
+  { id: 'saudi-pro-league', nameAr: 'الدوري السعودي', country: 'SA', isCup: false },
+];
+
 export async function fetchCompetitions(): Promise<FootballCompetition[]> {
   const res = await fetch(`${API_BASE}/api/football/competitions`);
   if (!res.ok) throw await apiError(res);
   return ((await res.json()) as { data: FootballCompetition[] }).data;
+}
+
+// --- followed leagues ---
+
+export async function fetchLeagueFollows(token: string): Promise<LeagueFollow[]> {
+  const res = await fetch(`${API_BASE}/api/football/league-follows`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { leagues: LeagueFollow[] } }).data.leagues;
+}
+
+export async function followLeague(token: string, competitionId: string): Promise<LeagueFollow[]> {
+  const res = await fetch(`${API_BASE}/api/football/league-follows`, {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify({ competitionId }),
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { leagues: LeagueFollow[] } }).data.leagues;
+}
+
+export async function unfollowLeague(token: string, competitionId: string): Promise<LeagueFollow[]> {
+  const res = await fetch(`${API_BASE}/api/football/league-follows/${encodeURIComponent(competitionId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { leagues: LeagueFollow[] } }).data.leagues;
+}
+
+export async function setLeagueNotify(
+  token: string,
+  competitionId: string,
+  prefs: { notifyKickoff?: boolean; notifyFinal?: boolean },
+): Promise<LeagueFollow> {
+  const res = await fetch(
+    `${API_BASE}/api/football/league-follows/${encodeURIComponent(competitionId)}/notify`,
+    { method: 'PUT', headers: authHeaders(token), body: JSON.stringify(prefs) },
+  );
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { league: LeagueFollow } }).data.league;
 }

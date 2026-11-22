@@ -18,11 +18,19 @@ import type { Theme } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { AccountGateSheet, useAccountGate } from '../../components/AccountGate';
 import {
+  FALLBACK_COMPETITIONS,
+  fetchCompetitions,
+  fetchLeagueFollows,
   fetchTeamFollows,
   followFootballTeam,
-  unfollowFootballTeam,
+  followLeague,
   setFootballTeamNotify,
+  setLeagueNotify,
+  unfollowFootballTeam,
+  unfollowLeague,
   POPULAR_TEAMS,
+  type FootballCompetition,
+  type LeagueFollow,
   type TeamFollow,
 } from '../../lib/api';
 
@@ -38,6 +46,9 @@ export default function FollowTeamsScreen() {
   const gate = useAccountGate();
 
   const [follows, setFollows] = useState<TeamFollow[]>([]);
+  // Leagues are additive: the team list above is untouched by anything here.
+  const [leagues, setLeagues] = useState<LeagueFollow[]>([]);
+  const [competitions, setCompetitions] = useState<FootballCompetition[]>(FALLBACK_COMPETITIONS);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,9 +62,19 @@ export default function FollowTeamsScreen() {
       setFollows(await fetchTeamFollows(token));
     } catch {
       setError('تعذّر تحميل الفرق المتابعة.');
-    } finally {
-      setLoading(false);
     }
+    try {
+      setLeagues(await fetchLeagueFollows(token));
+    } catch {
+      /* a league list that fails must not hide the teams */
+    }
+    try {
+      const list = await fetchCompetitions();
+      setCompetitions(list.length ? list : FALLBACK_COMPETITIONS);
+    } catch {
+      setCompetitions(FALLBACK_COMPETITIONS);
+    }
+    setLoading(false);
   }, [token]);
 
   useEffect(() => {
@@ -77,6 +98,38 @@ export default function FollowTeamsScreen() {
       setError('تعذّر تحديث المتابعة.');
     } finally {
       setBusy(null);
+    }
+  };
+
+  const toggleLeague = async (competitionId: string) => {
+    if (!gate.allowed) {
+      gate.open();
+      return;
+    }
+    if (!token || busy) return;
+    setBusy(competitionId);
+    setError(null);
+    try {
+      const on = leagues.some((l) => l.competitionId === competitionId);
+      setLeagues(on ? await unfollowLeague(token, competitionId) : await followLeague(token, competitionId));
+    } catch {
+      setError('تعذّر تحديث متابعة البطولة.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const setLeagueSwitch = async (
+    competitionId: string,
+    key: 'notifyKickoff' | 'notifyFinal',
+    value: boolean,
+  ) => {
+    if (!token) return;
+    try {
+      const updated = await setLeagueNotify(token, competitionId, { [key]: value });
+      setLeagues((list) => list.map((l) => (l.competitionId === competitionId ? updated : l)));
+    } catch {
+      setError('تعذّر حفظ تنبيهات البطولة.');
     }
   };
 
@@ -147,6 +200,63 @@ export default function FollowTeamsScreen() {
 
             {error ? <Text style={[styles.error, { color: t.breaking }]}>{error}</Text> : null}
 
+            <Text style={[styles.section, { color: t.textMuted }]}>البطولات</Text>
+            <Text style={[styles.hint, { color: t.textMuted }]}>
+              متابعة بطولة تعني متابعة كل مبارياتها، وتظهر في فلتر الفرق المتابعة.
+            </Text>
+            <View style={styles.chips}>
+              {competitions
+                .filter((c) => !c.isCup)
+                .map((c) => {
+                  const on = leagues.some((l) => l.competitionId === c.id);
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      onPress={() => toggleLeague(c.id)}
+                      style={[styles.chip, { backgroundColor: on ? t.accent : t.pillInactiveBg }]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={c.nameAr}
+                    >
+                      <Text style={[styles.chipText, { color: on ? '#FFFFFF' : t.textSecondary }]}>
+                        {busy === c.id ? '…' : c.nameAr}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+            </View>
+
+            {leagues.map((l) => (
+              <View key={l.competitionId} style={[styles.card, { backgroundColor: t.surface }]}>
+                <View style={styles.cardHead}>
+                  <Text style={[styles.teamName, { color: t.textPrimary }]}>{l.nameAr}</Text>
+                  <TouchableOpacity
+                    onPress={() => toggleLeague(l.competitionId)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`إلغاء متابعة ${l.nameAr}`}
+                  >
+                    <Ionicons name="star" size={18} color={t.accent} />
+                  </TouchableOpacity>
+                </View>
+                {(
+                  [
+                    ['notifyKickoff', 'إشعار انطلاق المباريات'],
+                    ['notifyFinal', 'إشعار النتائج النهائية'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <View key={key} style={styles.switchRow}>
+                    <Text style={[styles.switchLabel, { color: t.textSecondary }]}>{label}</Text>
+                    <Switch
+                      value={l[key]}
+                      onValueChange={(v) => setLeagueSwitch(l.competitionId, key, v)}
+                      trackColor={{ true: t.accent, false: t.borderLight }}
+                      accessibilityLabel={label}
+                    />
+                  </View>
+                ))}
+              </View>
+            ))}
+
             <Text style={[styles.section, { color: t.textMuted }]}>فرقك المتابعة وتنبيهاتها</Text>
             {follows.length === 0 ? (
               <Text style={[styles.emptyBody, { color: t.textMuted }]}>
@@ -207,6 +317,7 @@ const styles = StyleSheet.create({
   switchLabel: { fontSize: 13 },
   error: { fontSize: 12, marginTop: 6 },
   gateBox: { alignItems: 'center', gap: 8, paddingVertical: 18 },
+  hint: { fontSize: 11, lineHeight: 18 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 28 },
   emptyTitle: { fontSize: 16, fontWeight: '700', textAlign: 'center' },
   emptyBody: { fontSize: 13, lineHeight: 21, textAlign: 'center' },

@@ -14,6 +14,7 @@ const mockMatches = jest.fn();
 const mockMatch = jest.fn();
 const mockStandings = jest.fn();
 const mockCompetitions = jest.fn();
+const mockLeagueFollows = jest.fn();
 const mockFollows = jest.fn();
 jest.mock('../lib/api', () => {
   const actual = jest.requireActual('../lib/api');
@@ -23,6 +24,7 @@ jest.mock('../lib/api', () => {
     fetchMatch: (...a: unknown[]) => mockMatch(...a),
     fetchStandings: (...a: unknown[]) => mockStandings(...a),
     fetchCompetitions: (...a: unknown[]) => mockCompetitions(...a),
+    fetchLeagueFollows: (...a: unknown[]) => mockLeagueFollows(...a),
     fetchTeamFollows: (...a: unknown[]) => mockFollows(...a),
   };
 });
@@ -50,6 +52,7 @@ const match = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockFollows.mockResolvedValue([]);
+  mockLeagueFollows.mockResolvedValue([]);
   mockCompetitions.mockResolvedValue([
     { id: 'egyptian-premier', nameAr: 'الدوري المصري', country: 'EG', isCup: false },
     { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', country: 'GB', isCup: false },
@@ -58,7 +61,7 @@ beforeEach(() => {
 
 describe('matches screen', () => {
   it('renders fixtures grouped by competition', async () => {
-    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [match()] });
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
     expect(screen.getByText('بيراميدز')).toBeTruthy();
@@ -67,20 +70,20 @@ describe('matches screen', () => {
   });
 
   it('says the data is unavailable rather than showing an empty board', async () => {
-    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: true, fetchedAt: 1, followedTeams: [], matches: [] });
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: true, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('البيانات غير متاحة حاليًا')).toBeTruthy());
   });
 
   it('shows the empty state with a tomorrow shortcut', async () => {
-    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [] });
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('لا توجد مباريات مجدولة اليوم في بطولاتك المفضلة')).toBeTruthy());
     expect(screen.getByText('استعراض مباريات الغد')).toBeTruthy();
   });
 
   it('filters to live matches', async () => {
-    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [
       match({ id: 'l1', status: 'live', statusText: 'مباشر', minute: 67, homeScore: 1, awayScore: 0 }),
       match({ id: 'u1', home: 'سموحة', away: 'زد' }),
     ] });
@@ -92,7 +95,7 @@ describe('matches screen', () => {
   });
 
   it('renders every user-visible string as Arabic', async () => {
-    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [match()] });
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('الدوري المصري')).toBeTruthy());
     // No Latin words leaking into the UI copy.
@@ -208,7 +211,7 @@ describe('upcoming fixtures screen', () => {
       date: '2026-11-23',
       unavailable: false,
       fetchedAt: 1,
-      followedTeams: [],
+      followedTeams: [], followedLeagues: [],
       matches: [
         match({ id: 'u1', channel: 'أون تايم سبورتس 1' }),
         match({ id: 'u2', home: 'سموحة', away: 'زد', channel: null }),
@@ -225,7 +228,7 @@ describe('upcoming fixtures screen', () => {
       date: '2026-11-23',
       unavailable: false,
       fetchedAt: 1,
-      followedTeams: [],
+      followedTeams: [], followedLeagues: [],
       matches: [
         match({ id: 'f1', home: 'الزمالك', away: 'الجونة', status: 'finished', statusText: 'انتهت' }),
         match({ id: 'u1', home: 'الأهلي', away: 'بيراميدز' }),
@@ -240,7 +243,7 @@ describe('upcoming fixtures screen', () => {
     // The first version pushed '/match/[id]', but the screen is
     // app/matches/[id].tsx. Tapping a card did nothing, and no test noticed
     // because every test rendered the screen directly.
-    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [match()] });
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
     fireEvent.press(screen.getByText('الأهلي'));
@@ -250,7 +253,7 @@ describe('upcoming fixtures screen', () => {
   });
 
   it('opens the upcoming list at a route that exists', async () => {
-    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [match()] });
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
     fireEvent.press(screen.getByLabelText('المباريات القادمة ومواعيد البث'));
@@ -278,7 +281,7 @@ describe('upcoming fixtures screen', () => {
   it('offers a way back from an empty filter instead of a dead end', async () => {
     // «الفرق المتابعة» with nothing followed used to show a bare message with no
     // way out.
-    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [match()] });
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
     fireEvent.press(screen.getByText('الفرق المتابعة'));
@@ -289,7 +292,7 @@ describe('upcoming fixtures screen', () => {
   it('keeps the empty message readable at a large font scale', async () => {
     // The clipped-message finding: the text is inside a growing scroller now, so
     // it can wrap instead of being cut by a fixed-height box.
-    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [] });
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText(/لا توجد مباريات مجدولة/)).toBeTruthy());
     const msg = screen.getByText(/لا توجد مباريات مجدولة/);
@@ -318,7 +321,7 @@ describe('upcoming fixtures screen', () => {
   });
 
   it('gives each empty filter its own honest sentence', async () => {
-    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [match()] });
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
     fireEvent.press(screen.getByText('انتهت'));
@@ -329,7 +332,7 @@ describe('upcoming fixtures screen', () => {
     // «الجولة الثانية · الكأس 9» read like a garbled round name; the second part
     // is a broadcaster.
     mockMatches.mockResolvedValue({
-      date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [],
+      date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [],
       matches: [match({ round: 'الجولة الثانية', channel: 'الكأس 9' })],
     });
     render(<MatchesScreen />);
@@ -353,5 +356,40 @@ describe('upcoming fixtures screen', () => {
     mockMatch.mockResolvedValue({ match: match(), detail: null, news: [], unavailable: false });
     render(<MatchCenterScreen />);
     await waitFor(() => expect(screen.getByText(/لا توجد تغطية صحفية لهذه المباراة/)).toBeTruthy());
+  });
+
+  it('shows the Egyptian league first, above the European groups', async () => {
+    // The user's «فين الدوري المصري؟»: groups came out in API order, so the
+    // Egyptian league sat under seven European headings on a busy day.
+    mockMatches.mockResolvedValue({
+      date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [],
+      matches: [
+        match({ id: 'e1', competitionId: 'esp-la-liga', competitionName: 'الدوري الإسباني', home: 'برشلونة', away: 'فياريال' }),
+        match({ id: 'e2', competitionId: 'eng-premier', competitionName: 'الدوري الإنجليزي', home: 'ليفربول', away: 'أرسنال' }),
+        match({ id: 'eg1', competitionId: 'egyptian-premier', competitionName: 'الدوري المصري' }),
+      ],
+    });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('الدوري المصري')).toBeTruthy());
+    const headings = screen.getAllByText(/^الدوري (المصري|الإسباني|الإنجليزي)$/);
+    expect(headings[0]!.props.children).toBe('الدوري المصري');
+  });
+
+  it('pins every match of a followed league under the favourites filter', async () => {
+    // Following «الدوري المصري» must show all its fixtures, not one club's.
+    mockMatches.mockResolvedValue({
+      date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: ['egyptian-premier'],
+      matches: [
+        match({ id: 'eg1', home: 'الأهلي', away: 'بيراميدز' }),
+        match({ id: 'eg2', home: 'سموحة', away: 'زد' }),
+        match({ id: 'e1', competitionId: 'eng-premier', competitionName: 'الدوري الإنجليزي', home: 'ليفربول', away: 'أرسنال' }),
+      ],
+    });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('الفرق المتابعة (2)')).toBeTruthy());
+    fireEvent.press(screen.getByText('الفرق المتابعة (2)'));
+    await waitFor(() => expect(screen.getByText('مباريات فرقي المفضلة')).toBeTruthy());
+    expect(screen.getByText('سموحة')).toBeTruthy();
+    expect(screen.queryByText('ليفربول')).toBeNull();
   });
 });
