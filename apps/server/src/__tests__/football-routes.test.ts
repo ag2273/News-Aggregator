@@ -233,16 +233,15 @@ describe('football API', () => {
     }
   });
 
-  it('serves competitions in priority order, Egypt first', () => {
+  it('serves competitions in priority order, Egypt first', async () => {
     // The user's #25: every grouping must lead with الدوري المصري.
-    return app.request('/api/football/competitions').then(async (res) => {
-      const { data } = (await res.json()) as { data: Array<{ id: string; priority: number }> };
-      expect(data[0]!.id).toBe('egyptian-premier');
-      const prios = data.map((c) => c.priority);
-      expect([...prios].sort((a, b) => a - b)).toEqual(prios);
-      // The field is served, so a per-user order (#26) can reuse it later.
-      for (const c of data) expect(typeof c.priority).toBe('number');
-    });
+    const res = await app.request('/api/football/competitions');
+    const { data } = (await res.json()) as { data: Array<{ id: string; priority: number }> };
+    expect(data[0]!.id).toBe('egyptian-premier');
+    const prios = data.map((c) => c.priority);
+    expect([...prios].sort((a, b) => a - b)).toEqual(prios);
+    // The field is served, so a per-user order (#26) can reuse it later.
+    for (const c of data) expect(typeof c.priority).toBe('number');
   });
 
   it('carries the competition priority on every match row', async () => {
