@@ -653,9 +653,11 @@ export interface FootballMatch {
   round: string | null;
   url?: string;
   minute: number | null;
-  dataSource: 'yallakora' | 'espn';
+  dataSource: 'yallakora' | 'filgoal' | 'espn';
   /** Broadcasting channel, when the source names one. */
   channel?: string | null;
+  /** Stadium, when the source names one. */
+  stadium?: string | null;
 }
 
 export interface MatchesDay {

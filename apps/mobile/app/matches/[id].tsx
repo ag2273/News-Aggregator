@@ -144,6 +144,30 @@ export default function MatchCenterScreen() {
               </View>
             </View>
 
+            {/* What the source knows about the fixture itself: stadium and the
+                channel showing it. Both are omitted when absent rather than
+                shown blank. */}
+            {match.stadium || match.channel ? (
+              <View style={[styles.detailRow, { backgroundColor: t.surface }]}>
+                {match.stadium ? (
+                  <View style={styles.detailItem}>
+                    <Ionicons name="location-outline" size={13} color={t.textMuted} />
+                    <Text style={[styles.detailText, { color: t.textSecondary }]} numberOfLines={1}>
+                      {match.stadium}
+                    </Text>
+                  </View>
+                ) : null}
+                {match.channel ? (
+                  <View style={styles.detailItem}>
+                    <Ionicons name="tv-outline" size={13} color={t.textMuted} />
+                    <Text style={[styles.detailText, { color: t.textSecondary }]} numberOfLines={1}>
+                      {match.channel}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
               {TABS.map((x) => (
                 <TouchableOpacity
@@ -250,6 +274,9 @@ const styles = StyleSheet.create({
   heroScore: { fontSize: 26, fontWeight: '800', fontVariant: ['tabular-nums'] },
   heroStatus: { fontSize: 11, fontWeight: '700' },
   heroRound: { fontSize: 10 },
+  detailRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 14 },
+  detailItem: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
+  detailText: { fontSize: 11 },
   tabs: { gap: 8, paddingVertical: 6 },
   tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
   tabText: { fontSize: 12, fontWeight: '600' },

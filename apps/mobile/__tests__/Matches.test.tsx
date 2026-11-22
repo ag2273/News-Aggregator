@@ -255,4 +255,22 @@ describe('upcoming fixtures screen', () => {
     fireEvent.press(screen.getByLabelText('المباريات القادمة ومواعيد البث'));
     expect(router.push).toHaveBeenCalledWith('/matches/upcoming');
   });
+
+  it('shows the stadium and channel when the source gives them', async () => {
+    mockMatch.mockResolvedValue({
+      match: match({ stadium: 'استاد خــالد بشارة (مصر)', channel: 'أون سبورت ماكس' }),
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText(/بشارة/)).toBeTruthy());
+    expect(screen.getByText('أون سبورت ماكس')).toBeTruthy();
+  });
+
+  it('shows no empty detail row when neither is known', async () => {
+    mockMatch.mockResolvedValue({ match: match(), news: [], unavailable: false });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+    expect(screen.queryByText(/استاد/)).toBeNull();
+  });
 });
