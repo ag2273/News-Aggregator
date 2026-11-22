@@ -226,10 +226,16 @@ if (loadResendKey()) {
 if (process.env['NODE_ENV'] !== 'test') {
   refreshAll().catch(console.error);
   setInterval(() => refreshAll().catch(console.error), 10 * 60 * 1000);
-  // Football scores: polled separately from the news feeds, because a score has
-  // its own cadence and its own (much smaller) budget on the source.
+  // Football scores: polled separately from the news feeds, because a score has its
+  // own cadence and its own (much smaller) budget on the source.
+  //
+  // The cadence is sized against the measured numbers, not guessed: the two sources
+  // agreed on a goal within 21s-491s (median 55s). A 5-minute poll plus a 5-minute
+  // cache could put a goal on screen up to ten minutes late, which would make that
+  // measurement meaningless. One minute, with a cache TTL that follows it, keeps the
+  // worst case close to the source's own delay.
   pollFootball().catch((err) => console.error('[football] first poll failed:', err));
-  setInterval(() => pollFootball().catch((err) => console.error('[football] poll failed:', err)), 5 * 60 * 1000);
+  setInterval(() => pollFootball().catch((err) => console.error('[football] poll failed:', err)), 60 * 1000);
 }
 // Twice-daily digest at 09:00 and 18:00 Cairo. Idempotent per slot, so a restart
 // never double-builds, and a failure keeps the previous digest.

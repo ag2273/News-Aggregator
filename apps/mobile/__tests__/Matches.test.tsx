@@ -413,4 +413,29 @@ describe('upcoming fixtures screen', () => {
       'الدوري الألماني',
     ]);
   });
+
+  it('shows an Egyptian live score with its half, and never a minute', async () => {
+    // Live scores for Egyptian matches are on. The agreed ceiling is score + half:
+    // neither source publishes a trustworthy minute, so no "67'" may appear.
+    mockMatches.mockResolvedValue({
+      date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [],
+      matches: [
+        match({
+          id: 'eg-live',
+          home: 'الجونة',
+          away: 'الزمالك',
+          status: 'live',
+          statusText: 'الشوط الثاني',
+          homeScore: 2,
+          awayScore: 1,
+          minute: null,
+        }),
+      ],
+    });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('2 - 1')).toBeTruthy());
+    expect(screen.getByText('الشوط الثاني')).toBeTruthy();
+    // No minute anywhere on the card.
+    expect(screen.queryByText(/^\d+'$/)).toBeNull();
+  });
 });

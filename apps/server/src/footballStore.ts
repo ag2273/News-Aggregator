@@ -16,8 +16,14 @@ const rawDataDir = process.env['DATA_DIR'] || process.env['RAILWAY_VOLUME_MOUNT_
 const DATA_DIR = rawDataDir ? path.resolve(rawDataDir) : path.resolve(__dirname, '../../data');
 const FOLLOWS_FILE = path.join(DATA_DIR, 'team-follows.json');
 
-/** Fixtures go stale quickly; the sources are scraped, so keep it polite. */
-export const MATCHES_TTL_MS = 5 * 60 * 1000;
+/**
+ * Fixtures go stale quickly; the sources are scraped, so keep it polite.
+ *
+ * One minute, matching the poll interval: the measured source-to-source delay for
+ * a goal is 21-491s (median 55s), and a cache longer than the poll would add its
+ * own lag on top of the source's.
+ */
+export const MATCHES_TTL_MS = 60 * 1000;
 /** Standings change at most once per round. */
 export const STANDINGS_TTL_MS = 30 * 60 * 1000;
 /** A failed fetch is retried after this, not cached for the full window. */
