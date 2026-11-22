@@ -137,4 +137,11 @@ describe('institutional names are not clubs', () => {
     });
     expect(hits).toEqual([]);
   });
+
+  it('does not match a place that shares a word with the club name', () => {
+    // «وادي دجلة» against «وادي السيليكون» and «وادي السير»: a place is not a club.
+    expect(mentionsTeam('أشتون كوتشر.. من هوليوود إلى استثمارات وادي السيليكون', 'وادي دجلة')).toBe(false);
+    expect(mentionsTeam('تعادل وادي السير والكتة بدوري اليد', 'وادي دجلة')).toBe(false);
+    expect(mentionsTeam('وادي دجلة يضم مهاجما جديدا', 'وادي دجلة')).toBe(true);
+  });
 });

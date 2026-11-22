@@ -48,6 +48,13 @@ export function normalizeArabic(input: string): string {
  * المشروعات», «الاتحاد العام للنقابات», «اتحاد الكرة» all carried «الاتحاد».
  * These cannot identify a club on their own.
  */
+/**
+ * Words that are part of a place or a company rather than a club: «وادي» matches
+ * «وادي السيليكون» (Silicon Valley) and «وادي السير» (a Jordanian town). A club
+ * whose only other word is such a word needs its full name.
+ */
+const PLACE_WORDS = new Set(['وادي', 'وادى', 'مدينه', 'مدينة', 'شباب', 'اتحاد', 'نادي']);
+
 const INSTITUTIONAL_WORDS = new Set([
   'الاتحاد',
   'اتحاد',
@@ -159,8 +166,9 @@ export function mentionsTeam(text: string, team: string, words: string[] = teamW
 
   // Distinctive words first: a club with any non-generic word is matched only by
   // those, never by the generic part. This is the fix for the European Union.
-  const distinctive = words.filter((w) => !isInstitutional(w));
-  const searchWords = distinctive.length ? distinctive : words;
+  const distinctive = words.filter((w) => !isInstitutional(w) && !PLACE_WORDS.has(w));
+  const searchWords = distinctive.length ? distinctive : words.filter((w) => !PLACE_WORDS.has(w));
+  if (!searchWords.length) return false;
 
   for (const word of searchWords) {
     for (let i = 0; i < tokens.length; i += 1) {
