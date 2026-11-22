@@ -654,6 +654,8 @@ export interface FootballMatch {
   url?: string;
   minute: number | null;
   dataSource: 'yallakora' | 'espn';
+  /** Broadcasting channel, when the source names one. */
+  channel?: string | null;
 }
 
 export interface MatchesDay {
@@ -790,6 +792,22 @@ export interface FootballCompetition {
 }
 
 /** Every competition we cover, as the server defines them (no stale copy here). */
+/**
+ * Whether a match the reader cares about is running right now.
+ *
+ * Cheap and honest: `live` is false unless a followed team or the Egyptian league
+ * is actually playing, so the header dot is a signal rather than decoration.
+ */
+export async function fetchLiveStatus(
+  token?: string | null,
+): Promise<{ live: boolean; matches: Array<{ home: string; away: string; homeScore: number | null; awayScore: number | null }> }> {
+  const res = await fetch(`${API_BASE}/api/football/live-status`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { live: boolean; matches: [] } }).data;
+}
+
 export async function fetchCompetitions(): Promise<FootballCompetition[]> {
   const res = await fetch(`${API_BASE}/api/football/competitions`);
   if (!res.ok) throw await apiError(res);

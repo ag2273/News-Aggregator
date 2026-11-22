@@ -130,7 +130,7 @@ import {
   relatedNews,
   todayCairo,
 } from './footballService.js';
-import { COMPETITIONS } from './football.js';
+import { COMPETITIONS, hasLiveForReader } from './football.js';
 import {
   followTeam,
   getTeamFollows,
@@ -1386,6 +1386,38 @@ app.get('/api/football/matches', async (c) => {
       fetchedAt: day.fetchedAt,
       followedTeams: follows,
       matches: day.matches,
+    },
+  });
+});
+
+/**
+ * The header's live dot.
+ *
+ * Deliberately small and cheap: it answers one question — is a match the reader
+ * cares about running right now — and the app calls it on resume rather than
+ * polling. `live` is false unless a followed team or the Egyptian league is
+ * actually playing, because a dot that is always on means nothing.
+ */
+app.get('/api/football/live-status', async (c) => {
+  const day = await loadDay(todayCairo());
+  const userId = extractUserId(c.req.header('Authorization'));
+  const followed = userId ? getTeamFollows(userId).map((f) => f.name) : [];
+  const live = hasLiveForReader(day.matches, followed);
+  return c.json({
+    data: {
+      live,
+      // What the dot stands for, so the tooltip/label can name it.
+      matches: live
+        ? day.matches
+            .filter(
+              (m) =>
+                m.status === 'live' &&
+                (m.competitionId === 'egyptian-premier' ||
+                  followed.includes(m.home) ||
+                  followed.includes(m.away)),
+            )
+            .map((m) => ({ home: m.home, away: m.away, homeScore: m.homeScore, awayScore: m.awayScore }))
+        : [],
     },
   });
 });

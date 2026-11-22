@@ -76,6 +76,15 @@ export interface MatchRow {
   minute: number | null;
   /** Which provider this row came from, so the UI can be honest if it matters. */
   dataSource: 'yallakora' | 'espn';
+  /**
+   * Broadcasting channel as the source names it («الكأس 7», «بي إن سبورتس 1»).
+   *
+   * Yallakora has this on the day page. The spec also asks for the commentator;
+   * measured, Yallakora does not publish it anywhere we can read (no «معلق» on
+   * the day page or the match page), so that field stays absent rather than
+   * invented.
+   */
+  channel?: string | null;
 }
 
 export interface StandingRow {
@@ -202,6 +211,8 @@ export function parseYallakoraDay(html: string, date: string): MatchRow[] {
     const round = (block.match(/class="date">\s*([^<]+?)\s*</) ?? [])[1]?.trim() ?? null;
     const time = (block.match(/class="time">\s*([^<]+?)\s*</) ?? [])[1]?.trim() ?? null;
     const link = (block.match(/href="([^"]*\/match\/[^"]+?)"/) ?? [])[1];
+    const channel =
+      (block.match(/class="channel[^"]*">\s*([^<]{1,40}?)\s*</) ?? [])[1]?.trim() ?? null;
     const comp = competitionForLeague(league);
     const numeric = (v: string | undefined): number | null =>
       /^\d+$/.test((v ?? '').trim()) ? Number(v!.trim()) : null;
@@ -222,6 +233,7 @@ export function parseYallakoraDay(html: string, date: string): MatchRow[] {
       url: link ? `${YALLAKORA_BASE}${link.split('#')[0]}` : undefined,
       minute: minuteOf(statusWord),
       dataSource: 'yallakora',
+      channel: channel || null,
     });
   }
   return rows;
@@ -413,6 +425,7 @@ export function parseEspnScoreboard(json: unknown, competition: Competition): Ma
       round: null,
       minute: state === 'in' && typeof clock === 'string' ? Number(clock.replace(/[^\d]/g, '')) || null : null,
       dataSource: 'espn',
+      channel: null,
     });
   }
   return out;
@@ -511,4 +524,26 @@ export function normalizeTeam(name: string): string {
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Is there a live match the reader would want the header dot for?
+ *
+ * The spec is specific: the pulsing dot means a match is running for one of the
+ * reader's followed teams, or in the Egyptian league. A permanent dot would be
+ * decoration, and decoration that always says "live" says nothing.
+ */
+export function hasLiveForReader(
+  matches: MatchRow[],
+  followed: string[] = [],
+): boolean {
+  const live = matches.filter((m) => m.status === 'live');
+  if (!live.length) return false;
+  const followedSet = new Set(followed.map((f) => normalizeTeam(f)));
+  return live.some(
+    (m) =>
+      m.competitionId === 'egyptian-premier' ||
+      followedSet.has(normalizeTeam(m.home)) ||
+      followedSet.has(normalizeTeam(m.away)),
+  );
 }

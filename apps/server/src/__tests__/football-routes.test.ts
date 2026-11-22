@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -155,5 +155,51 @@ describe('football API', () => {
     expect(rows[0]!.kickoff).toBe('16:00');
     expect(cairoClock('2026-11-22T22:30Z')).toBe('00:30');
     expect(cairoClock('not-a-date')).toBeNull();
+  });
+
+  it('lights the header dot only for a live Egyptian match, without network', async () => {
+    // Stub the source rather than hit it: a test that depends on tonight's
+    // fixtures is a test that fails for no reason.
+    const html = `
+      <h2>الدوري المصري</h2>
+      <div class="allData">
+        <div class="channel">أون تايم سبورتس 1</div>
+        <div class="topData"><div class="date">الأسبوع التاسع</div><div class="matchStatus"><span>مباشر</span></div></div>
+        <div class="teams teamA"><p>الأهلي</p></div>
+        <div class="MResult"><span class="score">1</span><span>-</span><span class="score">0</span><span class="time">20:00</span></div>
+        <div class="teams teamB"><p>بيراميدز</p></div>
+      </div>`;
+    vi.stubGlobal('fetch', async () => new Response(html, { status: 200 }));
+    try {
+      const res = await app.request('/api/football/live-status');
+      expect(res.status).toBe(200);
+      const { data } = (await res.json()) as {
+        data: { live: boolean; matches: Array<{ home: string; away: string }> };
+      };
+      expect(data.live).toBe(true);
+      expect(data.matches).toHaveLength(1);
+      expect(data.matches[0]!.home).toBe('الأهلي');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps the header dot off when the live match is an unrelated league', async () => {
+    const html = `
+      <h2>الدوري الإنجليزي</h2>
+      <div class="allData">
+        <div class="topData"><div class="matchStatus"><span>مباشر</span></div></div>
+        <div class="teams teamA"><p>ليفربول</p></div>
+        <div class="MResult"><span class="score">1</span><span>-</span><span class="score">0</span><span class="time">20:00</span></div>
+        <div class="teams teamB"><p>أرسنال</p></div>
+      </div>`;
+    vi.stubGlobal('fetch', async () => new Response(html, { status: 200 }));
+    try {
+      const res = await app.request('/api/football/live-status');
+      const { data } = (await res.json()) as { data: { live: boolean } };
+      expect(data.live).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

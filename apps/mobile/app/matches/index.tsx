@@ -21,25 +21,7 @@ import {
   type FootballMatch,
   type MatchesDay,
 } from '../../lib/api';
-
-/** Cairo-local YYYY-MM-DD, offset by whole days. */
-function cairoDay(offset = 0): string {
-  return new Date(Date.now() + 2 * 60 * 60 * 1000 + offset * 86_400_000).toISOString().slice(0, 10);
-}
-
-/** `اليوم ١٨ نوفمبر` / `أمس` / `غداً` for the date ribbon. */
-function ribbonLabel(offset: number, date: string): string {
-  if (offset === 0) return `اليوم ${date.slice(8, 10)} ${monthAr(date)}`;
-  if (offset === -1) return 'أمس';
-  if (offset === 1) return 'غداً';
-  const d = new Date(`${date}T12:00:00Z`);
-  const names = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-  return names[d.getUTCDay()] ?? date;
-}
-function monthAr(date: string): string {
-  const months = ['يناير', 'فبراير', 'مارس', 'إبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-  return months[Number(date.slice(5, 7)) - 1] ?? '';
-}
+import { cairoDay, ribbonLabel } from '../../lib/dates';
 
 type Filter = 'all' | 'live' | 'followed' | 'finished' | 'upcoming';
 
@@ -159,7 +141,11 @@ export default function MatchesScreen() {
             <Text style={[styles.liveText, { color: t.accent }]}>مباشر</Text>
           </View>
         ) : null}
-        {m.round ? <Text style={[styles.round, { color: t.textMuted }]}>{m.round}</Text> : null}
+        {m.round || m.channel ? (
+          <Text style={[styles.round, { color: t.textMuted }]}>
+            {[m.round, m.channel].filter(Boolean).join(' · ')}
+          </Text>
+        ) : null}
         {followed.has(m.home) || followed.has(m.away) ? (
           <Ionicons name="star" size={12} color={t.accent} style={styles.star} />
         ) : null}
@@ -175,9 +161,14 @@ export default function MatchesScreen() {
             <Ionicons name="chevron-forward" size={22} color={t.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: t.textPrimary }]}>مباريات اليوم</Text>
-          <TouchableOpacity onPress={() => router.push('/matches/follow-teams')} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="الفرق المتابعة">
-            <Ionicons name="star-outline" size={20} color={t.textPrimary} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={() => router.push('/matches/upcoming')} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="المباريات القادمة ومواعيد البث">
+              <Ionicons name="calendar-outline" size={19} color={t.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/matches/follow-teams')} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="الفرق المتابعة">
+              <Ionicons name="star-outline" size={20} color={t.textPrimary} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Date ribbon: seven days, today highlighted. */}
@@ -295,6 +286,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 4 },
   headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
   title: { fontSize: 19, fontWeight: '700' },
   ribbon: { paddingHorizontal: 12, gap: 8, paddingVertical: 10 },
   ribbonItem: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },

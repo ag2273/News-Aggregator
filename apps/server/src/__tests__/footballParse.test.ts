@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   arabicTeam,
   cairoClock,
+  hasLiveForReader,
   isFootballLeague,
   minuteOf,
   parseEspnScoreboard,
@@ -185,5 +186,45 @@ describe('ESPN fallback', () => {
 
   it('shifts a late kickoff across midnight', () => {
     expect(cairoClock('2026-11-22T22:30Z')).toBe('00:30');
+  });
+});
+
+describe('header live dot', () => {
+  const base = {
+    id: 'x', competitionId: 'eng-premier', competitionName: 'الدوري الإنجليزي',
+    home: 'ليفربول', away: 'أرسنال', homeScore: 1, awayScore: 0,
+    status: 'live' as const, statusText: 'مباشر', kickoff: '20:00',
+    round: null, minute: 30, dataSource: 'yallakora' as const, channel: null,
+  };
+
+  it('stays off when nothing is live', () => {
+    expect(hasLiveForReader([{ ...base, status: 'upcoming' }])).toBe(false);
+    expect(hasLiveForReader([])).toBe(false);
+  });
+
+  it('stays off for an unrelated live European match', () => {
+    // A permanent dot would be decoration; the spec ties it to the reader's teams
+    // and the Egyptian league.
+    expect(hasLiveForReader([base], [])).toBe(false);
+  });
+
+  it('lights up for a followed team', () => {
+    expect(hasLiveForReader([base], ['ليفربول'])).toBe(true);
+    expect(hasLiveForReader([base], ['أرسنال'])).toBe(true);
+  });
+
+  it('lights up for the Egyptian league even with no follows', () => {
+    expect(
+      hasLiveForReader([{ ...base, competitionId: 'egyptian-premier', competitionName: 'الدوري المصري' }], []),
+    ).toBe(true);
+  });
+
+  it('does not light up for another Egyptian fixture that is not live', () => {
+    expect(
+      hasLiveForReader(
+        [{ ...base, competitionId: 'egyptian-premier', status: 'finished', statusText: 'انتهت' }],
+        [],
+      ),
+    ).toBe(false);
   });
 });

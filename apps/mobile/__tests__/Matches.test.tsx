@@ -35,6 +35,7 @@ import MatchesScreen from '../app/matches/index';
 import MatchCenterScreen from '../app/matches/[id]';
 import StandingsScreen from '../app/matches/standings';
 import FollowTeamsScreen from '../app/matches/follow-teams';
+import UpcomingScreen from '../app/matches/upcoming';
 
 const match = (over: Record<string, unknown> = {}) => ({
   id: 'yk-1', competitionId: 'egyptian-premier', competitionName: 'الدوري المصري',
@@ -180,5 +181,50 @@ describe('follow teams screen', () => {
     });
     render(<MatchCenterScreen />);
     await waitFor(() => expect(screen.getByText(/الفريقان/)).toBeTruthy());
+  });
+
+  it('shows the channel and says so when there is none', async () => {
+    mockMatch.mockResolvedValue({
+      match: match({ channel: 'أون تايم سبورتس 1' }),
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+  });
+});
+
+describe('upcoming fixtures screen', () => {
+  it('lists coming matches with their channel', async () => {
+    mockMatches.mockResolvedValue({
+      date: '2026-11-23',
+      unavailable: false,
+      fetchedAt: 1,
+      followedTeams: [],
+      matches: [
+        match({ id: 'u1', channel: 'أون تايم سبورتس 1' }),
+        match({ id: 'u2', home: 'سموحة', away: 'زد', channel: null }),
+      ],
+    });
+    render(<UpcomingScreen />);
+    await waitFor(() => expect(screen.getByText('أون تايم سبورتس 1')).toBeTruthy());
+    expect(screen.getByText('القناة الناقلة غير معلنة بعد')).toBeTruthy();
+    expect(screen.getByText(/أسماء المعلقين غير متاحة/)).toBeTruthy();
+  });
+
+  it('leaves finished matches off a "coming up" list', async () => {
+    mockMatches.mockResolvedValue({
+      date: '2026-11-23',
+      unavailable: false,
+      fetchedAt: 1,
+      followedTeams: [],
+      matches: [
+        match({ id: 'f1', home: 'الزمالك', away: 'الجونة', status: 'finished', statusText: 'انتهت' }),
+        match({ id: 'u1', home: 'الأهلي', away: 'بيراميدز' }),
+      ],
+    });
+    render(<UpcomingScreen />);
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+    expect(screen.queryByText('الزمالك')).toBeNull();
   });
 });

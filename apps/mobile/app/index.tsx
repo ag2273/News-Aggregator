@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -11,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { fetchFeed, fetchGroupedFeed, isNetworkFailure } from '../lib/api';
+import { fetchFeed, fetchGroupedFeed, fetchLiveStatus, isNetworkFailure } from '../lib/api';
 import { beginPageFetch, publishPage, publishGroupedPage } from '../lib/reactionPublish';
 import { ClusterSheetHost } from '../components/ClusterCard';
 import { useAuth } from '../lib/auth';
@@ -71,6 +72,10 @@ export default function FeedScreen() {
 
   const offsetRef = useRef(0);
   const hasMoreRef = useRef(true);
+  // The header football dot: on only while a match the reader cares about is
+  // actually running. It pulses instead of blinking flat, per the motion budget.
+  const [footballLive, setFootballLive] = useState(false);
+  const dotOpacity = useRef(new Animated.Value(1)).current;
 
   const load = useCallback(async (replace: boolean) => {
     try {
@@ -119,6 +124,45 @@ export default function FeedScreen() {
     // `token` matters: the feed is public, but the reaction capsule needs the
     // caller's own reaction. Re-run when the session appears or changes.
   }, [token]);
+
+  // Ask whether anything the reader cares about is live. Recheck on mount and on
+  // a slow interval while the screen is open; the query is cheap and cached on
+  // the server, and a dot that lags by a minute is still useful.
+  useEffect(() => {
+    let cancelled = false;
+    const check = () => {
+      fetchLiveStatus(token)
+        .then((s) => {
+          if (!cancelled) setFootballLive(s.live);
+        })
+        .catch(() => {
+          /* a silent dot beats an error banner on the home screen */
+        });
+    };
+    check();
+    const timer = setInterval(check, 120_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [token]);
+
+  // Pulse only while live, and stop the animation when it is not, so an idle
+  // home screen is not running a loop.
+  useEffect(() => {
+    if (!footballLive) {
+      dotOpacity.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(dotOpacity, { toValue: 0.4, duration: 1000, useNativeDriver: true }),
+        Animated.timing(dotOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [footballLive, dotOpacity]);
 
   useEffect(() => {
     load(true).finally(() => setLoading(false));
@@ -207,10 +251,14 @@ export default function FeedScreen() {
               style={[styles.circleBtn, { backgroundColor: t.surface }]}
               onPress={() => router.push('/matches')}
               accessibilityRole="button"
-              accessibilityLabel="نتائج المباريات"
+              accessibilityLabel={footballLive ? 'نتائج المباريات — مباراة جارية الآن' : 'نتائج المباريات'}
             >
               <Ionicons name="football-outline" size={19} color={t.accent} />
-              <View style={[styles.liveDot, { backgroundColor: t.accent }]} />
+              {footballLive ? (
+                <Animated.View
+                  style={[styles.liveDot, { backgroundColor: t.accent, opacity: dotOpacity }]}
+                />
+              ) : null}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.circleBtn, { backgroundColor: t.surface }]}
