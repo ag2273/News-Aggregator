@@ -119,11 +119,26 @@ const UA =
 export const YALLAKORA_BASE = 'https://www.yallakora.com';
 export const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 
-/** A page fetch with a deadline. One slow source must not stall a refresh. */
+/**
+ * A page fetch with a deadline. One slow source must not stall a refresh.
+ *
+ * `no-store` is not decoration. Measured over 20 minutes of polling: FilGoal's
+ * live scores moved backwards six times — 2-0 then 1-0, a goal appearing and
+ * un-appearing — because Cloudflare was serving a stale edge copy of a live page
+ * (`cf-cache-status: DYNAMIC`, and the page ships no cache headers of its own).
+ * With `no-store`, ten consecutive reads of the same page returned the same
+ * score every time. A score that can go backwards is worse than a score that is
+ * a few seconds old.
+ */
 export async function getPage(url: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
   try {
     const res = await fetchImpl(url, {
-      headers: { 'User-Agent': UA, Accept: 'text/html,application/json' },
+      headers: {
+        'User-Agent': UA,
+        Accept: 'text/html,application/json',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        Pragma: 'no-cache',
+      },
       signal: AbortSignal.timeout(20_000),
     });
     if (!res.ok) return null;

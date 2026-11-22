@@ -252,3 +252,21 @@ describe('broadcast channels', () => {
     expect(arabicChannel('SSC 1')).toBe('SSC 1');
   });
 });
+
+describe('fetching a live page', () => {
+  it('asks the CDN for a fresh copy, not a cached one', async () => {
+    // Measured: without no-store, FilGoal's live scores went backwards six times
+    // in twenty minutes (a goal appearing then un-appearing) because the edge was
+    // serving a stale copy. A score that can regress is worse than a late one.
+    const { getPage } = await import('../football.js');
+    let seen: Record<string, string> | null = null;
+    const fake = (async (_url: string, init: RequestInit) => {
+      seen = init.headers as Record<string, string>;
+      return new Response('<html>ok</html>', { status: 200 });
+    }) as unknown as typeof fetch;
+    await getPage('https://example.test/page', fake);
+    expect(seen).not.toBeNull();
+    expect(String(seen!['Cache-Control'])).toContain('no-store');
+    expect(String(seen!['Pragma'])).toBe('no-cache');
+  });
+});
