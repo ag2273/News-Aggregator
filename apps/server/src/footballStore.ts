@@ -20,6 +20,8 @@ const FOLLOWS_FILE = path.join(DATA_DIR, 'team-follows.json');
 export const MATCHES_TTL_MS = 5 * 60 * 1000;
 /** Standings change at most once per round. */
 export const STANDINGS_TTL_MS = 30 * 60 * 1000;
+/** A failed fetch is retried after this, not cached for the full window. */
+export const FAILURE_TTL_MS = 2 * 60 * 1000;
 
 export interface DayCache {
   date: string;
@@ -70,9 +72,12 @@ function persist(): void {
   const store = load();
   // Only follows are worth keeping across a restart: a cached fixture day is
   // cheap to refetch, and keeping it would serve stale scores after a deploy.
+  // Standings are kept: a restart must not blank the table screen, and a table
+  // that is 20 minutes old is still true. Match days are not kept, for the same
+  // reason they are not cached across a deploy — a stale score is a lie.
   fs.writeFileSync(
     FOLLOWS_FILE,
-    JSON.stringify({ days: {}, standings: {}, follows: store.follows }),
+    JSON.stringify({ days: {}, standings: store.standings, follows: store.follows }),
   );
 }
 
@@ -85,9 +90,7 @@ export function _resetFootballCache(): void {
 export function getCachedDay(date: string, now: number = Date.now()): DayCache | null {
   const day = load().days[date];
   if (!day) return null;
-  // A failure is cached briefly too, so one outage does not hammer the source.
-  const ttl = day.unavailable ? MATCHES_TTL_MS : MATCHES_TTL_MS;
-  if (now - day.fetchedAt > ttl) return null;
+  if (now - day.fetchedAt > MATCHES_TTL_MS) return null;
   return day;
 }
 
@@ -106,7 +109,11 @@ export function storeDay(date: string, matches: MatchRow[], unavailable = false)
 export function getCachedStandings(competitionId: string, now: number = Date.now()): StandingsCache | null {
   const entry = load().standings[competitionId];
   if (!entry) return null;
-  if (now - entry.fetchedAt > STANDINGS_TTL_MS) return null;
+  // A failure is retried sooner than a good table, but not on every request: a
+  // blocked source should not be hammered, and a reader refreshing should not
+  // wait 30 minutes for a table that came back after one bad minute.
+  const ttl = entry.unavailable ? FAILURE_TTL_MS : STANDINGS_TTL_MS;
+  if (now - entry.fetchedAt > ttl) return null;
   return entry;
 }
 

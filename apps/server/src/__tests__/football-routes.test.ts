@@ -88,7 +88,7 @@ describe('football API', () => {
 
   it('never shows a false 0-0 for an ESPN match that has not started', () => {
 
-    const competition = { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', provider: 'espn' as const, espnSlug: 'eng.1', country: 'GB' };
+    const competition = { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', yallakoraName: 'الدوري الإنجليزي', yallakoraTourId: '93', espnSlug: 'eng.1', country: 'GB' };
     const rows = parseEspnScoreboard(
       {
         events: [
@@ -131,7 +131,7 @@ describe('football API', () => {
   it('shows an ESPN kickoff in Cairo time, not raw UTC', () => {
     // ESPN sends `2026-11-22T14:00Z`; Cairo is UTC+2, so the app must show 16:00.
     // Asserted through the parser, because that is the value the app renders.
-    const competition = { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', provider: 'espn' as const, espnSlug: 'eng.1', country: 'GB' };
+    const competition = { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', yallakoraName: 'الدوري الإنجليزي', yallakoraTourId: '93', espnSlug: 'eng.1', country: 'GB' };
     const rows = parseEspnScoreboard(
       {
         events: [

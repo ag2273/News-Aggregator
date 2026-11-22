@@ -13,6 +13,7 @@ const base: MatchRow = {
   id: 'm1', competitionId: 'egyptian-premier', competitionName: 'الدوري المصري',
   home: 'الأهلي', away: 'بيراميدز', homeScore: null, awayScore: null,
   status: 'upcoming', statusText: 'لم تبدأ', kickoff: '20:00', round: null, minute: null,
+  dataSource: 'yallakora',
 };
 const m = (over: Partial<MatchRow>): MatchRow => ({ ...base, ...over });
 

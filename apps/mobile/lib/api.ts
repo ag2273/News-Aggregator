@@ -653,6 +653,7 @@ export interface FootballMatch {
   round: string | null;
   url?: string;
   minute: number | null;
+  dataSource: 'yallakora' | 'espn';
 }
 
 export interface MatchesDay {
@@ -679,6 +680,8 @@ export interface StandingsTable {
   competitionId: string;
   group: string | null;
   rows: StandingRow[];
+  /** False when the source shows played/goals/points only — do not print W/D/L. */
+  hasFullRecord: boolean;
 }
 
 export interface TeamFollow {
@@ -764,11 +767,16 @@ export const POPULAR_TEAMS = [
   'برشلونة', 'مانشستر سيتي', 'أرسنال', 'الهلال', 'النصر', 'منتخب مصر',
 ] as const;
 
-/** Competitions shown as tabs in the standings screen. */
-export const STANDING_TABS = [
-  { id: 'egyptian-premier', label: 'الدوري المصري' },
-  { id: 'caf-champions', label: 'دوري أبطال إفريقيا' },
-  { id: 'eng-premier', label: 'الدوري الإنجليزي' },
-  { id: 'esp-la-liga', label: 'الدوري الإسباني' },
-  { id: 'saudi-pro-league', label: 'دوري روشن السعودي' },
-] as const;
+export interface FootballCompetition {
+  id: string;
+  nameAr: string;
+  country: string;
+  isCup: boolean;
+}
+
+/** Every competition we cover, as the server defines them (no stale copy here). */
+export async function fetchCompetitions(): Promise<FootballCompetition[]> {
+  const res = await fetch(`${API_BASE}/api/football/competitions`);
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: FootballCompetition[] }).data;
+}

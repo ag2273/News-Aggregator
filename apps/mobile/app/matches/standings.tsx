@@ -16,10 +16,11 @@ import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import {
+  fetchCompetitions,
   fetchStandings,
   fetchTeamFollows,
   isNetworkFailure,
-  STANDING_TABS,
+  type FootballCompetition,
   type StandingRow,
 } from '../../lib/api';
 
@@ -34,13 +35,23 @@ function zoneColor(position: number, total: number): string | null {
 export default function StandingsScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
   const { token } = useAuth();
-  const [competition, setCompetition] = useState<string>(STANDING_TABS[0].id);
+  // Tabs come from the server, so the names and the competition list live in one
+  // place. A cup is listed but says it has no table, instead of being hidden.
+  const [competitions, setCompetitions] = useState<FootballCompetition[]>([]);
+  const [competition, setCompetition] = useState<string>('egyptian-premier');
   const [rows, setRows] = useState<StandingRow[]>([]);
   const [group, setGroup] = useState<string | null>(null);
+  const [fullRecord, setFullRecord] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [followed, setFollowed] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetchCompetitions()
+      .then(setCompetitions)
+      .catch(() => setCompetitions([]));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -50,6 +61,7 @@ export default function StandingsScreen() {
       setUnavailable(data.unavailable);
       setRows(data.tables[0]?.rows ?? []);
       setGroup(data.tables[0]?.group ?? null);
+      setFullRecord(data.tables[0]?.hasFullRecord ?? true);
       if (token) {
         const follows = await fetchTeamFollows(token);
         setFollowed(new Set(follows.map((f) => f.name)));
@@ -77,7 +89,7 @@ export default function StandingsScreen() {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-          {STANDING_TABS.map((x) => (
+          {competitions.map((x) => (
             <TouchableOpacity
               key={x.id}
               onPress={() => setCompetition(x.id)}
@@ -85,7 +97,7 @@ export default function StandingsScreen() {
               accessibilityRole="tab"
               accessibilityState={{ selected: x.id === competition }}
             >
-              <Text style={[styles.tabText, { color: x.id === competition ? '#FFFFFF' : t.textSecondary }]}>{x.label}</Text>
+              <Text style={[styles.tabText, { color: x.id === competition ? '#FFFFFF' : t.textSecondary }]}>{x.nameAr}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -113,8 +125,8 @@ export default function StandingsScreen() {
             <View style={[styles.tableHead, { borderBottomColor: t.borderLight }]}>
               <Text style={[styles.th, styles.colPos, { color: t.textMuted }]}>#</Text>
               <Text style={[styles.th, styles.colTeam, { color: t.textMuted }]}>الفريق</Text>
-              {['ل', 'ف', 'ت', 'خ', 'ف.أ', 'ن'].map((h) => (
-                <Text key={h} style={[styles.th, styles.colNum, { color: t.textMuted }]}>{h}</Text>
+              {(fullRecord ? ['ل', 'ف', 'ت', 'خ', 'ف.أ', 'ن'] : ['ل', 'ف.أ', 'ن']).map((h, i) => (
+                <Text key={`${h}-${i}`} style={[styles.th, styles.colNum, { color: t.textMuted }]}>{h}</Text>
               ))}
             </View>
             {rows.map((r) => {
@@ -135,17 +147,25 @@ export default function StandingsScreen() {
                     {r.team}
                   </Text>
                   <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>{r.played}</Text>
-                  <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>{r.won || ''}</Text>
-                  <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>{r.drawn || ''}</Text>
-                  <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>{r.lost || ''}</Text>
-                  <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>{r.goalsFor - r.goalsAgainst}</Text>
+                  {fullRecord ? (
+                    <>
+                      <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>{r.won}</Text>
+                      <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>{r.drawn}</Text>
+                      <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>{r.lost}</Text>
+                    </>
+                  ) : null}
+                  <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>
+                    {r.goalsFor - r.goalsAgainst > 0 ? '+' : ''}{r.goalsFor - r.goalsAgainst}
+                  </Text>
                   <Text style={[styles.td, styles.colNum, { color: t.accent, fontWeight: '800' }]}>{r.points}</Text>
                 </View>
               );
             })}
-            <Text style={[styles.note, { color: t.textMuted }]}>
-              المصدر يعرض عدد المباريات والأهداف والنقاط؛ خانات الفوز والتعادل والخسارة تظهر عند توفرها.
-            </Text>
+            {fullRecord ? null : (
+              <Text style={[styles.note, { color: t.textMuted }]}>
+                المصدر يعرض لهذه البطولة عدد المباريات والأهداف والنقاط فقط، بدون تفصيل الفوز والتعادل والخسارة.
+              </Text>
+            )}
           </ScrollView>
         )}
       </SafeAreaView>

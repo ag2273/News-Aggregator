@@ -12,6 +12,7 @@ jest.mock('@react-native-firebase/app', () => ({ __esModule: true, default: () =
 const mockMatches = jest.fn();
 const mockMatch = jest.fn();
 const mockStandings = jest.fn();
+const mockCompetitions = jest.fn();
 const mockFollows = jest.fn();
 jest.mock('../lib/api', () => {
   const actual = jest.requireActual('../lib/api');
@@ -20,6 +21,7 @@ jest.mock('../lib/api', () => {
     fetchMatches: (...a: unknown[]) => mockMatches(...a),
     fetchMatch: (...a: unknown[]) => mockMatch(...a),
     fetchStandings: (...a: unknown[]) => mockStandings(...a),
+    fetchCompetitions: (...a: unknown[]) => mockCompetitions(...a),
     fetchTeamFollows: (...a: unknown[]) => mockFollows(...a),
   };
 });
@@ -40,7 +42,13 @@ const match = (over: Record<string, unknown> = {}) => ({
   status: 'upcoming', statusText: 'لم تبدأ', kickoff: '20:00', round: 'الأسبوع التاسع', minute: null, ...over,
 });
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockCompetitions.mockResolvedValue([
+    { id: 'egyptian-premier', nameAr: 'الدوري المصري', country: 'EG', isCup: false },
+    { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', country: 'GB', isCup: false },
+  ]);
+});
 
 describe('matches screen', () => {
   it('renders fixtures grouped by competition', async () => {
@@ -114,7 +122,7 @@ describe('match center', () => {
 
 describe('standings screen', () => {
   it('renders the table with the followed team highlighted', async () => {
-    mockStandings.mockResolvedValue({ unavailable: false, tables: [{ competitionId: 'egyptian-premier', group: null, rows: [
+    mockStandings.mockResolvedValue({ unavailable: false, tables: [{ competitionId: 'egyptian-premier', group: null, hasFullRecord: true, rows: [
       { position: 1, team: 'بيراميدز', played: 8, won: 8, drawn: 0, lost: 0, goalsFor: 19, goalsAgainst: 4, points: 24 },
       { position: 2, team: 'الأهلي', played: 8, won: 6, drawn: 2, lost: 0, goalsFor: 15, goalsAgainst: 6, points: 20 },
     ] }] });
@@ -136,5 +144,29 @@ describe('follow teams screen', () => {
     render(<FollowTeamsScreen />);
     await waitFor(() => expect(screen.getByText('وثّق بريدك أولاً')).toBeTruthy());
     expect(mockFollows).not.toHaveBeenCalled();
+  });
+
+  it('hides the win/draw/loss columns when the source does not send them', async () => {
+    // The Egyptian table is 4 columns (played, for, against, points). Printing
+    // zeros for W/D/L would look like every club drew every match.
+    mockStandings.mockResolvedValue({
+      unavailable: false,
+      tables: [
+        {
+          competitionId: 'egyptian-premier',
+          group: null,
+          hasFullRecord: false,
+          rows: [
+            { position: 1, team: 'بيراميدز', played: 8, won: 0, drawn: 0, lost: 0, goalsFor: 19, goalsAgainst: 4, points: 24 },
+          ],
+        },
+      ],
+    });
+    render(<StandingsScreen />);
+    await waitFor(() => expect(screen.getByText('بيراميدز')).toBeTruthy());
+    expect(screen.queryByText('ف.أ')).toBeTruthy();
+    expect(screen.queryByText('خ')).toBeNull();
+    expect(screen.getByText('+15')).toBeTruthy();
+    expect(screen.getByText(/بدون تفصيل الفوز والتعادل والخسارة/)).toBeTruthy();
   });
 });

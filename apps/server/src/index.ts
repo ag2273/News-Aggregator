@@ -1360,7 +1360,7 @@ app.get('/api/football/competitions', (c) =>
       id: x.id,
       nameAr: x.nameAr,
       country: x.country,
-      provider: x.provider,
+      isCup: Boolean(x.isCup),
     })),
   }),
 );
