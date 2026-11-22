@@ -95,3 +95,46 @@ describe('relatedNews', () => {
     expect(relatedNews('', '', { articles: corpus })).toEqual([]);
   });
 });
+
+describe('institutional names are not clubs', () => {
+  // Measured on production: a «وادي دجلة × الاتحاد السكندري» match returned ten
+  // articles, every one about the European Union or a workers' union.
+  const unionArticles = [
+    'فشل مفاوضات كوب31 للمناخ بعد رفض الاتحاد الأوروبي ودول أخرى مسودة الاتفاق',
+    '«رجال أعمال إسكندرية» و«الاتحاد الأوروبي» يبحثان تطوير سلاسل القيمة الزراعية',
+    'الاتحاد المصري لتمويل المشروعات يستهدف زيادة تمويل القطاعات الصناعية',
+    'رئيس الاتحاد العام للنقابات: يجب إجراء مراجعة شاملة لقانون المنظمات النقابية',
+    '45 مليار يورو لأوكرانيا تشعل المواجهة داخل الاتحاد الأوروبي',
+  ];
+
+  it('never matches the European Union or a workers union', () => {
+    for (const title of unionArticles) {
+      expect(mentionsTeam(title, 'الاتحاد السكندري')).toBe(false);
+    }
+  });
+
+  it('still matches the club when the distinctive word is there', () => {
+    expect(mentionsTeam('الاتحاد السكندري يتعاقد مع مدرب جديد', 'الاتحاد السكندري')).toBe(true);
+    expect(mentionsTeam('حسم الاتحاد السكندري صفقة المهاجم', 'الاتحاد السكندري')).toBe(true);
+  });
+
+  it('identifies a multi-word club by its distinctive word, not its generic one', () => {
+    // «الاتحاد» alone is the union/EU; «السكندري» is the club.
+    expect(teamWords('الاتحاد السكندري')).toContain('السكندري');
+    expect(mentionsTeam('الاتحاد الأوروبي يقرر', 'الاتحاد السكندري')).toBe(false);
+  });
+
+  it('never matches the football federation for a bank club', () => {
+    expect(mentionsTeam('محامي زيزو: سنطالب بـ82 مليون جنيه أمام اتحاد الكرة', 'الزمالك')).toBe(false);
+  });
+
+  it('returns nothing rather than wrong articles', () => {
+    // An empty news tab is correct when nothing real is there.
+    const hits = relatedNews('وادي دجلة', 'الاتحاد السكندري', {
+      articles: unionArticles.map((t, i) => ({
+        id: String(i), title: t, summary: null, sourceName: 's', url: 'u', publishedAt: i,
+      })),
+    });
+    expect(hits).toEqual([]);
+  });
+});

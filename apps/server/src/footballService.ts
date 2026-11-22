@@ -211,10 +211,19 @@ export function standingsRows(tables: StandingsTable[]): StandingsTable[] {
  */
 export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[] {
   const key = (m: MatchRow): string => {
-    // FilGoal writes the age group inside the team name («إسبانيا | تحت 17»)
-    // where Yallakora does not, so the qualifier is stripped before comparing.
+    // The two sources name some clubs differently, and the difference is only
+    // in the qualifier: FilGoal writes «إسبانيا | تحت 17» and «ماينز 05», where
+    // Yallakora writes «إسبانيا» and «ماينز». Without stripping those, one
+    // fixture appeared twice with two different scores on the same screen.
     const clean = (name: string): string =>
-      normalizeTeam(name.replace(/\s*\|\s*تحت\s*\d+\s*$/, '').replace(/\s*تحت\s*\d+\s*$/, ''));
+      normalizeTeam(
+        name
+          .replace(/\s*\|\s*تحت\s*\d+\s*$/, '')
+          .replace(/\s*تحت\s*\d+\s*$/, '')
+          // A trailing founding-year suffix («05», «04») is part of the club's
+          // registered name, not a different club.
+          .replace(/\s+0?[1-9]\d?$/, ''),
+      );
     const pair = [clean(m.home), clean(m.away)].sort();
     // The competition is part of the key: two clubs can meet in the league and in
     // a cup on different days, and merging those would lose one tournament.
