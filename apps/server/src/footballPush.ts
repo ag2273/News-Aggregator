@@ -24,7 +24,11 @@ export function _resetFootballSeen(): void {
 }
 
 export interface Transition {
-  kind: 'kickoff' | 'goal' | 'final';
+  /**
+   * `score` is a score change with no timeline behind it: recorded so the next
+   * poll compares against the right number, deliberately not announced.
+   */
+  kind: 'kickoff' | 'goal' | 'score' | 'final';
   match: MatchRow;
   score: string;
 }
@@ -52,6 +56,16 @@ export function detectTransitions(matches: MatchRow[]): Transition[] {
       continue;
     }
     if (match.status === 'live' && (before.homeScore !== match.homeScore || before.awayScore !== match.awayScore)) {
+      // A goal notification promises a moment («هدف», at this minute). Only a
+      // provider that reports the timeline can back that promise: ESPN does, the
+      // Egyptian list pages do not — they show a score that changes, with no
+      // minute. The user's rule for Egyptian matches is the final score, honestly
+      // named, with no fake clock, so a score change there is recorded and not
+      // announced. The final notification still goes out.
+      if (match.dataSource === 'filgoal' || match.dataSource === 'yallakora') {
+        out.push({ kind: 'score', match, score });
+        continue;
+      }
       out.push({ kind: 'goal', match, score });
       continue;
     }
@@ -73,6 +87,9 @@ export async function pollFootball(options: {
   const transitions = detectTransitions(day.matches);
   let notified = 0;
   for (const t of transitions) {
+    // A `score` transition exists only to update what we remember; it is not an
+    // event to announce.
+    if (t.kind === 'score') continue;
     // Both sides' followers care about the event.
     const followers = [
       ...followersOf(t.match.home).map((f) => ({ userId: f.userId, follow: f.follow })),

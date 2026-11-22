@@ -37,9 +37,12 @@ describe('football transitions', () => {
     expect(t.map((x) => x.kind)).toEqual(['kickoff']);
   });
 
-  it('announces one goal per score change, never twice for the same score', () => {
+  it('records one score change per goal, never twice for the same score', () => {
+    // The base row is an Egyptian (yallakora) match, so a score change is
+    // recorded as `score` rather than announced as `goal` — see the dedicated
+    // Egyptian/ESPN pair below.
     detectTransitions([m({ status: 'live', homeScore: 0, awayScore: 0 })]);
-    expect(detectTransitions([m({ status: 'live', homeScore: 1, awayScore: 0 })]).map((x) => x.kind)).toEqual(['goal']);
+    expect(detectTransitions([m({ status: 'live', homeScore: 1, awayScore: 0 })]).map((x) => x.kind)).toEqual(['score']);
     // same score again: nothing
     expect(detectTransitions([m({ status: 'live', homeScore: 1, awayScore: 0 })])).toEqual([]);
   });
@@ -76,5 +79,55 @@ describe('football transitions', () => {
     followTeam('u2', 'بيراميدز', 'egyptian-premier');
     expect(followersOf('الأهلي').map((f) => f.userId)).toEqual(['u1']);
     expect(followersOf('بيراميدز').map((f) => f.userId)).toEqual(['u2']);
+  });
+
+  it('announces a goal where the source has a timeline (ESPN)', () => {
+    const espn = (over: Partial<MatchRow>): MatchRow => ({
+      ...base, dataSource: 'espn', ...over,
+    });
+    detectTransitions([espn({ status: 'live', homeScore: 0, awayScore: 0 })]);
+    expect(detectTransitions([espn({ status: 'live', homeScore: 1, awayScore: 0 })]).map((x) => x.kind)).toEqual(['goal']);
+  });
+
+  it('does NOT announce a goal for an Egyptian match with no timeline', () => {
+    // The user's rule: Egyptian matches get the final score, named honestly, with
+    // no fake clock. A list page shows a score that changes but no minute, so a
+    // "هدف" notification would be a promise the data cannot keep.
+    const egyptian = (over: Partial<MatchRow>): MatchRow => ({
+      ...base, dataSource: 'filgoal', ...over,
+    });
+    detectTransitions([egyptian({ status: 'live', homeScore: 0, awayScore: 0 })]);
+    const t = detectTransitions([egyptian({ status: 'live', homeScore: 1, awayScore: 0 })]);
+    // Recorded (so the next poll compares right), never announced.
+    expect(t.map((x) => x.kind)).toEqual(['score']);
+  });
+
+  it('still announces kickoff and final for an Egyptian match', () => {
+    const egyptian = (over: Partial<MatchRow>): MatchRow => ({ ...base, dataSource: 'filgoal', ...over });
+    detectTransitions([egyptian({})]);
+    expect(detectTransitions([egyptian({ status: 'live', homeScore: 0, awayScore: 0 })]).map((x) => x.kind)).toEqual(['kickoff']);
+    expect(
+      detectTransitions([egyptian({ status: 'finished', statusText: 'انتهت', homeScore: 1, awayScore: 0 })]).map((x) => x.kind),
+    ).toEqual(['final']);
+  });
+
+  it('sends nothing for a score-only transition', async () => {
+    followTeam('u9', 'الأهلي', 'egyptian-premier');
+    const calls: string[] = [];
+    const notify = (async (_e: unknown, followers: Array<{ userId: string }>) => {
+      calls.push(...followers.map((f) => f.userId));
+      return followers.length;
+    }) as never;
+    // A day whose only Egyptian match changed score while live.
+    const html = `<h2>الدوري المصري</h2>
+      <div class="allData"><div class="topData"><div class="matchStatus"><span>مباشر</span></div></div>
+      <div class="teams teamA"><p>الأهلي</p></div>
+      <div class="MResult"><span class="score">2</span><span>-</span><span class="score">0</span></div>
+      <div class="teams teamB"><p>بيراميدز</p></div></div>`;
+    const fetcher = (async (url: string) =>
+      new Response(String(url).includes('filgoal') ? '<html></html>' : html, { status: 200 })) as unknown as typeof fetch;
+    detectTransitions([{ ...base, dataSource: 'filgoal', status: 'live', homeScore: 1, awayScore: 0 }]);
+    await pollFootball({ notify, fetchImpl: fetcher });
+    expect(calls).toEqual([]);
   });
 });
