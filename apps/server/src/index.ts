@@ -1597,19 +1597,6 @@ app.put('/api/football/follows/:team/notify', async (c) => {
 
 app.get('/health', (c) => c.json({ ok: true }));
 
-/** Temporary: proves which matcher build is running. Removed after verification. */
-app.get('/api/football/_matcher-check', (c) => {
-  const text = 'الدوري الأميركي: خسارة قاسية لإنتر ميامي وميسي ينجو من الطرد';
-  return c.json({
-    data: {
-      mentionsInterIT: relatedNews('أتالانتا', 'إنتر', {
-        competitionId: 'ita-serie-a',
-        articles: [{ id: 'x', title: text, summary: null, sourceName: 's', url: 'u', publishedAt: 1 }],
-      }).length,
-    },
-  });
-});
-
 const PORT = Number(process.env['PORT'] ?? 3001);
 if (process.env['NODE_ENV'] !== 'test') {
   console.log(`[server] listening on http://localhost:${PORT}`);
