@@ -938,3 +938,40 @@ export function logoUrl(pathOrNull: string | null | undefined): string | null {
   if (/^https?:/i.test(pathOrNull)) return pathOrNull;
   return `${API_BASE}${pathOrNull}`;
 }
+
+/** A club's page: fixtures, results, competitions and coverage. */
+export interface TeamPage {
+  name: string;
+  logo: string | null;
+  teamIds: string[];
+  competitionIds: string[];
+  upcoming: FootballMatch[];
+  recent: FootballMatch[];
+  news: MatchNews[];
+}
+
+export async function fetchTeamPage(name: string): Promise<TeamPage> {
+  const res = await fetch(`${API_BASE}/api/football/teams/${encodeURIComponent(name)}`);
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: TeamPage }).data;
+}
+
+/** A competition's page: table, fixtures and results. */
+export interface CompetitionPage {
+  id: string;
+  nameAr: string;
+  isCup: boolean;
+  priority: number;
+  country: string;
+  standings: StandingRow[] | null;
+  standingsUnavailable: boolean;
+  hasFullRecord: boolean;
+  upcoming: FootballMatch[];
+  recent: FootballMatch[];
+}
+
+export async function fetchCompetitionPage(id: string): Promise<CompetitionPage> {
+  const res = await fetch(`${API_BASE}/api/football/competitions/${encodeURIComponent(id)}`);
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: CompetitionPage }).data;
+}

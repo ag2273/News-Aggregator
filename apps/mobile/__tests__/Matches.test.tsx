@@ -133,6 +133,30 @@ describe('match center', () => {
   });
 });
 
+  it('opens the competition page from the match screen', async () => {
+    mockMatch.mockResolvedValue({
+      match: match({ competitionId: 'egyptian-premier', competitionName: 'الدوري المصري' }),
+      detail: null, news: [], unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('الدوري المصري')).toBeTruthy());
+    fireEvent.press(screen.getByLabelText(/فتح صفحة البطولة/));
+    expect(router.push).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: '/competition/[id]' }),
+    );
+  });
+
+  it('opens the team page when a team name is tapped', async () => {
+    mockMatch.mockResolvedValue({ match: match(), detail: null, news: [], unavailable: false });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByLabelText('الأهلي — صفحة الفريق')).toBeTruthy());
+    fireEvent.press(screen.getByLabelText('الأهلي — صفحة الفريق'));
+    expect(router.push).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: '/team/[name]' }),
+    );
+  });
+
+
 describe('standings screen', () => {
   it('renders the table with the followed team highlighted', async () => {
     mockStandings.mockResolvedValue({ unavailable: false, tables: [{ competitionId: 'egyptian-premier', group: null, hasFullRecord: true, rows: [
@@ -250,7 +274,9 @@ describe('upcoming fixtures screen', () => {
     mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
-    fireEvent.press(screen.getByText('الأهلي'));
+    // The team NAME now opens the team page, so the card is pressed by its own
+    // accessibility label («X ضد Y») to reach the match centre.
+    fireEvent.press(screen.getByLabelText('الأهلي ضد بيراميدز'));
     expect(router.push).toHaveBeenCalledWith(
       expect.objectContaining({ pathname: '/matches/[id]' }),
     );

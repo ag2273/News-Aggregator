@@ -144,6 +144,8 @@ import {
 } from './footballStore.js';
 import { pollFootball } from './footballPush.js';
 import { crestCacheStats, getCrest, registerLogoSource } from './crests.js';
+import { buildTeamPage } from './teamPage.js';
+import { buildCompetitionPage } from './competitionPage.js';
 import { privacyCopy, privacyLang, renderPrivacyPage } from './privacy.js';
 import {
   DIGEST_SLOTS,
@@ -1470,6 +1472,43 @@ app.get('/api/football/live-status', async (c) => {
         : [],
     },
   });
+});
+
+/**
+ * A team page: its upcoming and recent matches, its competitions and its news.
+ *
+ * Built from the days we already cache, so opening a page costs no source request.
+ * Returns 404 only when the name is empty; a club with no matches gets an honest
+ * empty page rather than an error.
+ */
+app.get('/api/football/teams/:name', async (c) => {
+  const name = decodeURIComponent(c.req.param('name') ?? '').trim();
+  if (!name) return c.json({ error: 'team name is required' }, 400);
+  // Warm the days this page will read, so a first visit is not empty.
+  await Promise.all(
+    [-1, 0, 1].map((offset) => loadDay(todayCairo(Date.now() + offset * 86_400_000)).catch(() => null)),
+  );
+  const page = buildTeamPage(name);
+  return c.json({ data: page });
+});
+
+/**
+ * A competition page: its table, its fixtures and its results.
+ *
+ * This is where a league lives even on a day it does not play — the reason
+ * «الدوري المصري» could not be found.
+ */
+app.get('/api/football/competitions/:id', async (c) => {
+  const id = c.req.param('id');
+  if (!competitionOf(id)) return c.json({ error: 'unknown competition' }, 404);
+  // Load the table and the surrounding days, so the page is complete on first open.
+  await Promise.all([
+    loadStandings(id).catch(() => null),
+    ...[0, 1, 2].map((offset) => loadDay(todayCairo(Date.now() + offset * 86_400_000)).catch(() => null)),
+  ]);
+  const page = buildCompetitionPage(id);
+  if (!page) return c.json({ error: 'unknown competition' }, 404);
+  return c.json({ data: page });
 });
 
 /** One match, with the news our own corpus holds about its two teams. */

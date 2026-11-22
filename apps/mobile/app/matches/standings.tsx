@@ -155,12 +155,19 @@ export default function StandingsScreen() {
                   <Text style={[styles.td, styles.colPos, { color: t.textSecondary }]}>{r.position}</Text>
                   <View style={styles.teamCell}>
                     <TeamCrest logo={r.logo} name={r.team} size={18} t={t} />
-                    <Text
-                      style={[styles.td, styles.colTeamName, { color: t.textPrimary, fontWeight: isFollowed ? '800' : '500' }]}
-                      numberOfLines={1}
+                    <TouchableOpacity
+                      style={styles.colTeamName}
+                      onPress={() => router.push({ pathname: '/team/[name]', params: { name: r.team } })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${r.team} — صفحة الفريق`}
                     >
-                      {r.team}
-                    </Text>
+                      <Text
+                        style={[styles.td, { color: t.textPrimary, fontWeight: isFollowed ? '800' : '500' }]}
+                        numberOfLines={1}
+                      >
+                        {r.team}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                   <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>{r.played}</Text>
                   {fullRecord ? (

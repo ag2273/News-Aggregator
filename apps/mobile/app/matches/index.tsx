@@ -225,9 +225,16 @@ export default function MatchesScreen() {
         <View style={styles.cardTop}>
           <View style={styles.teamCell}>
             <TeamCrest logo={m.homeLogo} name={m.home} size={22} t={t} />
-            <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
-              {m.home}
-            </Text>
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: '/team/[name]', params: { name: m.home } })}
+              accessibilityRole="button"
+              accessibilityLabel={`${m.home} — صفحة الفريق`}
+              style={styles.teamTap}
+            >
+              <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
+                {m.home}
+              </Text>
+            </TouchableOpacity>
           </View>
           <View style={styles.scoreWrap}>
             {m.homeScore === null || m.awayScore === null ? (
@@ -243,9 +250,16 @@ export default function MatchesScreen() {
           </View>
           <View style={styles.teamCell}>
             <TeamCrest logo={m.awayLogo} name={m.away} size={22} t={t} />
-            <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
-              {m.away}
-            </Text>
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: '/team/[name]', params: { name: m.away } })}
+              accessibilityRole="button"
+              accessibilityLabel={`${m.away} — صفحة الفريق`}
+              style={styles.teamTap}
+            >
+              <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
+                {m.away}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
         {isLive ? (
@@ -497,6 +511,7 @@ const styles = StyleSheet.create({
   // Two lines, so «رويال يونيون سان جيلواز» fits on a 360dp phone instead of
   // ending in an ellipsis at 113px. Long names are the norm in Arabic coverage.
   teamCell: { flex: 1, flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  teamTap: { flexShrink: 1 },
   team: { flexShrink: 1, fontSize: 13, fontWeight: '600', lineHeight: 19 },
   scoreWrap: { alignItems: 'center', width: 68 },
   score: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },

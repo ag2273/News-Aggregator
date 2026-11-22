@@ -263,4 +263,71 @@ describe('football API', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('serves a competition page with its table and fixtures', async () => {
+    vi.stubGlobal('fetch', async (url: string) => {
+      const u = String(url);
+      if (u.includes('/tour-standing/160')) {
+        // A 7-column table, like the real one.
+        const rows = ['بيراميدز', 'الأهلي'].map((n, i) =>
+          `<div class="wRow"><div class="item arrng">${i + 1}</div><div class="item team"><a href="/t/${i}"><p>${n}</p></a></div>` +
+          ['8', '7', '1', '0', '19', '4', '22'].map((v) => `<div class="item dtls"> ${v} </div>`).join('') +
+          '</div>').join('');
+        return new Response(`<div class="grpHdr">المجموعة 1</div>${rows}`, { status: 200 });
+      }
+      // Days: one Egyptian fixture tomorrow.
+      return new Response(
+        `<div data-matches-scroller><h6><span>الدوري المصري</span></h6>
+         <div class="cin_cntnr"><a href="/matches/9/x"><div class="f"><strong>الأهلي</strong><b> - </b></div>
+         <div class="m"><span class="status ">لم تبدأ</span></div>
+         <div class="s"><strong>بيراميدز</strong><b> - </b></div>
+         <div class="match-aux"><span>23-11-2026 - 20:00</span></div></a></div></div>`,
+        { status: 200 },
+      );
+    });
+    try {
+      const res = await app.request('/api/football/competitions/egyptian-premier');
+      expect(res.status).toBe(200);
+      const { data } = (await res.json()) as {
+        data: { nameAr: string; standings: Array<{ team: string }> | null; upcoming: unknown[] };
+      };
+      expect(data.nameAr).toBe('الدوري المصري');
+      expect(data.standings?.length).toBeGreaterThan(0);
+      expect(Array.isArray(data.upcoming)).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('404s an unknown competition and an empty team name', async () => {
+    vi.stubGlobal('fetch', async () => new Response('<div data-matches-scroller></div>', { status: 200 }));
+    try {
+      expect((await app.request('/api/football/competitions/nope')).status).toBe(404);
+      expect((await app.request('/api/football/teams/%20')).status).toBe(400);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('serves a team page for a real club name', async () => {
+    vi.stubGlobal('fetch', async () =>
+      new Response(
+        `<div data-matches-scroller><h6><span>الدوري المصري</span></h6>
+         <div class="cin_cntnr"><a href="/matches/9/x"><div class="f"><strong>الأهلي</strong><b> - </b></div>
+         <div class="m"><span class="status ">لم تبدأ</span></div>
+         <div class="s"><strong>بيراميدز</strong><b> - </b></div>
+         <div class="match-aux"><span>23-11-2026 - 20:00</span></div></a></div></div>`,
+        { status: 200 },
+      ),
+    );
+    try {
+      const res = await app.request(`/api/football/teams/${encodeURIComponent('الأهلي')}`);
+      expect(res.status).toBe(200);
+      const { data } = (await res.json()) as { data: { name: string; upcoming: unknown[] } };
+      expect(data.name).toBe('الأهلي');
+      expect(Array.isArray(data.upcoming)).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

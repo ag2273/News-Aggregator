@@ -136,7 +136,13 @@ export default function MatchCenterScreen() {
             <View style={[styles.hero, { backgroundColor: t.surface }]}>
               <View style={styles.heroSide}>
                 <TeamCrest logo={match.homeLogo} name={match.home} size={48} t={t} />
-                <Text style={[styles.heroTeam, { color: t.textPrimary }]} numberOfLines={1}>{match.home}</Text>
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: '/team/[name]', params: { name: match.home } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${match.home} — صفحة الفريق`}
+                >
+                  <Text style={[styles.heroTeam, { color: t.textPrimary }]} numberOfLines={1}>{match.home}</Text>
+                </TouchableOpacity>
               </View>
               <View style={styles.heroCenter}>
                 <Text style={[styles.heroScore, { color: match.status === 'live' ? t.accent : t.textPrimary }]}>
@@ -151,7 +157,13 @@ export default function MatchCenterScreen() {
               </View>
               <View style={styles.heroSide}>
                 <TeamCrest logo={match.awayLogo} name={match.away} size={48} t={t} />
-                <Text style={[styles.heroTeam, { color: t.textPrimary }]} numberOfLines={1}>{match.away}</Text>
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: '/team/[name]', params: { name: match.away } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${match.away} — صفحة الفريق`}
+                >
+                  <Text style={[styles.heroTeam, { color: t.textPrimary }]} numberOfLines={1}>{match.away}</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -186,6 +198,26 @@ export default function MatchCenterScreen() {
                 ) : null}
               </View>
             ) : null}
+
+            {/* Which competition this match is in, and the way to its page. This
+                is where a league lives on a day it does not play. */}
+            <TouchableOpacity
+              style={styles.compRow}
+              onPress={() =>
+                router.push({
+                  pathname: '/competition/[id]',
+                  params: { id: match.competitionId },
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel={`${match.competitionName} — فتح صفحة البطولة`}
+            >
+              <Ionicons name="trophy-outline" size={14} color={t.textSecondary} />
+              <Text style={[styles.compName, { color: t.textSecondary }]} numberOfLines={1}>
+                {match.competitionName}
+              </Text>
+              <Ionicons name="chevron-back" size={14} color={t.textMuted} />
+            </TouchableOpacity>
 
             {/* Four tabs share the width instead of scrolling: in RTL a horizontal
                 strip starts at the right edge, so the last tab sat permanently
@@ -379,6 +411,8 @@ const styles = StyleSheet.create({
   // A horizontal strip inside a column flex needs its own height (the same trap
   // that stretched the day ribbon), and trailing padding so the last tab can
   // scroll clear of the edge instead of sitting half-cut.
+  compRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 2 },
+  compName: { fontSize: 12, fontWeight: '700', flexShrink: 1 },
   tabs: { flexDirection: 'row', gap: 6, paddingVertical: 6 },
   tab: { flex: 1, paddingHorizontal: 6, paddingVertical: 8, borderRadius: 16, alignItems: 'center' },
   tabText: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
