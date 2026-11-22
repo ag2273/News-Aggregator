@@ -195,4 +195,15 @@ describe('clubs whose name is an institution', () => {
     const hits = relatedNews('أتالانتا', 'إنتر ميلان', { articles: corpus, country: 'IT' });
     expect(hits.map((h) => h.id)).toEqual(['b']);
   });
+
+  it('handles the single-word name the API actually serves', () => {
+    // Production calls Inter «إنتر» — one word — and that alone pulled seven MLS
+    // articles. A single shared word can never be a full name.
+    expect(mentionsTeam('خسارة قاسية لإنتر ميامي وميسي ينجو من الطرد', 'إنتر', undefined, 'IT')).toBe(false);
+    expect(mentionsTeam('إنتر يفوز على يوفنتوس في الكالتشيو', 'إنتر', undefined, 'IT')).toBe(true);
+    // The multi-word form accepts the short name only with country context in the
+    // text — «إنتر» alone is not enough to tell it from Inter Miami.
+    expect(mentionsTeam('إنتر يفوز على يوفنتوس في الكالتشيو', 'إنتر ميلان', undefined, 'IT')).toBe(true);
+    expect(mentionsTeam('إنتر يفوز على يوفنتوس', 'إنتر ميلان', undefined, 'IT')).toBe(false);
+  });
 });

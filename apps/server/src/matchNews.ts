@@ -210,6 +210,10 @@ const SHARED_PREFIX_WORDS = new Set([
  * its second word too, in order and adjacent.
  */
 export function needsFullName(words: string[]): boolean {
+  // A single-word name can be just as shared: the API calls Inter «إنتر», and that
+  // one word also names Inter Miami. Measured on production, «إنتر ميلان» was fine
+  // but «إنتر» alone still pulled seven MLS articles.
+  if (words.length === 1) return SHARED_PREFIX_WORDS.has(words[0]!);
   if (words.length < 2) return false;
   return SHARED_PREFIX_WORDS.has(words[0]!) || words.some((w) => SHARED_PREFIX_WORDS.has(w));
 }
@@ -237,27 +241,42 @@ export function mentionsTeam(
   // Distinctive words first: a club with any non-generic word is matched only by
   // those, never by the generic part. This is the fix for the European Union.
   const distinctive = words.filter((w) => !isInstitutional(w) && !PLACE_WORDS.has(w));
-  let searchWords = distinctive.length ? distinctive : words.filter((w) => !PLACE_WORDS.has(w));
+  const searchWords = distinctive.length ? distinctive : words.filter((w) => !PLACE_WORDS.has(w));
   if (!searchWords.length) return false;
-  // A name that is only ever an institution cannot identify a club. Unless the
-  // text also carries a club word (نادي، فريق، مباراة), there is nothing to stand
-  // on, and guessing would fill the tab with the customs authority.
+
+  // 1. A name that is only ever an institution cannot identify a club, unless the
+  //    text also says نادي/فريق/مباراة. Runs first, because «الأهلي» is both a bank
+  //    and a club prefix and the bank must be rejected before anything accepts it.
   if (searchWords.every((w) => AMBIGUOUS_ONLY_NAMES.has(w) || AMBIGUOUS_ONLY_NAMES.has(stripPrefixes(w)))) {
-    if (!/\b(?:نادي|نادى|فريق|مباراه|مباراة|ملعب)\b/.test(haystack) && !/ (نادي|نادى|فريق|مباراه|مباراة|ملعب) /.test(` ${haystack} `)) {
-      return false;
-    }
+    const clubWord = / (نادي|نادى|فريق|مباراه|مباراة|ملعب) /.test(` ${haystack} `);
+    if (!clubWord) return false;
   }
 
-  // A shared first word is not an identity. «إنتر ميلان» only matches «إنتر
-  // ميلان», never «إنتر ميامي»; the same rule keeps «ريال مدريد» out of
-  // «ريال سوسيداد» coverage.
+  // 2. A shared first word is not an identity. «إنتر ميلان» only matches «إنتر
+  //    ميلان»; «ريال مدريد» stays out of «ريال سوسيداد» coverage.
   if (needsFullName(words)) {
-    if (hasSequence(tokens, words)) return true;
-    // The short form («إنتر» alone) is accepted only when the article's own words
-    // place it in the right country — an Italian match may say «إنتر» for Inter
-    // Milan, an MLS one for Inter Miami.
-    const countryHint = country ? COUNTRY_WORDS[country] : undefined;
-    if (countryHint && countryHint.some((h) => hasWord(haystack, h))) {
+    // Only a genuine multi-word name can be satisfied by "the whole name appears".
+    // A one-word name would otherwise match here and skip the checks below.
+    if (words.length > 1 && hasSequence(tokens, words)) return true;
+    // A single shared word is judged by what it is NOT: it must appear somewhere
+    // that is not a false friend. «إنتر» alone never matches «إنتر ميامي» because
+    // the next word is ميامي, not Italy; «الاهلي» never matches «البنك الأهلي».
+    if (words.length === 1) {
+      const only = words[0]!;
+      for (let i = 0; i < tokens.length; i += 1) {
+        if (tokens[i] !== only) continue;
+        if (isFalseFriend(tokens, i, only)) continue;
+        // The word right after it can name a different club: «إنتر ميامي».
+        const after = tokens[i + 1] ?? '';
+        if (SHARED_PREFIX_WORDS.has(after)) continue;
+        return true;
+      }
+      return false;
+    }
+    // The short form («إنتر» for «إنتر ميلان») is accepted only when the article
+    // itself places the club in the competition's country.
+    const hint = country ? COUNTRY_WORDS[country] : undefined;
+    if (hint && hint.some((h) => hasWord(haystack, h))) {
       const first = words[0]!;
       for (let i = 0; i < tokens.length; i += 1) {
         if (tokens[i] === first && !isFalseFriend(tokens, i, first)) return true;
@@ -266,13 +285,12 @@ export function mentionsTeam(
     return false;
   }
 
+  // 3. Ordinary names match on any identifying word, as a whole word, with the
+  //    false-friend phrases rejected.
   for (const word of searchWords) {
     for (let i = 0; i < tokens.length; i += 1) {
       if (tokens[i] !== word) continue;
-      if (isInstitutional(word) && isFalseFriend(tokens, i, word)) continue;
-      // A generic word only ever matched by being allowed above, so if it got
-      // here with a false friend in front of it, it is a different institution.
-      if (!isInstitutional(word) && isFalseFriend(tokens, i, word)) continue;
+      if (isFalseFriend(tokens, i, word)) continue;
       return true;
     }
   }
