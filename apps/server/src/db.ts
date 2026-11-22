@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type { Article } from './types.js';
 import { categorize, detectBreaking } from './categorize.js';
 import { SOURCES } from './types.js';
+import { isSectionPageTitle } from './fetcher.js';
 
 /** Sources whose titles may be flagged breaking; every other outlet is pinned off. */
 const BREAKING_ENABLED = new Set(SOURCES.filter((s) => s.breaking).map((s) => s.id));
@@ -44,7 +45,18 @@ export function _resetDbCache(): void {
 /** Lazy migration: re-classify legacy 'general' categories and decode leftover HTML entities. */
 function migrate(rows: StoredArticle[]): { rows: StoredArticle[]; changed: boolean } {
   let changed = false;
-  const out = rows.map((r) => {
+  // Purge rows that were never news: a soft-404 page served with HTTP 200, or a
+  // channel front. Measured: 5 copies of الأهرام's «عفوا الصفحة…» and 34 fronts
+  // had been ingested over time. Scoped to the ingest filter's own rules, so
+  // nothing else is touched, and reported so the count is visible.
+  const before = rows.length;
+  const kept = rows.filter((r) => !isSectionPageTitle(r.title));
+  const purged = before - kept.length;
+  if (purged > 0) {
+    console.log(`[db] purged ${purged} non-article row(s): error pages and channel fronts`);
+    changed = true;
+  }
+  const out = kept.map((r) => {
     let row = r;
     // Re-classify when the category is missing, legacy 'general', or when the
     // stored label is `misc` under a source that now has real vocabulary. Without

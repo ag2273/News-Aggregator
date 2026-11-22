@@ -73,6 +73,39 @@ function parseDate(val: unknown): number {
  * Two rules, both narrow: the FIRST word before the outlet suffix is a
  * navigation word, or the whole title is just the outlet name.
  */
+/**
+ * A real 404 served with HTTP 200.
+ *
+ * Measured: `gate.ahram.org.eg/News/5671902` answers 200 with
+ * `<title>الصفحة غير موجودة</title>` and the RSS title is the error text, so the
+ * item looked like an ordinary article and was ingested five times. Narrow on
+ * purpose: a headline that merely says "صفحة جديدة في العلاقات…" is untouched.
+ */
+const ERROR_PAGE_TITLE = /عفوا الصفحة|الصفحة غير موجودة|الصفحة التي تحاول|page not found|\b404\b/i;
+
+/**
+ * Channel fronts that survived the navigation-word rule: an outlet's own section
+ * landing page, matched WITHOUT its " - Outlet" suffix.
+ *
+ * Each was verified by resolving its Google News link: they land on
+ * masrawy.com/, youm7.com/, arabhardware.net/companies/sony,
+ * style.ahram.org.eg/UI/Front/Search.aspx…, aitnews.com/latest-it-news/page/N.
+ * Deliberately an explicit list, not a pattern: "الكشف عن هاتف iPhone 17 |
+ * المواصفات كاملة" has the same shape and is a real story.
+ */
+const KNOWN_FRONTS: readonly string[] = [
+  'أهرام ستايل | بوابة المرأة المصرية',
+  'الأخبار التقنية - البوابة التقنية',
+  'Masrawy Home Page | مصراوي',
+  'اليوم السابع | Youm7',
+  'البوابة التقنية | مصدرك الأول للأخبار التقنية',
+  'CNBC العربية Breaking News | أخبار عاجلة',
+  'ازياء - أخبار السعودية | صحيفة عكاظ',
+  'العدد اليومي لصحيفة عكاظ | تصفح وتحميل النسخة الكاملة PDF',
+  'شركة سوني | Sony',
+  'العربية | أبرز الأخبار العالمية والمحلية العاجلة',
+];
+
 const SECTION_WORDS: readonly string[] = [
   'الرئيسية', 'الصفحة الرئيسية', 'مقالات', 'ألعاب', 'أخبار', 'فريق',
   'من نحن', 'اتصل بنا', 'تواصل معنا', 'سياسة الخصوصية', 'بيان الخصوصية',
@@ -80,8 +113,18 @@ const SECTION_WORDS: readonly string[] = [
   'archives', 'ارشيف', 'أرشيف', 'اتصل', 'اعلن معنا', 'أعلن معنا',
 ] as const;
 
+/** The title without Google News' trailing " - Outlet" suffix. */
+export function titleWithoutOutlet(title: string): string {
+  const i = title.lastIndexOf(' - ');
+  return (i > 20 ? title.slice(0, i) : title).trim();
+}
+
 export function isSectionPageTitle(title: string): boolean {
   const trimmed = title.trim();
+  // An error page is never a story, whatever its shape.
+  if (ERROR_PAGE_TITLE.test(trimmed)) return true;
+  // A verified channel front.
+  if (KNOWN_FRONTS.includes(titleWithoutOutlet(trimmed))) return true;
   // "الرئيسية - هاشتاق عربي - هاشتاق عربي": the suffix is appended by Google
   // News, so look at the first segment only.
   const head = trimmed.split(/\s+[-–|]\s+/)[0]?.trim() ?? trimmed;

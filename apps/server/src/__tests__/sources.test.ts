@@ -293,4 +293,48 @@ describe('sources: breaking stays off for new outlets', () => {
       expect(s.rssUrl).toMatch(/when:\d+d/);
     }
   });
+
+  it('rejects an error page served as a 200', () => {
+    // The item the user screenshotted: الأهرام's 404 answers HTTP 200 with the error
+    // text as its title, so it looked like an ordinary article.
+    expect(isSectionPageTitle('عفوا الصفحة التي تحاول الوصول اليها غير موجودة، حاول استخدام البحث - بوابة الأهرام')).toBe(true);
+    expect(isSectionPageTitle('الصفحة غير موجودة - بوابة الأهرام')).toBe(true);
+    expect(isSectionPageTitle('404 - some site')).toBe(true);
+    // ...but a real headline about a page in the news is untouched.
+    expect(isSectionPageTitle('صفحة جديدة في العلاقات المصرية السودانية')).toBe(false);
+    expect(isSectionPageTitle('افتتاح صفحة رسمية جديدة للشكاوى')).toBe(false);
+  });
+
+  it('rejects the two channel fronts that got through, and nothing else like them', () => {
+    // 'أهرام ستايل' and 'الأخبار التقنية' were verified by resolving their links:
+    // they land on style.ahram.org.eg/UI/Front/Search.aspx and
+    // aitnews.com/latest-it-news/page/N.
+    expect(isSectionPageTitle('أهرام ستايل | بوابة المرأة المصرية - Ahram Style')).toBe(true);
+    expect(isSectionPageTitle('الأخبار التقنية - البوابة التقنية')).toBe(true);
+    expect(isSectionPageTitle('Masrawy Home Page | مصراوي - Masrawy')).toBe(true);
+    // Same shape, genuinely an article.
+    expect(isSectionPageTitle('الكشف عن هاتف iPhone 17 | المواصفات كاملة والسعر! - Arabhardware')).toBe(false);
+    expect(isSectionPageTitle('إليك ألعاب شهر نوفمبر 2026| شهر إطلاق لعبة GTA 6 - Arabhardware')).toBe(false);
+  });
+
+  it('purges stored non-article rows on load, and only those', () => {
+    // The store really held 5 copies of the 404 page and 34 fronts. The migration
+    // must remove them and leave every real article alone.
+    insertArticles([
+      { id: 'junk-404', title: 'عفوا الصفحة التي تحاول الوصول اليها غير موجودة - بوابة الأهرام',
+        summary: null, imageUrl: null, url: 'https://e/1', sourceId: 'ahram',
+        sourceName: 'الأهرام', category: 'misc', country: 'EG', publishedAt: Date.now(), isBreaking: false },
+      { id: 'junk-front', title: 'أهرام ستايل | بوابة المرأة المصرية - Ahram Style',
+        summary: null, imageUrl: null, url: 'https://e/2', sourceId: 'ahram',
+        sourceName: 'الأهرام', category: 'egypt', country: 'EG', publishedAt: Date.now(), isBreaking: false },
+      { id: 'real-1', title: 'الكشف عن هاتف iPhone 17 | المواصفات كاملة - Arabhardware',
+        summary: null, imageUrl: null, url: 'https://e/3', sourceId: 'arabhardware',
+        sourceName: 'عرب هاردوير', category: 'tech', country: 'SA', publishedAt: Date.now(), isBreaking: false },
+    ]);
+    _resetDbCache();
+    const ids = getAllArticles().map((a) => a.id);
+    expect(ids).not.toContain('junk-404');
+    expect(ids).not.toContain('junk-front');
+    expect(ids).toContain('real-1');
+  });
 });
