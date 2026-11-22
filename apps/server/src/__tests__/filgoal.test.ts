@@ -153,6 +153,15 @@ describe('merging two sources', () => {
     expect(merged).toHaveLength(1);
   });
 
+  it('treats a missing space inside a club name as the same club', () => {
+    // «أيوبسبور» and «أيوب سبور» are one club, typed differently.
+    const merged = mergeDay(
+      [row({ dataSource: 'filgoal', home: 'طرابزون سبور', away: 'أيوبسبور' })],
+      [row({ id: 'y', dataSource: 'yallakora', home: 'طرابزون سبور', away: 'أيوب سبور' })],
+    );
+    expect(merged).toHaveLength(1);
+  });
+
   it('treats one source abbreviation and the full name as one fixture', () => {
     // Yallakora writes «ر.سانتاندير», FilGoal «راسينج سانتاندير». Same match, and
     // it was listed twice with two different scores on the same screen.
@@ -181,6 +190,12 @@ describe('competition names', () => {
     expect(canonicalCompetition('الكونفيدرالية الأفريقية')).toBe('كأس الكونفدرالية');
     expect(canonicalCompetition('كأس الكونفدرالية')).toBe('كأس الكونفدرالية');
     expect(canonicalCompetition('الدوري الإنجليزي الممتاز')).toBe('الدوري الإنجليزي');
+  });
+
+  it('folds the leagues the two sources name differently', () => {
+    // «الدوري التونسي» and «الرابطة التونسية المحترفة» are one league; two names
+    // for it put one fixture on the screen twice.
+    expect(canonicalCompetition('الدوري التونسي')).toBe(canonicalCompetition('الرابطة التونسية المحترفة'));
   });
 });
 

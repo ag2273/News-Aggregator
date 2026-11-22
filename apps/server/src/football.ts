@@ -573,6 +573,17 @@ export function canonicalCompetition(name: string): string {
   if (/الدوري الفرنسي/.test(n)) return 'الدوري الفرنسي';
   if (/الدوري السعودي/.test(n)) return 'الدوري السعودي';
   if (/الدوري المصري/.test(n)) return 'الدوري المصري';
+  // The two sources name the same league differently («الدوري التونسي» and
+  // «الرابطة التونسية المحترفة»). Without folding them, one fixture arrived twice
+  // under two competition names.
+  if (/التونسي|التونسيه/.test(n)) return 'الدوري التونسي';
+  if (/الجزائري|الجزائريه/.test(n)) return 'الدوري الجزائري';
+  if (/المغربي|المغربيه/.test(n)) return 'الدوري المغربي';
+  if (/الاماراتي|الاماراتيه/.test(n)) return 'الدوري الإماراتي';
+  if (/القطري|القطريه/.test(n)) return 'دوري نجوم قطر';
+  if (/الاردني|الاردنيه/.test(n)) return 'الدوري الأردني';
+  if (/العراقي|العراقيه/.test(n)) return 'الدوري العراقي';
+  if (/السوري|السوريه/.test(n)) return 'الدوري السوري';
   return name;
 }
 

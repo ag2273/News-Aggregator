@@ -240,6 +240,17 @@ export function dropInitials(normalized: string): string {
 }
 
 /**
+ * Remove the spaces inside a club name.
+ *
+ * One source writes «أيوبسبور» and the other «أيوب سبور»; the space is not part
+ * of the name, only of how it is typed. Squashing it makes the two agree, and it
+ * cannot merge two different clubs because the letters must still match exactly.
+ */
+export function squashSpacing(normalized: string): string {
+  return normalized.replace(/\s+/g, '');
+}
+
+/**
  * Are two match keys the same fixture under different spellings?
  *
  * Compares the competition and, for each side, whether one name's words are a
@@ -263,16 +274,12 @@ export function sameFixture(a: string, b: string): boolean {
 
   const match = (x: string, y: string): boolean => {
     if (x === y) return true;
-    // Any word of two letters or more counts: «سانتاندير» is a whole club name on
-    // its own after the initial is dropped, and it must still match «راسينج
-    // سانتاندير». Single letters are ignored because they are abbreviations.
-    const wx = x.split(' ').filter((w) => w.length >= 2);
-    const wy = y.split(' ').filter((w) => w.length >= 2);
-    if (!wx.length || !wy.length) return false;
-    // Every long word of the shorter name must appear in the other one.
-    const shorter = wx.length <= wy.length ? wx : wy;
-    const longer = wx.length <= wy.length ? wy : wx;
-    return shorter.every((w) => longer.includes(w));
+    // Keys are space-squashed, so a substring test IS the word test here:
+    // «سانتاندير» is inside «راسينجسانتاندير». Requires at least four characters so
+    // a short fragment cannot claim a match.
+    if (x.length >= 4 && y.includes(x)) return true;
+    if (y.length >= 4 && x.includes(y)) return true;
+    return false;
   };
   const forward = match(sidesA[0]!, sidesB[0]!) && match(sidesA[1]!, sidesB[1]!);
   const swapped = match(sidesA[0]!, sidesB[1]!) && match(sidesA[1]!, sidesB[0]!);
@@ -299,16 +306,18 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
     // Yallakora writes «إسبانيا» and «ماينز». Without stripping those, one
     // fixture appeared twice with two different scores on the same screen.
     const clean = (name: string): string =>
-      dropInitials(
-        normalizeTeam(
-          name
-            .replace(/\s*\|\s*تحت\s*\d+\s*$/, '')
-            .replace(/\s*تحت\s*\d+\s*$/, '')
-            // A trailing founding-year suffix («05», «04») is part of the club's
-            // registered name, not a different club.
-            .replace(/\s+0?[1-9]\d?$/, '')
-            .replace(/\s+/g, ' ')
-            .trim(),
+      squashSpacing(
+        dropInitials(
+          normalizeTeam(
+            name
+              .replace(/\s*\|\s*تحت\s*\d+\s*$/, '')
+              .replace(/\s*تحت\s*\d+\s*$/, '')
+              // A trailing founding-year suffix («05», «04») is part of the club's
+              // registered name, not a different club.
+              .replace(/\s+0?[1-9]\d?$/, '')
+              .replace(/\s+/g, ' ')
+              .trim(),
+          ),
         ),
       );
     // Home and away are meaningful for the fixture, but a provider can list them
