@@ -658,6 +658,9 @@ export interface FootballMatch {
   competitionPriority?: number;
   /** Broadcasting channel, when the source names one. */
   channel?: string | null;
+  /** Crest URL on OUR server (`/api/football/logo/...`), never a source URL. */
+  homeLogo?: string | null;
+  awayLogo?: string | null;
   /** Stadium, when the source names one. */
   stadium?: string | null;
 }
@@ -677,6 +680,8 @@ export interface MatchesDay {
 export interface StandingRow {
   position: number;
   team: string;
+  /** Crest on our own server, when the source has one. */
+  logo?: string | null;
   played: number;
   won: number;
   drawn: number;
@@ -905,4 +910,11 @@ export async function setLeagueNotify(
   );
   if (!res.ok) throw await apiError(res);
   return ((await res.json()) as { data: { league: LeagueFollow } }).data.league;
+}
+
+/** Absolute URL for a crest served by our own API. */
+export function logoUrl(pathOrNull: string | null | undefined): string | null {
+  if (!pathOrNull) return null;
+  if (/^https?:/i.test(pathOrNull)) return pathOrNull;
+  return `${API_BASE}${pathOrNull}`;
 }

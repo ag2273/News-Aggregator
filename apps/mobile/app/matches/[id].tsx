@@ -16,6 +16,7 @@ import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { useArticleSheet } from '../../components/ArticleSheet';
+import { TeamCrest } from '../../components/TeamCrest';
 import {
   fetchMatch,
   fetchTeamFollows,
@@ -134,9 +135,7 @@ export default function MatchCenterScreen() {
             {/* Hero scoreboard, as the spec asks: wide, dark, 28dp corners. */}
             <View style={[styles.hero, { backgroundColor: t.surface }]}>
               <View style={styles.heroSide}>
-                <View style={[styles.crest, { backgroundColor: t.pillInactiveBg }]}>
-                  <Ionicons name="shield-outline" size={22} color={t.textMuted} />
-                </View>
+                <TeamCrest logo={match.homeLogo} name={match.home} size={48} t={t} />
                 <Text style={[styles.heroTeam, { color: t.textPrimary }]} numberOfLines={1}>{match.home}</Text>
               </View>
               <View style={styles.heroCenter}>
@@ -151,9 +150,7 @@ export default function MatchCenterScreen() {
                 {match.round ? <Text style={[styles.heroRound, { color: t.textMuted }]}>{match.round}</Text> : null}
               </View>
               <View style={styles.heroSide}>
-                <View style={[styles.crest, { backgroundColor: t.pillInactiveBg }]}>
-                  <Ionicons name="shield-outline" size={22} color={t.textMuted} />
-                </View>
+                <TeamCrest logo={match.awayLogo} name={match.away} size={48} t={t} />
                 <Text style={[styles.heroTeam, { color: t.textPrimary }]} numberOfLines={1}>{match.away}</Text>
               </View>
             </View>

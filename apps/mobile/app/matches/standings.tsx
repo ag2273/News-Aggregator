@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
+import { TeamCrest } from '../../components/TeamCrest';
 import {
   FALLBACK_COMPETITIONS,
   fetchCompetitions,
@@ -152,9 +153,15 @@ export default function StandingsScreen() {
                 >
                   {zone ? <View style={[styles.zone, { backgroundColor: zone }]} /> : null}
                   <Text style={[styles.td, styles.colPos, { color: t.textSecondary }]}>{r.position}</Text>
-                  <Text style={[styles.td, styles.colTeam, { color: t.textPrimary, fontWeight: isFollowed ? '800' : '500' }]} numberOfLines={1}>
-                    {r.team}
-                  </Text>
+                  <View style={styles.teamCell}>
+                    <TeamCrest logo={r.logo} name={r.team} size={18} t={t} />
+                    <Text
+                      style={[styles.td, styles.colTeamName, { color: t.textPrimary, fontWeight: isFollowed ? '800' : '500' }]}
+                      numberOfLines={1}
+                    >
+                      {r.team}
+                    </Text>
+                  </View>
                   <Text style={[styles.td, styles.colNum, { color: t.textSecondary }]}>{r.played}</Text>
                   {fullRecord ? (
                     <>
@@ -201,6 +208,8 @@ const styles = StyleSheet.create({
   td: { fontSize: 12 },
   colPos: { width: 22, textAlign: 'center' },
   colTeam: { flex: 1, marginEnd: 6 },
+  teamCell: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7, marginEnd: 6 },
+  colTeamName: { flexShrink: 1 },
   colNum: { width: 26, textAlign: 'center', fontVariant: ['tabular-nums'] },
   note: { fontSize: 10, lineHeight: 17, marginTop: 12 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 28 },

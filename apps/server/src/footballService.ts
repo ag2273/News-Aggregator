@@ -65,6 +65,12 @@ export function fromFilGoal(rows: FilGoalMatch[]): MatchRow[] {
     channel: r.channel,
     stadium: r.stadium,
     providerMatchId: r.matchId,
+    homeTeamId: r.homeTeamId,
+    awayTeamId: r.awayTeamId,
+    // The app asks us for a team id and we serve cached bytes; it never sees the
+    // source URL, so nothing hotlinks.
+    homeLogo: r.homeLogo ? `/api/football/logo/filgoal:${r.homeTeamId}` : null,
+    awayLogo: r.awayLogo ? `/api/football/logo/filgoal:${r.awayTeamId}` : null,
   }));
 }
 

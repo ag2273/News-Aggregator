@@ -97,6 +97,19 @@ export interface MatchRow {
   stadium?: string | null;
   /** The provider's own match id, when it has one (FilGoal does). */
   providerMatchId?: string | null;
+  /** The provider's team id for each side, stable across matches. */
+  homeTeamId?: string | null;
+  awayTeamId?: string | null;
+  /**
+   * Club crest URL, served from our own cache.
+   *
+   * Measured: FilGoal's day page carries one per team
+   * (`//semedia.filgoal.com/Photos/Team/Medium/<id>.png`, PNG 200x200, ~8KB) next
+   * to the team link, so it costs no extra request. The app never hotlinks it —
+   * the server caches and serves the image.
+   */
+  homeLogo?: string | null;
+  awayLogo?: string | null;
 }
 
 export interface StandingRow {
@@ -109,6 +122,12 @@ export interface StandingRow {
   goalsFor: number;
   goalsAgainst: number;
   points: number;
+  /** Provider team id, when the table links one (Yallakora does). */
+  teamId?: string | null;
+  /** Crest, served from our own cache. Null when the source has none. */
+  logo?: string | null;
+  /** Where that crest comes from, so the cache route can fetch it. Not sent to the app. */
+  logoSource?: string | null;
 }
 
 export interface StandingsTable {
@@ -325,13 +344,18 @@ function groupOf(html: string, at: number): string | null {
  */
 export function parseFullStandings(html: string, competitionId: string): StandingsTable[] {
   const rows: StandingRow[] = [];
+  const idByTeam = teamIdsFrom(html);
   for (const row of parseWrows(html)) {
     if (row.cells.length < 7) continue;
     const n = row.cells.map((c) => (c === '' ? 0 : Number(c)));
     if (n.some((x) => !Number.isFinite(x))) continue;
+    const meta = idByTeam.get(row.team);
     rows.push({
       position: row.position ? Number(row.position) : rows.length + 1,
       team: row.team,
+      teamId: meta?.id ?? null,
+      logo: meta?.id ? `/api/football/logo/yallakora:${meta.id}` : null,
+      logoSource: meta?.logo ?? null,
       played: n[0]!,
       won: n[1]!,
       drawn: n[2]!,
@@ -347,6 +371,27 @@ export function parseFullStandings(html: string, competitionId: string): Standin
 }
 
 /**
+ * Team id and crest per team name, from the links in a standings table.
+ *
+ * The table's own row markup carries `/…/team/<id>/…` and an `<img>`, so a crest
+ * costs no extra request here either.
+ */
+export function teamIdsFrom(html: string): Map<string, { id: string; logo: string | null }> {
+  const out = new Map<string, { id: string; logo: string | null }>();
+  for (const m of html.matchAll(
+    /<a href="[^"]*\/team\/(\d+)\/[^"]*"[\s\S]{0,600}?<img[^>]+src="([^"]+)"/g,
+  )) {
+    const id = m[1]!;
+    const logo = m[2]!.startsWith('//') ? `https:${m[2]}` : m[2]!;
+    // The name is the <p> that follows in the same anchor.
+    const tail = html.slice(m.index, m.index + 900);
+    const name = (tail.match(/<p[^>]*>([^<]+)<\/p>/) ?? [])[1]?.trim();
+    if (name && !out.has(name)) out.set(name, { id, logo });
+  }
+  return out;
+}
+
+/**
  * Standings from a `/tour/<id>` page: 4 columns (played, for, against, points).
  *
  * This is the only real table for the Egyptian league, and the league-phase table
@@ -356,6 +401,8 @@ export function parseYallakoraStandings(html: string, competitionId: string): St
   const positions: number[] = [];
   for (const m of html.matchAll(/<div class="wRow"/g)) positions.push(m.index!);
   const byGroup = new Map<string | null, StandingRow[]>();
+  // Built once: the table can have 36 rows and the lookup is by name.
+  const ids = teamIdsFrom(html);
   positions.forEach((at, i) => {
     const block = html.slice(at, positions[i + 1] ?? at + 4000);
     const team = (block.match(/class="item team">[\s\S]{0,900}?<p[^>]*>([^<]+)<\/p>/) ?? [])[1];
@@ -364,9 +411,13 @@ export function parseYallakoraStandings(html: string, competitionId: string): St
     if (cells.length < 4 || cells.some((x) => !Number.isFinite(x))) return;
     const group = groupOf(html, at);
     const list = byGroup.get(group) ?? [];
+    const meta = ids.get(team.trim());
     list.push({
       position: list.length + 1,
       team: team.trim(),
+      teamId: meta?.id ?? null,
+      logo: meta?.id ? `/api/football/logo/yallakora:${meta.id}` : null,
+      logoSource: meta?.logo ?? null,
       played: cells[0]!,
       goalsFor: cells[1]!,
       goalsAgainst: cells[2]!,

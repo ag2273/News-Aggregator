@@ -143,6 +143,7 @@ import {
   unfollowTeam,
 } from './footballStore.js';
 import { pollFootball } from './footballPush.js';
+import { crestCacheStats, getCrest, registerLogoSource } from './crests.js';
 import { privacyCopy, privacyLang, renderPrivacyPage } from './privacy.js';
 import {
   DIGEST_SLOTS,
@@ -1421,10 +1422,20 @@ app.get('/api/football/matches', async (c) => {
         })),
       // Each row carries its competition's rank, so a screen that groups them can
       // render in served order without holding a copy of the priority map.
-      matches: day.matches.map((m) => ({
-        ...m,
-        competitionPriority: competitionOf(m.competitionId)?.priority ?? 99,
-      })),
+      matches: day.matches.map((m) => {
+        // Remember where each crest comes from, so the logo route can fetch and
+        // cache the bytes without the app ever knowing a source URL.
+        if (m.homeTeamId && m.dataSource === 'filgoal') {
+          logoSources.set(`filgoal:${m.homeTeamId}`, `https://semedia.filgoal.com/Photos/Team/Medium/${m.homeTeamId}.png`);
+        }
+        if (m.awayTeamId && m.dataSource === 'filgoal') {
+          logoSources.set(`filgoal:${m.awayTeamId}`, `https://semedia.filgoal.com/Photos/Team/Medium/${m.awayTeamId}.png`);
+        }
+        return {
+          ...m,
+          competitionPriority: competitionOf(m.competitionId)?.priority ?? 99,
+        };
+      }),
     },
   });
 });
@@ -1486,12 +1497,25 @@ app.get('/api/football/standings', async (c) => {
   const competitionId = (c.req.query('competition') ?? 'egyptian-premier').trim();
   if (!competitionOf(competitionId)) return c.json({ error: 'unknown competition' }, 400);
   const entry = await loadStandings(competitionId);
+  // Standings rows carry a crest key; remember its real URL so the logo route can
+  // fetch and cache it. FilGoal's are derived from the team id, Yallakora's are not.
+  for (const table of entry.tables) {
+    for (const row of table.rows) {
+      if (row.logo && row.teamId) {
+        const key = row.logo.split('/').pop();
+        if (key) registerLogoSource(key, row.logoSource ?? null);
+      }
+    }
+  }
   return c.json({
     data: {
       competitionId,
       unavailable: entry.unavailable,
       fetchedAt: entry.fetchedAt,
-      tables: entry.tables,
+      tables: entry.tables.map((table) => ({
+        ...table,
+        rows: table.rows.map(({ logoSource: _internal, ...row }) => row),
+      })),
     },
   });
 });
@@ -1613,7 +1637,28 @@ app.put('/api/football/follows/:team/notify', async (c) => {
   return c.json({ data: { follow: updated } });
 });
 
-app.get('/health', (c) => c.json({ ok: true }));
+/**
+ * Team crests, served from our own cache.
+ *
+ * The app is given `/api/football/logo/<key>`, never a source URL, so a crest is
+ * always our bytes. `key` is `provider:teamId`, and the source URL for each key is
+ * carried on the match rows we already serve.
+ */
+const logoSources = new Map<string, string>();
+
+app.get('/api/football/logo/:key', async (c) => {
+  const key = c.req.param('key');
+  const sourceUrl = logoSources.get(key) ?? null;
+  const crest = await getCrest({ key, sourceUrl });
+  if (!crest) return c.body(null, 404);
+  return c.body(new Uint8Array(crest.buffer), 200, {
+    'Content-Type': crest.contentType,
+    // Crests change rarely; a day is polite and keeps the screen fast.
+    'Cache-Control': 'public, max-age=86400',
+  });
+});
+
+app.get('/health', (c) => c.json({ ok: true, crestCache: crestCacheStats() }));
 
 const PORT = Number(process.env['PORT'] ?? 3001);
 if (process.env['NODE_ENV'] !== 'test') {

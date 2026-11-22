@@ -63,6 +63,12 @@ export interface FilGoalMatch {
   stadium: string | null;
   channel: string | null;
   url: string;
+  /** Provider team ids, from the team links in the same block. */
+  homeTeamId: string | null;
+  awayTeamId: string | null;
+  /** Crest URLs as the page states them (protocol-relative). */
+  homeLogo: string | null;
+  awayLogo: string | null;
 }
 
 /** The day list only: strip the featured strip and the side column. */
@@ -173,6 +179,21 @@ export function parseFilGoalBlock(block: string, competitionName = ''): FilGoalM
 
   const href = (block.match(/href="(\/matches\/\d+[^"]*)"/) ?? [])[1];
 
+  // Team id and crest are on the team links inside the home and away rows: every
+  // day page carries them, so a logo costs no extra request.
+  const sideData = (side: 'f' | 's'): { id: string | null; logo: string | null } => {
+    const open = block.indexOf(`<div class="${side}">`);
+    if (open < 0) return { id: null, logo: null };
+    const rest = block.slice(open);
+    const end = rest.search(/<div class="(?:m|s|match-aux)">/);
+    const frag = end > 0 ? rest.slice(0, end) : rest.slice(0, 900);
+    const id = (frag.match(/href="\/teams\/(\d+)\//) ?? [])[1] ?? null;
+    const logo = (frag.match(/data-src="([^"]*(?:Team|team)[^"]*\.(?:png|webp|jpg))"/) ?? [])[1] ?? null;
+    return { id, logo: logo ? (logo.startsWith('//') ? `https:${logo}` : logo) : null };
+  };
+  const homeSide = sideData('f');
+  const awaySide = sideData('s');
+
   return {
     matchId,
     // Two lookups, because the champion id alone is incomplete: the page also
@@ -195,6 +216,10 @@ export function parseFilGoalBlock(block: string, competitionName = ''): FilGoalM
     stadium,
     channel: filGoalChannel(channelRaw),
     url: href ? `${FILGOAL_BASE}${href.split('?')[0]}` : '',
+    homeTeamId: homeSide.id,
+    awayTeamId: awaySide.id,
+    homeLogo: homeSide.logo,
+    awayLogo: awaySide.logo,
   };
 }
 

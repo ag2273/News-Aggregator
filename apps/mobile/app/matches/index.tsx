@@ -26,6 +26,7 @@ import {
   type MatchesDay,
 } from '../../lib/api';
 import { cairoDay, ribbonLabel } from '../../lib/dates';
+import { TeamCrest } from '../../components/TeamCrest';
 
 type Filter = 'all' | 'live' | 'followed' | 'finished' | 'upcoming';
 
@@ -222,9 +223,12 @@ export default function MatchesScreen() {
         accessibilityLabel={`${m.home} ضد ${m.away}`}
       >
         <View style={styles.cardTop}>
-          <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
-            {m.home}
-          </Text>
+          <View style={styles.teamCell}>
+            <TeamCrest logo={m.homeLogo} name={m.home} size={22} t={t} />
+            <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
+              {m.home}
+            </Text>
+          </View>
           <View style={styles.scoreWrap}>
             {m.homeScore === null || m.awayScore === null ? (
               <Text style={[styles.kickoff, { color: t.textSecondary }]}>{m.kickoff ?? '—'}</Text>
@@ -237,9 +241,12 @@ export default function MatchesScreen() {
               {isLive && m.minute ? `${m.minute}'` : m.statusText}
             </Text>
           </View>
-          <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
-            {m.away}
-          </Text>
+          <View style={styles.teamCell}>
+            <TeamCrest logo={m.awayLogo} name={m.away} size={22} t={t} />
+            <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
+              {m.away}
+            </Text>
+          </View>
         </View>
         {isLive ? (
           <View style={styles.liveDotRow}>
@@ -489,7 +496,8 @@ const styles = StyleSheet.create({
   // last resort, not the first thing that happens.
   // Two lines, so «رويال يونيون سان جيلواز» fits on a 360dp phone instead of
   // ending in an ellipsis at 113px. Long names are the norm in Arabic coverage.
-  team: { flex: 1, flexShrink: 1, fontSize: 13, fontWeight: '600', textAlign: 'center', lineHeight: 19 },
+  teamCell: { flex: 1, flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  team: { flexShrink: 1, fontSize: 13, fontWeight: '600', lineHeight: 19 },
   scoreWrap: { alignItems: 'center', width: 68 },
   score: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   kickoff: { fontSize: 14, fontWeight: '700' },
