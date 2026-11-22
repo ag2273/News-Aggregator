@@ -89,7 +89,15 @@ export default function StandingsScreen() {
           <View style={styles.headerBtn} />
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+        {/* Eleven competitions cannot share a phone width, so this strip scrolls —
+            but it needs its own height, or it is squeezed and the selected tab is
+            clipped at the top (measured: the active chip was cut in half). */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.strip}
+          contentContainerStyle={styles.tabs}
+        >
           {competitions.map((x) => (
             <TouchableOpacity
               key={x.id}
@@ -180,6 +188,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 4 },
   headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 18, fontWeight: '700' },
+  strip: { flexGrow: 0, flexShrink: 0 },
   tabs: { gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
   tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
   tabText: { fontSize: 12, fontWeight: '600' },
