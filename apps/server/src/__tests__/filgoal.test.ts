@@ -151,6 +151,25 @@ describe('merging two sources', () => {
     );
     expect(merged).toHaveLength(1);
   });
+
+  it('treats one source abbreviation and the full name as one fixture', () => {
+    // Yallakora writes «ر.سانتاندير», FilGoal «راسينج سانتاندير». Same match, and
+    // it was listed twice with two different scores on the same screen.
+    const merged = mergeDay(
+      [row({ dataSource: 'filgoal', home: 'راسينج سانتاندير', away: 'ريال سوسيداد', competitionName: 'الدوري الإسباني' })],
+      [row({ id: 'y', dataSource: 'yallakora', home: 'ر.سانتاندير', away: 'ريال سوسيداد', competitionName: 'الدوري الإسباني' })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.dataSource).toBe('filgoal');
+  });
+
+  it('does not merge two different clubs that share a word', () => {
+    const merged = mergeDay(
+      [row({ home: 'ريال مدريد', away: 'برشلونة', competitionName: 'الدوري الإسباني' })],
+      [row({ id: 'y', home: 'ريال سوسيداد', away: 'برشلونة', competitionName: 'الدوري الإسباني' })],
+    );
+    expect(merged).toHaveLength(2);
+  });
 });
 
 describe('competition names', () => {

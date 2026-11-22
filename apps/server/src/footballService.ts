@@ -201,6 +201,62 @@ export function standingsRows(tables: StandingsTable[]): StandingsTable[] {
 }
 
 /**
+ * Drop a one-letter initial from a club name.
+ *
+ * One source abbreviates a club to its initial («ر.سانتاندير») where the other
+ * writes it out («راسينج سانتاندير»). Normalisation turns the dot into a space, so
+ * the initial arrives as its own token. Without this the same fixture was listed
+ * twice with two different scores. Two-letter tokens are kept: «أبو قير» and «زد»
+ * are real names.
+ */
+export function dropInitials(normalized: string): string {
+  const tokens = normalized.split(' ').filter(Boolean);
+  if (tokens.length < 2) return normalized;
+  const kept = tokens.filter((t, i) => !(t.length === 1 && i < tokens.length - 1));
+  return kept.join(' ');
+}
+
+/**
+ * Are two match keys the same fixture under different spellings?
+ *
+ * Compares the competition and, for each side, whether one name's words are a
+ * subset of the other's — «سانتاندير» is inside «راسينج سانتاندير». Deliberately
+ * conservative: a shared generic word is not enough, there must be a whole word
+ * of one name present in the other, and the clubs must not both be different.
+ */
+export function sameFixture(a: string, b: string): boolean {
+  // The key is `competition|side|side`. Slicing the first field off rather than
+  // destructuring two: destructuring dropped the second side entirely, so every
+  // key looked like a single-team key and nothing ever matched.
+  const partsA = a.split('|');
+  const partsB = b.split('|');
+  if (partsA.length < 3 || partsB.length < 3) return false;
+  if (partsA[0] !== partsB[0]) return false;
+  const sidesA = partsA.slice(1);
+  const sidesB = partsB.slice(1);
+  if (sidesA.length !== 2 || sidesB.length !== 2) return false;
+  // The key already ordered the pair, so compare in the same order on both sides:
+  // each name from one key must have a partner in the other, either position.
+
+  const match = (x: string, y: string): boolean => {
+    if (x === y) return true;
+    // Any word of two letters or more counts: «سانتاندير» is a whole club name on
+    // its own after the initial is dropped, and it must still match «راسينج
+    // سانتاندير». Single letters are ignored because they are abbreviations.
+    const wx = x.split(' ').filter((w) => w.length >= 2);
+    const wy = y.split(' ').filter((w) => w.length >= 2);
+    if (!wx.length || !wy.length) return false;
+    // Every long word of the shorter name must appear in the other one.
+    const shorter = wx.length <= wy.length ? wx : wy;
+    const longer = wx.length <= wy.length ? wy : wx;
+    return shorter.every((w) => longer.includes(w));
+  };
+  const forward = match(sidesA[0]!, sidesB[0]!) && match(sidesA[1]!, sidesB[1]!);
+  const swapped = match(sidesA[0]!, sidesB[1]!) && match(sidesA[1]!, sidesB[0]!);
+  return forward || swapped;
+}
+
+/**
  * Merge two days of fixtures, preferring the first source for a real duplicate.
  *
  * A match is the same match when the two team names normalise to the same pair,
@@ -210,21 +266,33 @@ export function standingsRows(tables: StandingsTable[]): StandingsTable[] {
  * show a goal that one source has not reported.
  */
 export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[] {
+  // The two sources can disagree on a live score (measured: أوجسبورج × ماينز was
+  // 0-0 on one and 0-5 on the other at the same minute). We show the preferred
+  // source whole, but the disagreement is logged rather than hidden: a silent
+  // choice between two published scores is how a wrong score gets shipped.
   const key = (m: MatchRow): string => {
     // The two sources name some clubs differently, and the difference is only
     // in the qualifier: FilGoal writes «إسبانيا | تحت 17» and «ماينز 05», where
     // Yallakora writes «إسبانيا» and «ماينز». Without stripping those, one
     // fixture appeared twice with two different scores on the same screen.
     const clean = (name: string): string =>
-      normalizeTeam(
-        name
-          .replace(/\s*\|\s*تحت\s*\d+\s*$/, '')
-          .replace(/\s*تحت\s*\d+\s*$/, '')
-          // A trailing founding-year suffix («05», «04») is part of the club's
-          // registered name, not a different club.
-          .replace(/\s+0?[1-9]\d?$/, ''),
+      dropInitials(
+        normalizeTeam(
+          name
+            .replace(/\s*\|\s*تحت\s*\d+\s*$/, '')
+            .replace(/\s*تحت\s*\d+\s*$/, '')
+            // A trailing founding-year suffix («05», «04») is part of the club's
+            // registered name, not a different club.
+            .replace(/\s+0?[1-9]\d?$/, '')
+            .replace(/\s+/g, ' ')
+            .trim(),
+        ),
       );
-    const pair = [clean(m.home), clean(m.away)].sort();
+    // Home and away are meaningful for the fixture, but a provider can list them
+    // the other way round, so the PAIR is ordered — not each side's words. (The
+    // earlier version sorted each name's words, which made «راسينج سانتاندير» and
+    // «سانتاندير» different keys.)
+    const pair = [`${clean(m.home)}`, `${clean(m.away)}`].sort();
     // The competition is part of the key: two clubs can meet in the league and in
     // a cup on different days, and merging those would lose one tournament.
     return `${canonicalCompetition(m.competitionName)}|${pair.join('|')}`;
@@ -234,7 +302,28 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
   for (const m of fallback) {
     const k = key(m);
     if (seen.has(k)) continue;
+    // Exact key first. If that misses, the two sources may still be naming the
+    // same fixture differently — «سانتاندير» against «راسينج سانتاندير» — so a
+    // fuzzy check on the same competition and the same distinctive words runs
+    // before the row is kept as a separate match.
+    const near = [...seen.entries()].find(([existingKey]) => sameFixture(existingKey, k));
+    if (near) continue;
     seen.set(k, { ...m, competitionName: canonicalCompetition(m.competitionName) });
+  }
+  for (const [k, kept] of seen) {
+    const other = fallback.find((m) => key(m) === k);
+    if (!other || other === kept) continue;
+    const differs =
+      kept.homeScore !== other.homeScore ||
+      kept.awayScore !== other.awayScore ||
+      kept.status !== other.status;
+    if (differs) {
+      console.warn(
+        `[football] sources disagree on ${kept.home} v ${kept.away}: ` +
+          `${kept.dataSource} ${kept.homeScore}-${kept.awayScore} (${kept.status}) vs ` +
+          `${other.dataSource} ${other.homeScore}-${other.awayScore} (${other.status})`,
+      );
+    }
   }
   // A stable, readable order: Egyptian first, then by competition name, then time.
   return [...seen.values()].sort((a, b) => {

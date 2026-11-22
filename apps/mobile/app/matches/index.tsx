@@ -172,7 +172,12 @@ export default function MatchesScreen() {
         </View>
 
         {/* Date ribbon: seven days, today highlighted. */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ribbon}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.strip}
+          contentContainerStyle={styles.ribbon}
+        >
           {[-3, -2, -1, 0, 1, 2, 3].map((off) => (
             <TouchableOpacity
               key={off}
@@ -192,7 +197,12 @@ export default function MatchesScreen() {
         </ScrollView>
 
         {/* Status filters with live counts. */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.strip}
+          contentContainerStyle={styles.filters}
+        >
           {FILTERS.map((f) => {
             const count =
               f.id === 'live' ? liveCount : f.id === 'followed' ? followedCount : 0;
@@ -295,6 +305,10 @@ const styles = StyleSheet.create({
   headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
   title: { fontSize: 19, fontWeight: '700' },
+  // A horizontal strip must have its own height. Without it, a ScrollView inside
+  // a column flex container either swallows the leftover space (RN-web stretched
+  // the day ribbon to 300px) or collapses to nothing (the filter row vanished).
+  strip: { flexGrow: 0, flexShrink: 0 },
   ribbon: { paddingHorizontal: 12, gap: 8, paddingVertical: 10 },
   ribbonItem: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
   ribbonText: { fontSize: 12, fontWeight: '600' },
