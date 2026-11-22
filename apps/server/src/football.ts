@@ -230,7 +230,11 @@ export function parseEspnScoreboard(json: unknown, competition: Competition): Ma
     const state = String(competitionBlock['status']?.['type']?.['state'] ?? '');
     const detail = String(competitionBlock['status']?.['type']?.['detail'] ?? '');
     const clock = competitionBlock['status']?.['displayClock'];
+    // ESPN sends "0" for a match that has not started: report null instead, so
+    // the app shows a kickoff time rather than a false 0-0.
+    const finished = state === 'post';
     const score = (c: Record<string, any> | undefined): number | null => {
+      if (!finished && state !== 'in') return null;
       const raw = c?.['score'];
       return typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : null;
     };
@@ -243,7 +247,9 @@ export function parseEspnScoreboard(json: unknown, competition: Competition): Ma
       homeScore: score(home),
       awayScore: score(away),
       status: state === 'in' ? 'live' : state === 'post' ? 'finished' : 'upcoming',
-      statusText: detail || state,
+      // Arabic, like every other user-visible string: the app never renders the
+      // English "Sun, November 22nd at 9:00 AM EST" ESPN sends.
+      statusText: state === 'in' ? 'مباشر' : state === 'post' ? 'انتهت' : 'لم تبدأ',
       kickoff: String(event['date'] ?? '').slice(11, 16) || null,
       round: null,
       minute: state === 'in' && typeof clock === 'string' ? Number(clock.replace(/[^\d]/g, '')) || null : null,

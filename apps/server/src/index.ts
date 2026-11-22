@@ -123,6 +123,20 @@ import {
 } from './adminStats.js';
 import { userCounts } from './users.js';
 import { getAllArticles } from './db.js';
+import {
+  competitionOf,
+  loadDay,
+  loadStandings,
+  relatedNews,
+  todayCairo,
+} from './footballService.js';
+import { COMPETITIONS } from './football.js';
+import {
+  followTeam,
+  getTeamFollows,
+  setTeamNotify,
+  unfollowTeam,
+} from './footballStore.js';
 import { privacyCopy, privacyLang, renderPrivacyPage } from './privacy.js';
 import {
   DIGEST_SLOTS,
@@ -1329,6 +1343,131 @@ app.post('/api/digest/build', async (c) => {
   }
   const result = await digestTick({ hasSlot: () => false });
   return c.json({ data: result });
+});
+
+
+// --- Football: matches, standings, team follows ---
+
+/** Public: what we cover, so the app can render the competition tabs. */
+app.get('/api/football/competitions', (c) =>
+  c.json({
+    data: COMPETITIONS.map((x) => ({
+      id: x.id,
+      nameAr: x.nameAr,
+      country: x.country,
+      provider: x.provider,
+    })),
+  }),
+);
+
+/**
+ * Matches for one Cairo day. `date` is YYYY-MM-DD; `unavailable` is honest when
+ * the source could not be read, and the app shows «غير متاح» for that day.
+ */
+app.get('/api/football/matches', async (c) => {
+  const date = (c.req.query('date') ?? todayCairo()).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return c.json({ error: 'date must be YYYY-MM-DD' }, 400);
+  }
+  const day = await loadDay(date);
+  // A signed-in reader also gets their followed teams marked, so the app can pin
+  // them without a second round trip.
+  const userId = extractUserId(c.req.header('Authorization'));
+  const follows = userId ? getTeamFollows(userId).map((f) => f.name) : [];
+  return c.json({
+    data: {
+      date: day.date,
+      unavailable: day.unavailable,
+      fetchedAt: day.fetchedAt,
+      followedTeams: follows,
+      matches: day.matches,
+    },
+  });
+});
+
+/** One match, with the news our own corpus holds about its two teams. */
+app.get('/api/football/matches/:id', async (c) => {
+  const id = c.req.param('id');
+  const date = (c.req.query('date') ?? todayCairo()).trim();
+  const day = await loadDay(date);
+  const match = day.matches.find((m) => m.id === id);
+  if (!match) return c.json({ error: 'match not found' }, 404);
+  return c.json({
+    data: {
+      match,
+      news: relatedNews(match.home, match.away),
+      unavailable: day.unavailable,
+    },
+  });
+});
+
+/** Standings for one competition; `unavailable` when the source refused. */
+app.get('/api/football/standings', async (c) => {
+  const competitionId = (c.req.query('competition') ?? 'egyptian-premier').trim();
+  if (!competitionOf(competitionId)) return c.json({ error: 'unknown competition' }, 400);
+  const entry = await loadStandings(competitionId);
+  return c.json({
+    data: {
+      competitionId,
+      unavailable: entry.unavailable,
+      fetchedAt: entry.fetchedAt,
+      tables: entry.tables,
+    },
+  });
+});
+
+/** The caller's followed teams. */
+app.get('/api/football/follows', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ data: { teams: getTeamFollows(userId) } });
+});
+
+/** Follow a team. Verified accounts only, exactly like following a source. */
+app.put('/api/football/follows', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+
+  let body: { team?: unknown; competitionId?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (typeof body.team !== 'string' || !body.team.trim()) {
+    return c.json({ error: 'team is required' }, 400);
+  }
+  const competitionId = typeof body.competitionId === 'string' ? body.competitionId : 'egyptian-premier';
+  if (!competitionOf(competitionId)) return c.json({ error: 'unknown competition' }, 400);
+  return c.json({ data: { teams: followTeam(userId, body.team.trim(), competitionId) } });
+});
+
+/** Unfollow. */
+app.delete('/api/football/follows/:team', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ data: { teams: unfollowTeam(userId, c.req.param('team')) } });
+});
+
+/** Per-team notification switches (kickoff / goals / final). */
+app.put('/api/football/follows/:team/notify', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  let body: { notifyKickoff?: unknown; notifyGoals?: unknown; notifyFinal?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  const updated = setTeamNotify(userId, c.req.param('team'), {
+    notifyKickoff: typeof body.notifyKickoff === 'boolean' ? body.notifyKickoff : undefined,
+    notifyGoals: typeof body.notifyGoals === 'boolean' ? body.notifyGoals : undefined,
+    notifyFinal: typeof body.notifyFinal === 'boolean' ? body.notifyFinal : undefined,
+  });
+  if (!updated) return c.json({ error: 'not followed' }, 404);
+  return c.json({ data: { follow: updated } });
 });
 
 app.get('/health', (c) => c.json({ ok: true }));
