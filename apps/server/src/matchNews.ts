@@ -198,6 +198,18 @@ function isFalseFriend(tokens: string[], index: number, word: string): boolean {
  * «الاتحاد» and «الوداد» are all prefixes of more than one club.
  */
 /**
+ * Words that make a shared name a COMPANY rather than a club.
+ *
+ * Measured: «إنتر ستيت جاز سيستمز» (Inter State Gas Systems) is a Pakistani
+ * company, and it put an energy-investment article on an Italian football match.
+ */
+const COMPANY_TAILS = new Set([
+  'ستيت', 'جاز', 'للطاقه', 'للطاقة', 'للصناعه', 'للصناعة', 'للتجاره', 'للتجارة',
+  'القابضه', 'القابضة', 'للاستثمار', 'للمقاولات', 'للتامين', 'للتأمين',
+  'جروب', 'گروب', 'هولدنج', 'سيستمز', 'كومباني', 'انترناشونال',
+]);
+
+/**
  * Second words that turn a shared first word into a DIFFERENT club.
  *
  * «إنتر ميامي» is not «إنتر ميلان»: the tail is what distinguishes them, so a
@@ -281,6 +293,7 @@ export function mentionsTeam(
         // «إنتر ميلان», and the tail is the only thing that tells them apart.
         const after = tokens[i + 1] ?? '';
         if (OTHER_CLUB_TAILS.has(after) || SHARED_PREFIX_WORDS.has(after)) continue;
+        if (COMPANY_TAILS.has(after)) continue;
         return true;
       }
       return false;

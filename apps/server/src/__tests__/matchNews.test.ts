@@ -230,4 +230,17 @@ describe('clubs whose name is an institution', () => {
     // «الدوري الأمريكي» in the text is a different country from the Italian match.
     expect(mentionsTeam('الدوري الأمريكي يعلن أفضل لاعب', 'إنتر', undefined, 'IT')).toBe(false);
   });
+
+  it('does not treat a company that starts with the club name as the club', () => {
+    // «إنتر ستيت جاز سيستمز» is a Pakistani energy company; it put an
+    // investment article on an Italian football match.
+    expect(
+      mentionsTeam(
+        'أعلنت شركتا دلتا السعودية للطاقة وإنتر ستيت جاز سيستمز الباكستانية توقيع اتفاقية',
+        'إنتر',
+        undefined,
+        'IT',
+      ),
+    ).toBe(false);
+  });
 });
