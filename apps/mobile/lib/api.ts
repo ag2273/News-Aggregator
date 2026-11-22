@@ -669,6 +669,8 @@ export interface MatchesDay {
   followedTeams: string[];
   /** Competition ids the caller follows; empty for a guest. */
   followedLeagues: string[];
+  /** EVERY competition we cover, whether or not it plays today. */
+  competitions: FootballCompetition[];
   matches: FootballMatch[];
 }
 

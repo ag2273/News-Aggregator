@@ -15,9 +15,13 @@ import { router } from 'expo-router';
 import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
+import { AccountGateSheet, useAccountGate } from '../../components/AccountGate';
 import {
   fetchMatches,
+  followLeague,
   isNetworkFailure,
+  unfollowLeague,
+  type FootballCompetition,
   type FootballMatch,
   type MatchesDay,
 } from '../../lib/api';
@@ -59,6 +63,7 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
 export default function MatchesScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
   const { token } = useAuth();
+  const gate = useAccountGate();
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState<Filter>('all');
   const [day, setDay] = useState<MatchesDay | null>(null);
@@ -125,17 +130,72 @@ export default function MatchesScreen() {
    * league sat below seven European groups on a busy day — the user's «فين الدوري
    * المصري؟». Ordering here means it is always the first heading on the screen.
    */
+  /**
+   * Competitions we cover that have no match on this day.
+   *
+   * Computed from the served competition list, so a league that is simply not
+   * playing today still gets its heading instead of vanishing.
+   */
+  const emptyGroups = useMemo<FootballCompetition[]>(() => {
+    if (!day?.competitions?.length) return [];
+    const names = new Set(matches.map((m) => m.competitionName));
+    return day.competitions.filter((c) => !names.has(c.nameAr));
+  }, [day, matches]);
+
+  /**
+   * Groups, including the competitions with nothing on this day.
+   *
+   * A league with no fixture used to disappear, which is why the Egyptian league
+   * could not be found at all on a quiet day. Every competition we cover is now a
+   * group, with the honest line «لا توجد مباريات لهذا الدوري اليوم» when it has
+   * none. The empty groups only show under the «الكل» filter: a reader filtering
+   * for live or finished matches does not want ten empty headings.
+   */
   const groups = useMemo(() => {
     const map = new Map<string, FootballMatch[]>();
     for (const m of rest) {
       const key = m.competitionName || 'بطولات أخرى';
       map.set(key, [...(map.get(key) ?? []), m]);
     }
-    return [...map.entries()].sort(
-      (a, b) =>
-        rankOf(a[1][0]!) - rankOf(b[1][0]!) || a[0].localeCompare(b[0], 'ar'),
+    const present = [...map.entries()].sort(
+      (a, b) => rankOf(a[1][0]!) - rankOf(b[1][0]!) || a[0].localeCompare(b[0], 'ar'),
     );
-  }, [rest]);
+    if (filter !== 'all' || emptyGroups.length === 0) return present;
+    // Insert each empty competition at its priority position.
+    const all: Array<{ name: string; rows: FootballMatch[]; rank: number }> = [
+      ...present.map(([name, rows]) => ({ name, rows, rank: rankOf(rows[0]!) })),
+      ...emptyGroups.map((c) => ({ name: c.nameAr, rows: [], rank: c.priority ?? 99 })),
+    ];
+    all.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name, 'ar'));
+    return all.map((g) => [g.name, g.rows] as [string, FootballMatch[]]);
+  }, [rest, filter, emptyGroups]);
+
+  /**
+   * Follow or unfollow a league from its group header.
+   *
+   * The group is identified by its display name, so the id comes from the served
+   * competition list rather than being re-derived from the name.
+   */
+  const toggleLeagueByName = useCallback(
+    async (name: string) => {
+      const comp = day?.competitions?.find((c) => c.nameAr === name);
+      if (!comp) return;
+      if (!token) {
+        gate.open();
+        return;
+      }
+      try {
+        const isOn = followedLeagues.has(comp.id);
+        const next = isOn
+          ? await unfollowLeague(token, comp.id)
+          : await followLeague(token, comp.id);
+        setDay((d) => (d ? { ...d, followedLeagues: next.map((l) => l.competitionId) } : d));
+      } catch {
+        /* the star simply does not change */
+      }
+    },
+    [day, token, followedLeagues, gate],
+  );
 
   /** A competition the reader follows, so its heading can say so. */
   const leagueFollowed = (name: string): boolean => {
@@ -340,27 +400,59 @@ export default function MatchesScreen() {
                 {liveNow.map(card)}
               </>
             ) : null}
-            {groups.map(([name, rows]) => (
-              <View key={name}>
-                <TouchableOpacity
-                  style={styles.groupHeader}
-                  onPress={() => setCollapsed((c) => ({ ...c, [name]: !c[name] }))}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: !collapsed[name] }}
-                >
-                  <Ionicons name={collapsed[name] ? 'chevron-back' : 'chevron-down'} size={16} color={t.textMuted} />
-                  <Text style={[styles.groupTitle, { color: leagueFollowed(name) ? t.accent : t.textSecondary }]}>
-                    {name}
-                  </Text>
-                  {leagueFollowed(name) ? (
-                    <Ionicons name="star" size={11} color={t.accent} />
-                  ) : null}
-                </TouchableOpacity>
-                {collapsed[name] ? null : rows.map(card)}
-              </View>
-            ))}
+            {groups.map(([name, rows]) => {
+              const followedThis = leagueFollowed(name);
+              return (
+                <View key={name}>
+                  <View style={styles.groupHeaderRow}>
+                    <TouchableOpacity
+                      style={styles.groupHeaderTap}
+                      onPress={() => setCollapsed((c) => ({ ...c, [name]: !c[name] }))}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: !collapsed[name] }}
+                    >
+                      <Ionicons
+                        name={collapsed[name] ? 'chevron-back' : 'chevron-down'}
+                        size={16}
+                        color={t.textMuted}
+                      />
+                      <Text
+                        style={[styles.groupTitle, { color: followedThis ? t.accent : t.textSecondary }]}
+                        numberOfLines={1}
+                      >
+                        {name}
+                      </Text>
+                    </TouchableOpacity>
+                    {/* Follow the league from the group itself: this is where a
+                        reader is when they decide they care about it. */}
+                    <TouchableOpacity
+                      onPress={() => toggleLeagueByName(name)}
+                      style={styles.groupFollow}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        followedThis ? `إلغاء متابعة ${name}` : `متابعة ${name}`
+                      }
+                    >
+                      <Ionicons
+                        name={followedThis ? 'star' : 'star-outline'}
+                        size={16}
+                        color={followedThis ? t.accent : t.textMuted}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                  {collapsed[name] ? null : rows.length === 0 ? (
+                    <Text style={[styles.groupEmpty, { color: t.textMuted }]}>
+                      لا توجد مباريات لهذا الدوري اليوم
+                    </Text>
+                  ) : (
+                    rows.map(card)
+                  )}
+                </View>
+              );
+            })}
           </ScrollView>
         )}
+        <AccountGateSheet t={t} gate={gate} message="عشان تتابع البطولة" />
       </SafeAreaView>
     </LinearGradient>
   );
@@ -385,7 +477,10 @@ const styles = StyleSheet.create({
   filterText: { fontSize: 12, fontWeight: '600' },
   list: { padding: 12, gap: 8, paddingBottom: 40 },
   section: { fontSize: 12, fontWeight: '700', marginTop: 8, marginBottom: 4 },
-  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10 },
+  groupHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+  groupHeaderTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
+  groupFollow: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  groupEmpty: { fontSize: 12, paddingVertical: 10, paddingHorizontal: 6 },
   groupTitle: { fontSize: 13, fontWeight: '700' },
   card: { borderRadius: 18, padding: 12, borderWidth: 1 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },

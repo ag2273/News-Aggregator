@@ -52,6 +52,8 @@ const match = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockFollows.mockResolvedValue([]);
+  // Every mocked day now carries the competition list the server always sends.
+  mockMatches.mockImplementation?.(() => Promise.resolve({}));
   mockLeagueFollows.mockResolvedValue([]);
   mockCompetitions.mockResolvedValue([
     { id: 'egyptian-premier', nameAr: 'الدوري المصري', country: 'EG', isCup: false },
@@ -437,5 +439,32 @@ describe('upcoming fixtures screen', () => {
     expect(screen.getByText('الشوط الثاني')).toBeTruthy();
     // No minute anywhere on the card.
     expect(screen.queryByText(/^\d+'$/)).toBeNull();
+  });
+
+  it('shows a league with no fixture today, with an honest empty line', async () => {
+    // Issue #9: a league with nothing on this day used to vanish entirely.
+    mockMatches.mockResolvedValue({
+      date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [],
+      competitions: [
+        { id: 'egyptian-premier', nameAr: 'الدوري المصري', country: 'EG', isCup: false, priority: 10 },
+        { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', country: 'GB', isCup: false, priority: 22 },
+      ],
+      matches: [
+        match({ id: 'e1', competitionId: 'eng-premier', competitionName: 'الدوري الإنجليزي', home: 'ليفربول', away: 'أرسنال' }),
+      ],
+    });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('الدوري المصري')).toBeTruthy());
+    expect(screen.getByText('لا توجد مباريات لهذا الدوري اليوم')).toBeTruthy();
+  });
+
+  it('offers a follow star on the league group itself', async () => {
+    mockMatches.mockResolvedValue({
+      date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [],
+      competitions: [{ id: 'egyptian-premier', nameAr: 'الدوري المصري', country: 'EG', isCup: false, priority: 10 }],
+      matches: [match()],
+    });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByLabelText('متابعة الدوري المصري')).toBeTruthy());
   });
 });

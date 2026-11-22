@@ -1407,6 +1407,18 @@ app.get('/api/football/matches', async (c) => {
       fetchedAt: day.fetchedAt,
       followedTeams: follows,
       followedLeagues: leagues,
+      // Every competition we cover, in priority order, whether or not it has a
+      // match today. Without this the app can only show the leagues that happened
+      // to play, so a league with no fixture vanished from the screen entirely —
+      // the user could not find الدوري المصري at all.
+      competitions: [...COMPETITIONS]
+        .sort((a, b) => a.priority - b.priority || a.nameAr.localeCompare(b.nameAr, 'ar'))
+        .map((x) => ({
+          id: x.id,
+          nameAr: x.nameAr,
+          isCup: Boolean(x.isCup),
+          priority: x.priority,
+        })),
       // Each row carries its competition's rank, so a screen that groups them can
       // render in served order without holding a copy of the priority map.
       matches: day.matches.map((m) => ({
