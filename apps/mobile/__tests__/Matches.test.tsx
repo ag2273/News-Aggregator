@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { router } from 'expo-router';
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), back: jest.fn(), replace: jest.fn() },
@@ -29,7 +30,10 @@ jest.mock('../lib/auth', () => ({
   useAuth: () => ({ user: null, token: null, loading: false, emailVerified: false, signIn: jest.fn(), signUp: jest.fn(), signOut: jest.fn(), deleteAccount: jest.fn(), refreshSession: jest.fn() }),
 }));
 jest.mock('../components/ArticleSheet', () => ({ useArticleSheet: () => ({ open: jest.fn(), close: jest.fn(), isOpen: false }) }));
-jest.mock('../components/AccountGate', () => ({ useAccountGate: () => ({ openWith: jest.fn(), open: jest.fn(), allowed: false, mode: 'verify', visible: false, dismiss: jest.fn(), currentMode: 'verify' }) }));
+jest.mock('../components/AccountGate', () => ({
+  useAccountGate: () => ({ openWith: jest.fn(), open: jest.fn(), allowed: false, mode: 'signin', visible: false, dismiss: jest.fn(), currentMode: 'signin' }),
+  AccountGateSheet: () => null,
+}));
 
 import MatchesScreen from '../app/matches/index';
 import MatchCenterScreen from '../app/matches/[id]';
@@ -141,9 +145,12 @@ describe('standings screen', () => {
 });
 
 describe('follow teams screen', () => {
-  it('gates an unverified reader', async () => {
+  it('offers a signed-out reader sign-in, not a dead "verify" screen', async () => {
+    // A guest has no account to verify; the first version told them to.
     render(<FollowTeamsScreen />);
-    await waitFor(() => expect(screen.getByText('وثّق بريدك أولاً')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/متابعة الفرق مرتبطة بحسابك/)).toBeTruthy());
+    expect(screen.getByText('تسجيل الدخول')).toBeTruthy();
+    expect(screen.queryByText('وثّق بريدك أولاً')).toBeNull();
     expect(mockFollows).not.toHaveBeenCalled();
   });
 
@@ -226,5 +233,26 @@ describe('upcoming fixtures screen', () => {
     render(<UpcomingScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
     expect(screen.queryByText('الزمالك')).toBeNull();
+  });
+
+  it('opens the match centre at the route that actually exists', async () => {
+    // The first version pushed '/match/[id]', but the screen is
+    // app/matches/[id].tsx. Tapping a card did nothing, and no test noticed
+    // because every test rendered the screen directly.
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [match()] });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+    fireEvent.press(screen.getByText('الأهلي'));
+    expect(router.push).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: '/matches/[id]' }),
+    );
+  });
+
+  it('opens the upcoming list at a route that exists', async () => {
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], matches: [match()] });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+    fireEvent.press(screen.getByLabelText('المباريات القادمة ومواعيد البث'));
+    expect(router.push).toHaveBeenCalledWith('/matches/upcoming');
   });
 });

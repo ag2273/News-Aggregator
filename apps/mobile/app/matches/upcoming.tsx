@@ -113,7 +113,7 @@ export default function UpcomingScreen() {
                   <TouchableOpacity
                     key={m.id}
                     style={[styles.card, { backgroundColor: t.surface, borderColor: t.borderLight }]}
-                    onPress={() => router.push({ pathname: '/match/[id]', params: { id: m.id, date } })}
+                    onPress={() => router.push({ pathname: '/matches/[id]', params: { id: m.id, date } })}
                     accessibilityRole="button"
                     accessibilityLabel={`${m.home} ضد ${m.away}`}
                   >

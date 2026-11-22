@@ -110,7 +110,7 @@ export default function MatchesScreen() {
           { backgroundColor: t.surface, borderColor: isLive ? t.accent : t.borderLight },
         ]}
         onPress={() =>
-          router.push({ pathname: '/match/[id]', params: { id: m.id, date } })
+          router.push({ pathname: '/matches/[id]', params: { id: m.id, date } })
         }
         accessibilityRole="button"
         accessibilityLabel={`${m.home} ضد ${m.away}`}

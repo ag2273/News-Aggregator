@@ -16,7 +16,7 @@ import { router } from 'expo-router';
 import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
-import { useAccountGate } from '../../components/AccountGate';
+import { AccountGateSheet, useAccountGate } from '../../components/AccountGate';
 import {
   fetchTeamFollows,
   followFootballTeam,
@@ -34,7 +34,7 @@ import {
  */
 export default function FollowTeamsScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
-  const { token, user, loading: authLoading, emailVerified } = useAuth();
+  const { token, loading: authLoading } = useAuth();
   const gate = useAccountGate();
 
   const [follows, setFollows] = useState<TeamFollow[]>([]);
@@ -61,6 +61,10 @@ export default function FollowTeamsScreen() {
   }, [load]);
 
   const toggle = async (team: string) => {
+    if (!gate.allowed) {
+      gate.open();
+      return;
+    }
     if (!token || busy) return;
     setBusy(team);
     setError(null);
@@ -86,24 +90,9 @@ export default function FollowTeamsScreen() {
     }
   };
 
-  if (!authLoading && (!user || !emailVerified)) {
-    return (
-      <LinearGradient colors={[t.bgGradientTop, t.bgGradientMid, t.bgGradientBottom]} style={styles.root}>
-        <SafeAreaView style={styles.safe} edges={['top']}>
-          <View style={styles.center}>
-            <Ionicons name="lock-closed-outline" size={28} color={t.textMuted} />
-            <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>وثّق بريدك أولاً</Text>
-            <Text style={[styles.emptyBody, { color: t.textMuted }]}>
-              متابعة الفرق مرتبطة بحسابك، زي متابعة المصادر.
-            </Text>
-            <TouchableOpacity style={[styles.primary, { backgroundColor: t.accent }]} onPress={() => gate.openWith('verify')} accessibilityRole="button">
-              <Text style={styles.primaryText}>توثيق الحساب</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
-    );
-  }
+  // A signed-out reader gets the shared gate sheet (sign-in), not a dead screen
+  // telling them to verify an account they do not have.
+  const gatedOut = !authLoading && !gate.allowed;
 
   return (
     <LinearGradient colors={[t.bgGradientTop, t.bgGradientMid, t.bgGradientBottom]} style={styles.root}>
@@ -120,6 +109,21 @@ export default function FollowTeamsScreen() {
           <View style={styles.center}><ActivityIndicator color={t.accent} /></View>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
+            {gatedOut ? (
+              <View style={styles.gateBox}>
+                <Ionicons name="lock-closed-outline" size={24} color={t.textMuted} />
+                <Text style={[styles.emptyBody, { color: t.textMuted }]}>
+                  متابعة الفرق مرتبطة بحسابك، زي متابعة المصادر. سجّل دخولك الأول.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.primary, { backgroundColor: t.accent }]}
+                  onPress={gate.open}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.primaryText}>تسجيل الدخول</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <Text style={[styles.section, { color: t.textMuted }]}>الأندية الأكثر شعبية</Text>
             <View style={styles.chips}>
               {POPULAR_TEAMS.map((team) => {
@@ -179,6 +183,7 @@ export default function FollowTeamsScreen() {
             )}
           </ScrollView>
         )}
+        <AccountGateSheet t={t} gate={gate} message="عشان تتابع فرقك" />
       </SafeAreaView>
     </LinearGradient>
   );
@@ -201,6 +206,7 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 2 },
   switchLabel: { fontSize: 13 },
   error: { fontSize: 12, marginTop: 6 },
+  gateBox: { alignItems: 'center', gap: 8, paddingVertical: 18 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 28 },
   emptyTitle: { fontSize: 16, fontWeight: '700', textAlign: 'center' },
   emptyBody: { fontSize: 13, lineHeight: 21, textAlign: 'center' },
