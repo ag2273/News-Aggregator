@@ -126,6 +126,7 @@ import { getAllArticles } from './db.js';
 import {
   competitionOf,
   loadDay,
+  loadMatchDetail,
   loadStandings,
   relatedNews,
   todayCairo,
@@ -1429,9 +1430,13 @@ app.get('/api/football/matches/:id', async (c) => {
   const day = await loadDay(date);
   const match = day.matches.find((m) => m.id === id);
   if (!match) return c.json({ error: 'match not found' }, 404);
+  // The commentator and coaches live on the provider's match page only, so they
+  // are fetched when the reader opens the match, not on every day refresh.
+  const detail = await loadMatchDetail(match).catch(() => null);
   return c.json({
     data: {
       match,
+      detail,
       news: relatedNews(match.home, match.away),
       unavailable: day.unavailable,
     },

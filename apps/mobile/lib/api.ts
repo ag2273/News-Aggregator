@@ -704,6 +704,14 @@ export async function fetchMatches(date: string, token?: string | null): Promise
   return ((await res.json()) as { data: MatchesDay }).data;
 }
 
+/** What only the provider's match page knows. */
+export interface MatchDetail {
+  commentator: string | null;
+  channel: string | null;
+  homeCoach: string | null;
+  awayCoach: string | null;
+}
+
 /** An article about one of a match's two clubs, from our own corpus. */
 export interface MatchNews {
   id: string;
@@ -720,6 +728,8 @@ export async function fetchMatch(
   date: string,
 ): Promise<{
   match: FootballMatch;
+  /** Commentator and coaches, when the provider publishes them. */
+  detail: MatchDetail | null;
   news: MatchNews[];
   unavailable: boolean;
 }> {
@@ -727,7 +737,11 @@ export async function fetchMatch(
     `${API_BASE}/api/football/matches/${encodeURIComponent(id)}?date=${encodeURIComponent(date)}`,
   );
   if (!res.ok) throw await apiError(res);
-  return ((await res.json()) as { data: { match: FootballMatch; news: MatchNews[]; unavailable: boolean } }).data;
+  return (
+    (await res.json()) as {
+      data: { match: FootballMatch; detail: MatchDetail | null; news: MatchNews[]; unavailable: boolean };
+    }
+  ).data;
 }
 
 export async function fetchStandings(competitionId: string): Promise<{ unavailable: boolean; tables: StandingsTable[] }> {

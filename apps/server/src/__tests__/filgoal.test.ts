@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  parseFilGoalDetail,
   filGoalChannel,
   filGoalStatus,
   parseFilGoalDay,
@@ -180,5 +181,34 @@ describe('competition names', () => {
     expect(canonicalCompetition('الكونفيدرالية الأفريقية')).toBe('كأس الكونفدرالية');
     expect(canonicalCompetition('كأس الكونفدرالية')).toBe('كأس الكونفدرالية');
     expect(canonicalCompetition('الدوري الإنجليزي الممتاز')).toBe('الدوري الإنجليزي');
+  });
+});
+
+describe('FilGoal match detail page', () => {
+  const detail = parseFilGoalDetail(fixture('filgoal-detail.html'));
+
+  it('reads the commentator, which the day list does not carry', () => {
+    // Measured on the El Gouna × Zamalek page: «بلال علام». This is the field the
+    // spec asked for and that I had reported as unavailable.
+    expect(detail).not.toBeNull();
+    expect(detail!.commentator).toBe('بلال علام');
+  });
+
+  it('reads the Cairo kickoff, not the UTC one', () => {
+    // The payload carries both: `Date` 17:00 (Cairo, matches the day list) and
+    // `StartAt` 13:00 (UTC). Reading StartAt as local would put the match three
+    // hours early.
+    expect(detail!.kickoff).toBe('17:00');
+  });
+
+  it('reads the channel and both coaches', () => {
+    expect(detail!.channel).toBe('أون سبورت ماكس');
+    expect(detail!.homeCoach).toBe('علاء عبد العال');
+    expect(detail!.awayCoach).toBe('معتمد جمال');
+  });
+
+  it('returns null for a page with no payload', () => {
+    expect(parseFilGoalDetail('<html></html>')).toBeNull();
+    expect(parseFilGoalDetail('')).toBeNull();
   });
 });

@@ -294,4 +294,25 @@ describe('upcoming fixtures screen', () => {
     const msg = screen.getByText(/لا توجد مباريات مجدولة/);
     expect(msg.props.numberOfLines).toBeUndefined();
   });
+
+  it('shows the commentator and the two coaches when the provider has them', async () => {
+    mockMatch.mockResolvedValue({
+      match: match(),
+      detail: { commentator: 'بلال علام', channel: 'أون سبورت ماكس', homeCoach: 'علاء عبد العال', awayCoach: 'معتمد جمال' },
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText(/المعلق: بلال علام/)).toBeTruthy());
+    fireEvent.press(screen.getByText('التشكيل'));
+    await waitFor(() => expect(screen.getByText(/مدرب الأهلي: علاء عبد العال/)).toBeTruthy());
+    expect(screen.getByText(/مدرب بيراميدز: معتمد جمال/)).toBeTruthy();
+  });
+
+  it('does not invent a commentator when the provider has none', async () => {
+    mockMatch.mockResolvedValue({ match: match(), detail: null, news: [], unavailable: false });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+    expect(screen.queryByText(/المعلق/)).toBeNull();
+  });
 });

@@ -225,3 +225,55 @@ export async function fetchFilGoalDay(
   if (!html) return null;
   return parseFilGoalDay(html, date);
 }
+
+/**
+ * The one thing the day list does not carry: the commentator.
+ *
+ * The match page embeds its own JSON, and inside `TvCoverage` it names the
+ * commentator (`CommenterName`), the channel and the satellite. I told the user
+ * this was unavailable before measuring the match page — it is available.
+ *
+ * Also useful from the same payload: `Date` is the Cairo-local kickoff
+ * (`2026-11-23T17:00:00`), while `StartAt` is the same moment in UTC. The day
+ * list's stamp agrees with `Date`, so the list is right and `StartAt` must never
+ * be read as a local time.
+ */
+export interface FilGoalMatchDetail {
+  commentator: string | null;
+  channel: string | null;
+  /** Cairo-local kickoff from the payload's own `Date` field. */
+  kickoff: string | null;
+  homeCoach: string | null;
+  awayCoach: string | null;
+}
+
+/** Read the embedded JSON of a FilGoal match page. */
+export function parseFilGoalDetail(html: string): FilGoalMatchDetail | null {
+  if (!html) return null;
+  const commentator = html.match(/"CommenterName"\s*:\s*"([^"]*)"/)?.[1]?.trim() ?? null;
+  const channelRaw = html.match(/"TvChannelName"\s*:\s*"([^"]*)"/)?.[1]?.trim() ?? null;
+  // `Date` is the local kickoff; `StartAt` is UTC and three hours earlier.
+  const dateRaw = html.match(/"Date"\s*:\s*"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/)?.[1] ?? null;
+  const homeCoach = html.match(/"HomeTeamCoachName"\s*:\s*"([^"]*)"/)?.[1]?.trim() ?? null;
+  const awayCoach = html.match(/"AwayTeamCoachName"\s*:\s*"([^"]*)"/)?.[1]?.trim() ?? null;
+
+  const nothing = !commentator && !channelRaw && !dateRaw && !homeCoach && !awayCoach;
+  if (nothing) return null;
+  return {
+    commentator: commentator && commentator !== 'null' ? commentator : null,
+    channel: filGoalChannel(channelRaw),
+    kickoff: dateRaw ? dateRaw.slice(11, 16) : null,
+    homeCoach: homeCoach && homeCoach !== 'null' ? homeCoach : null,
+    awayCoach: awayCoach && awayCoach !== 'null' ? awayCoach : null,
+  };
+}
+
+/** Fetch a match's detail payload. Returns null when the page could not be read. */
+export async function fetchFilGoalDetail(
+  matchId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<FilGoalMatchDetail | null> {
+  const html = await getPage(`${FILGOAL_BASE}/matches/${matchId}`, fetchImpl);
+  if (!html) return null;
+  return parseFilGoalDetail(html);
+}

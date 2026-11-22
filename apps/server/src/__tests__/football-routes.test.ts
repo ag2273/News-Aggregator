@@ -203,4 +203,33 @@ describe('football API', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('returns the commentator when the provider publishes one', async () => {
+    // FilGoal's match page carries the commentator; the day list does not.
+    const detailHtml = `{"CommenterName":"بلال علام","TvChannelName":"On Sport MAX","Date":"2026-11-23T17:00:00","HomeTeamCoachName":"علاء عبد العال","AwayTeamCoachName":"معتمد جمال"}`;
+    const listHtml = `<h2>الدوري المصري</h2>
+      <div class="cin_cntnr"><a href="/matches/375939/x"><div class="f"><strong>الجونة</strong><b> - </b></div>
+      <div class="m"><span class="status ">لم تبدأ</span></div><div class="s"><strong>الزمالك</strong><b> - </b></div>
+      <div class="match-aux"><span>استاد خالد بشارة</span><span>On Sport MAX</span><span>23-11-2026 - 17:00</span></div>
+      </a></div>`;
+    vi.stubGlobal('fetch', async (url: string) => {
+      const body = String(url).includes('/matches/375939') && !String(url).includes('?date=')
+        ? detailHtml
+        : String(url).includes('filgoal')
+          ? `<div data-matches-scroller>${listHtml}</div>`
+          : '<html></html>';
+      return new Response(body, { status: 200 });
+    });
+    try {
+      const res = await app.request('/api/football/matches/fg-375939?date=2026-11-23');
+      expect(res.status).toBe(200);
+      const { data } = (await res.json()) as {
+        data: { match: { home: string }; detail: { commentator: string | null } | null };
+      };
+      expect(data.match.home).toBe('الجونة');
+      expect(data.detail?.commentator).toBe('بلال علام');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

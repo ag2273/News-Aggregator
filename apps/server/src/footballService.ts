@@ -32,7 +32,7 @@ import {
   type DayCache,
   type StandingsCache,
 } from './footballStore.js';
-import { fetchFilGoalDay, type FilGoalMatch } from './filgoal.js';
+import { fetchFilGoalDay, fetchFilGoalDetail, type FilGoalMatch } from './filgoal.js';
 import { getAllArticles } from './db.js';
 import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
 
@@ -183,6 +183,29 @@ export function relatedNews(
 export function matchesForTeams(matches: MatchRow[], teams: string[]): MatchRow[] {
   const wanted = new Set(teams.map(normalizeTeam));
   return matches.filter((m) => wanted.has(normalizeTeam(m.home)) || wanted.has(normalizeTeam(m.away)));
+}
+
+/**
+ * Detail for one match, from the provider's own match page.
+ *
+ * Only FilGoal publishes the commentator, and only on the match page, so this is
+ * fetched on demand (one request when the reader opens a match) and not as part
+ * of the day refresh. Cached in the day store's neighbourhood: a commentator does
+ * not change once announced.
+ */
+export async function loadMatchDetail(
+  match: MatchRow,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<{ commentator: string | null; channel: string | null; homeCoach: string | null; awayCoach: string | null } | null> {
+  if (match.dataSource !== 'filgoal' || !match.providerMatchId) return null;
+  const detail = await fetchFilGoalDetail(match.providerMatchId, options.fetchImpl);
+  if (!detail) return null;
+  return {
+    commentator: detail.commentator,
+    channel: match.channel ?? detail.channel,
+    homeCoach: detail.homeCoach,
+    awayCoach: detail.awayCoach,
+  };
 }
 
 /** A competition lookup, exported for the routes. */

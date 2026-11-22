@@ -23,6 +23,7 @@ import {
   unfollowFootballTeam,
   isNetworkFailure,
   type FootballMatch,
+  type MatchDetail,
   type MatchNews,
 } from '../../lib/api';
 
@@ -52,6 +53,7 @@ export default function MatchCenterScreen() {
   const [tab, setTab] = useState<TabId>('news');
   const [match, setMatch] = useState<FootballMatch | null>(null);
   const [news, setNews] = useState<NewsItem[]>([]);
+  const [detail, setDetail] = useState<MatchDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [following, setFollowing] = useState(false);
@@ -63,6 +65,7 @@ export default function MatchCenterScreen() {
     try {
       const data = await fetchMatch(id, date ?? '');
       setMatch(data.match);
+      setDetail(data.detail ?? null);
       setNews(data.news);
       if (token) {
         const follows = await fetchTeamFollows(token);
@@ -147,7 +150,7 @@ export default function MatchCenterScreen() {
             {/* What the source knows about the fixture itself: stadium and the
                 channel showing it. Both are omitted when absent rather than
                 shown blank. */}
-            {match.stadium || match.channel ? (
+            {match.stadium || match.channel || detail?.commentator ? (
               <View style={[styles.detailRow, { backgroundColor: t.surface }]}>
                 {match.stadium ? (
                   <View style={styles.detailItem}>
@@ -162,6 +165,14 @@ export default function MatchCenterScreen() {
                     <Ionicons name="tv-outline" size={13} color={t.textMuted} />
                     <Text style={[styles.detailText, { color: t.textSecondary }]} numberOfLines={1}>
                       {match.channel}
+                    </Text>
+                  </View>
+                ) : null}
+                {detail?.commentator ? (
+                  <View style={styles.detailItem}>
+                    <Ionicons name="mic-outline" size={13} color={t.textMuted} />
+                    <Text style={[styles.detailText, { color: t.textSecondary }]} numberOfLines={1}>
+                      {`المعلق: ${detail.commentator}`}
                     </Text>
                   </View>
                 ) : null}
@@ -236,6 +247,20 @@ export default function MatchCenterScreen() {
 
             {tab === 'lineups' ? (
               <View style={styles.centerInline}>
+                {detail?.homeCoach || detail?.awayCoach ? (
+                  <View style={[styles.coachBox, { backgroundColor: t.surface }]}>
+                    {detail?.homeCoach ? (
+                      <Text style={[styles.coachLine, { color: t.textSecondary }]}>
+                        {`مدرب ${match.home}: ${detail.homeCoach}`}
+                      </Text>
+                    ) : null}
+                    {detail?.awayCoach ? (
+                      <Text style={[styles.coachLine, { color: t.textSecondary }]}>
+                        {`مدرب ${match.away}: ${detail.awayCoach}`}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 <Text style={[styles.emptyBody, { color: t.textMuted }]}>
                   التشكيل غير متاح من المصدر لهذه المباراة.
                 </Text>
@@ -277,6 +302,8 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 14 },
   detailItem: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
   detailText: { fontSize: 11 },
+  coachBox: { borderRadius: 14, padding: 12, gap: 4, marginBottom: 10, alignSelf: 'stretch' },
+  coachLine: { fontSize: 12 },
   tabs: { gap: 8, paddingVertical: 6 },
   tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
   tabText: { fontSize: 12, fontWeight: '600' },
