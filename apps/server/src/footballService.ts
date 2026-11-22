@@ -1,7 +1,7 @@
 // Football service: the one place that fetches from the sources.
 //
-// (Touched to re-run the deploy after a runner-level failure — the workflow only
-// triggers on changes under apps/server.)
+// (Comment touched again to re-trigger the deploy workflow, which only runs when
+// something under apps/server changes.)
 //
 // Everything above this layer (routes, push) sees a stable shape, and everything
 // below it (Yallakora HTML, ESPN JSON) stays isolated. A source that moves or
