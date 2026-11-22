@@ -392,4 +392,25 @@ describe('upcoming fixtures screen', () => {
     expect(screen.getByText('سموحة')).toBeTruthy();
     expect(screen.queryByText('ليفربول')).toBeNull();
   });
+
+  it('honours the served priority rather than the order rows arrive in', async () => {
+    // Issue #25: the app must render in served order, so a per-user order (#26) can
+    // reuse the same field later.
+    mockMatches.mockResolvedValue({
+      date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [],
+      matches: [
+        match({ id: 'a', competitionId: 'ger-bundesliga', competitionName: 'الدوري الألماني', competitionPriority: 40, home: 'بايرن', away: 'دورتموند' }),
+        match({ id: 'b', competitionId: 'ita-serie-a', competitionName: 'الدوري الإيطالي', competitionPriority: 20, home: 'ميلان', away: 'روما' }),
+        match({ id: 'c', competitionId: 'egyptian-premier', competitionName: 'الدوري المصري', competitionPriority: 10 }),
+      ],
+    });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('الدوري المصري')).toBeTruthy());
+    const heads = screen.getAllByText(/^الدوري (المصري|الإيطالي|الألماني)$/);
+    expect(heads.map((h) => h.props.children)).toEqual([
+      'الدوري المصري',
+      'الدوري الإيطالي',
+      'الدوري الألماني',
+    ]);
+  });
 });

@@ -66,6 +66,23 @@ const PLACE_WORDS = new Set(['وادي', 'وادى', 'مدينه', 'مدينة',
  */
 const AMBIGUOUS_ONLY_NAMES = new Set(['الجمارك', 'الشرطه', 'البنك', 'المصرف']);
 
+/**
+ * Words that place an article in a competition's country.
+ *
+ * Used only to disambiguate a club whose short name is shared («إنتر» in Italy vs
+ * «إنتر» in MLS). Never used to add an article that does not name the club.
+ */
+const COUNTRY_WORDS: Record<string, string[]> = {
+  IT: ['ايطاليا', 'الايطالي', 'الكالتشيو', 'سيري', 'ميلانو', 'تورينو'],
+  US: ['امريكا', 'الامريكي', 'ميامي', 'الدوري الامريكي', 'mls'],
+  ES: ['اسبانيا', 'الاسباني', 'الليجا', 'مدريد', 'برشلونه'],
+  GB: ['انجلترا', 'الانجليزي', 'البريميرليج', 'لندن'],
+  DE: ['المانيا', 'الالماني', 'البوندسليجا'],
+  FR: ['فرنسا', 'الفرنسي', 'ليج', 'باريس'],
+  SA: ['السعوديه', 'السعودي', 'روشن', 'الرياض'],
+  EG: ['مصر', 'المصري', 'القاهره', 'الاسكندريه'],
+};
+
 const INSTITUTIONAL_WORDS = new Set([
   'الاتحاد',
   'اتحاد',
@@ -173,7 +190,46 @@ function isFalseFriend(tokens: string[], index: number, word: string): boolean {
  * has no distinctive word at all does a generic one count — and then only when it
  * is not part of the phrases in FALSE_FRIENDS.
  */
-export function mentionsTeam(text: string, team: string, words: string[] = teamWords(team)): boolean {
+/**
+ * Words that begin many club names and identify none of them on their own.
+ *
+ * Measured: «إنتر ميلان» and «إنتر ميامي» share «إنتر», so an Italian match pulled
+ * six MLS articles about Inter Miami. «إنتر», «مانشستر», «ريال», «باريس»,
+ * «الاتحاد» and «الوداد» are all prefixes of more than one club.
+ */
+const SHARED_PREFIX_WORDS = new Set([
+  'انتر', 'مانشستر', 'ريال', 'باريس', 'اتلتيكو', 'بايرن', 'روما', 'ميلان',
+  'الاتحاد', 'الوداد', 'الاهلي', 'الشباب', 'التعاون', 'الاتفاق', 'سموحه',
+]);
+
+/**
+ * A club whose name has a shared first word is matched on the FULL name.
+ *
+ * «إنتر ميلان» must not match a text that only says «إنتر», because that word also
+ * begins «إنتر ميامي». Anything whose first word is in SHARED_PREFIX_WORDS needs
+ * its second word too, in order and adjacent.
+ */
+export function needsFullName(words: string[]): boolean {
+  if (words.length < 2) return false;
+  return SHARED_PREFIX_WORDS.has(words[0]!) || words.some((w) => SHARED_PREFIX_WORDS.has(w));
+}
+
+/** Does the haystack contain this exact run of tokens, in order? */
+function hasSequence(tokens: string[], sequence: string[]): boolean {
+  if (!sequence.length) return false;
+  for (let i = 0; i + sequence.length <= tokens.length; i += 1) {
+    if (sequence.every((w, k) => tokens[i + k] === w)) return true;
+  }
+  return false;
+}
+
+export function mentionsTeam(
+  text: string,
+  team: string,
+  words: string[] = teamWords(team),
+  /** The competition's country, used to break ties between same-named clubs. */
+  country?: string,
+): boolean {
   const haystack = normalizeArabic(text);
   if (!haystack || !words.length) return false;
   const tokens = haystack.split(' ');
@@ -190,6 +246,24 @@ export function mentionsTeam(text: string, team: string, words: string[] = teamW
     if (!/\b(?:نادي|نادى|فريق|مباراه|مباراة|ملعب)\b/.test(haystack) && !/ (نادي|نادى|فريق|مباراه|مباراة|ملعب) /.test(` ${haystack} `)) {
       return false;
     }
+  }
+
+  // A shared first word is not an identity. «إنتر ميلان» only matches «إنتر
+  // ميلان», never «إنتر ميامي»; the same rule keeps «ريال مدريد» out of
+  // «ريال سوسيداد» coverage.
+  if (needsFullName(words)) {
+    if (hasSequence(tokens, words)) return true;
+    // The short form («إنتر» alone) is accepted only when the article's own words
+    // place it in the right country — an Italian match may say «إنتر» for Inter
+    // Milan, an MLS one for Inter Miami.
+    const countryHint = country ? COUNTRY_WORDS[country] : undefined;
+    if (countryHint && countryHint.some((h) => hasWord(haystack, h))) {
+      const first = words[0]!;
+      for (let i = 0; i < tokens.length; i += 1) {
+        if (tokens[i] === first && !isFalseFriend(tokens, i, first)) return true;
+      }
+    }
+    return false;
   }
 
   for (const word of searchWords) {
@@ -263,7 +337,7 @@ export interface RelatedArticle {
 export function relatedNews(
   home: string,
   away: string,
-  options: { limit?: number; articles?: ArticleLike[] } = {},
+  options: { limit?: number; articles?: ArticleLike[]; country?: string } = {},
 ): RelatedArticle[] {
   const articles = options.articles ?? [];
   const limit = options.limit ?? 10;
@@ -273,8 +347,8 @@ export function relatedNews(
   const hits: RelatedArticle[] = [];
   for (const article of articles) {
     const text = `${article.title} ${article.summary ?? ''}`;
-    const inHome = mentionsTeam(text, home, homeWords);
-    const inAway = mentionsTeam(text, away, awayWords);
+    const inHome = mentionsTeam(text, home, homeWords, options.country);
+    const inAway = mentionsTeam(text, away, awayWords, options.country);
     if (!inHome && !inAway) continue;
     hits.push({
       id: article.id,

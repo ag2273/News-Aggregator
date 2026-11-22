@@ -38,20 +38,27 @@ export interface Competition {
   country: string;
   /** Cup competitions have no league table at all. */
   isCup?: boolean;
+  /**
+   * Display rank, Egypt first.
+   *
+   * Data, not logic, so a future per-user override (#26) can reorder the same list
+   * without touching the app. Ties break on the Arabic name.
+   */
+  priority: number;
 }
 
 export const COMPETITIONS: Competition[] = [
-  { id: 'egyptian-premier', nameAr: 'الدوري المصري', yallakoraName: 'الدوري المصري', yallakoraTourId: '160', country: 'EG' },
-  { id: 'egypt-cup', nameAr: 'كأس مصر', yallakoraName: 'كأس مصر', yallakoraTourId: '111', country: 'EG', isCup: true },
-  { id: 'caf-champions', nameAr: 'دوري أبطال إفريقيا', yallakoraName: 'دوري أبطال أفريقيا', yallakoraTourId: '87', espnSlug: 'caf.champions', country: 'AF' },
-  { id: 'caf-confederation', nameAr: 'كأس الكونفدرالية', yallakoraName: 'الكونفيدرالية الأفريقية', yallakoraTourId: '70', country: 'AF' },
-  { id: 'uefa-champions', nameAr: 'دوري أبطال أوروبا', yallakoraName: 'دوري أبطال أوروبا', yallakoraTourId: '105', espnSlug: 'uefa.champions', country: 'EU' },
-  { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', yallakoraName: 'الدوري الإنجليزي', yallakoraTourId: '93', espnSlug: 'eng.1', country: 'GB' },
-  { id: 'esp-la-liga', nameAr: 'الدوري الإسباني', yallakoraName: 'الدوري الإسباني', yallakoraTourId: '101', espnSlug: 'esp.1', country: 'ES' },
-  { id: 'ita-serie-a', nameAr: 'الدوري الإيطالي', yallakoraName: 'الدوري الإيطالي', yallakoraTourId: '100', espnSlug: 'ita.1', country: 'IT' },
-  { id: 'ger-bundesliga', nameAr: 'الدوري الألماني', yallakoraName: 'الدوري الألماني', yallakoraTourId: '98', espnSlug: 'ger.1', country: 'DE' },
-  { id: 'fra-ligue-1', nameAr: 'الدوري الفرنسي', yallakoraName: 'الدوري الفرنسي', yallakoraTourId: '95', espnSlug: 'fra.1', country: 'FR' },
-  { id: 'saudi-pro-league', nameAr: 'الدوري السعودي', yallakoraName: 'الدوري السعودي', yallakoraTourId: '102', espnSlug: 'ksa.1', country: 'SA' },
+  { id: 'egyptian-premier', nameAr: 'الدوري المصري', yallakoraName: 'الدوري المصري', yallakoraTourId: '160', country: 'EG' , priority: 10 },
+  { id: 'egypt-cup', nameAr: 'كأس مصر', yallakoraName: 'كأس مصر', yallakoraTourId: '111', country: 'EG', isCup: true , priority: 15 },
+  { id: 'caf-champions', nameAr: 'دوري أبطال إفريقيا', yallakoraName: 'دوري أبطال أفريقيا', yallakoraTourId: '87', espnSlug: 'caf.champions', country: 'AF' , priority: 31 },
+  { id: 'caf-confederation', nameAr: 'كأس الكونفدرالية', yallakoraName: 'الكونفيدرالية الأفريقية', yallakoraTourId: '70', country: 'AF' , priority: 43 },
+  { id: 'uefa-champions', nameAr: 'دوري أبطال أوروبا', yallakoraName: 'دوري أبطال أوروبا', yallakoraTourId: '105', espnSlug: 'uefa.champions', country: 'EU' , priority: 30 },
+  { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', yallakoraName: 'الدوري الإنجليزي', yallakoraTourId: '93', espnSlug: 'eng.1', country: 'GB' , priority: 22 },
+  { id: 'esp-la-liga', nameAr: 'الدوري الإسباني', yallakoraName: 'الدوري الإسباني', yallakoraTourId: '101', espnSlug: 'esp.1', country: 'ES' , priority: 21 },
+  { id: 'ita-serie-a', nameAr: 'الدوري الإيطالي', yallakoraName: 'الدوري الإيطالي', yallakoraTourId: '100', espnSlug: 'ita.1', country: 'IT' , priority: 20 },
+  { id: 'ger-bundesliga', nameAr: 'الدوري الألماني', yallakoraName: 'الدوري الألماني', yallakoraTourId: '98', espnSlug: 'ger.1', country: 'DE' , priority: 40 },
+  { id: 'fra-ligue-1', nameAr: 'الدوري الفرنسي', yallakoraName: 'الدوري الفرنسي', yallakoraTourId: '95', espnSlug: 'fra.1', country: 'FR' , priority: 41 },
+  { id: 'saudi-pro-league', nameAr: 'الدوري السعودي', yallakoraName: 'الدوري السعودي', yallakoraTourId: '102', espnSlug: 'ksa.1', country: 'SA' , priority: 42 },
 ];
 
 export type MatchStatus = 'live' | 'upcoming' | 'finished' | 'unknown';

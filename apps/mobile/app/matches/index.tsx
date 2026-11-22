@@ -25,14 +25,20 @@ import { cairoDay, ribbonLabel } from '../../lib/dates';
 
 type Filter = 'all' | 'live' | 'followed' | 'finished' | 'upcoming';
 
-/** Spec order: Egypt first, then Africa, then Europe, then everything else. */
-function rank(competitionName: string): number {
-  if (/المصري/.test(competitionName)) return 0;
-  if (/كأس مصر/.test(competitionName)) return 1;
-  if (/أفريقيا|الكونفدرالية/.test(competitionName)) return 2;
-  if (/السعودي/.test(competitionName)) return 3;
-  if (/أوروبا|الإنجليزي|الإسباني|الإيطالي|الألماني|الفرنسي/.test(competitionName)) return 4;
-  return 5;
+/**
+ * Group order, as served.
+ *
+ * The server already sorts a day by competition priority (Egypt first) and each
+ * match carries its competition's priority, so this only has to read that field.
+ * The name-based fallback is for a match whose competition we do not know.
+ */
+function rankOf(m: FootballMatch): number {
+  if (typeof m.competitionPriority === 'number') return m.competitionPriority;
+  if (/المصري/.test(m.competitionName)) return 10;
+  if (/كأس مصر/.test(m.competitionName)) return 15;
+  if (/الإيطالي|الإسباني|الإنجليزي/.test(m.competitionName)) return 20;
+  if (/أفريقيا|أوروبا/.test(m.competitionName)) return 30;
+  return 50;
 }
 
 const FILTERS: Array<{ id: Filter; label: string }> = [
@@ -125,7 +131,10 @@ export default function MatchesScreen() {
       const key = m.competitionName || 'بطولات أخرى';
       map.set(key, [...(map.get(key) ?? []), m]);
     }
-    return [...map.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0], 'ar'));
+    return [...map.entries()].sort(
+      (a, b) =>
+        rankOf(a[1][0]!) - rankOf(b[1][0]!) || a[0].localeCompare(b[0], 'ar'),
+    );
   }, [rest]);
 
   /** A competition the reader follows, so its heading can say so. */

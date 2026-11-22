@@ -1358,15 +1358,24 @@ app.post('/api/digest/build', async (c) => {
 
 // --- Football: matches, standings, team follows ---
 
-/** Public: what we cover, so the app can render the competition tabs. */
+/**
+ * Public: what we cover, in display order.
+ *
+ * Sorted by the competition's own `priority` and served with the field, so the app
+ * renders in served order and a future per-user ordering (#26) only has to reorder
+ * data it already receives.
+ */
 app.get('/api/football/competitions', (c) =>
   c.json({
-    data: COMPETITIONS.map((x) => ({
-      id: x.id,
-      nameAr: x.nameAr,
-      country: x.country,
-      isCup: Boolean(x.isCup),
-    })),
+    data: [...COMPETITIONS]
+      .sort((a, b) => a.priority - b.priority || a.nameAr.localeCompare(b.nameAr, 'ar'))
+      .map((x) => ({
+        id: x.id,
+        nameAr: x.nameAr,
+        country: x.country,
+        isCup: Boolean(x.isCup),
+        priority: x.priority,
+      })),
   }),
 );
 
@@ -1392,7 +1401,12 @@ app.get('/api/football/matches', async (c) => {
       fetchedAt: day.fetchedAt,
       followedTeams: follows,
       followedLeagues: leagues,
-      matches: day.matches,
+      // Each row carries its competition's rank, so a screen that groups them can
+      // render in served order without holding a copy of the priority map.
+      matches: day.matches.map((m) => ({
+        ...m,
+        competitionPriority: competitionOf(m.competitionId)?.priority ?? 99,
+      })),
     },
   });
 });
@@ -1443,7 +1457,7 @@ app.get('/api/football/matches/:id', async (c) => {
     data: {
       match,
       detail,
-      news: relatedNews(match.home, match.away),
+      news: relatedNews(match.home, match.away, { competitionId: match.competitionId }),
       unavailable: day.unavailable,
     },
   });

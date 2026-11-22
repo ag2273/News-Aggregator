@@ -174,10 +174,16 @@ export async function loadStandings(
 export function relatedNews(
   home: string,
   away: string,
-  options: { limit?: number; articles?: ArticleLike[] } = {},
+  options: { limit?: number; articles?: ArticleLike[]; competitionId?: string } = {},
 ): RelatedArticle[] {
+  // The competition's country disambiguates a club whose short name is shared
+  // («إنتر» in Italy and in MLS), and is only used for that.
+  const country = options.competitionId
+    ? COMPETITIONS.find((c) => c.id === options.competitionId)?.country
+    : undefined;
   return relatedNewsFrom(home, away, {
     limit: options.limit,
+    country,
     articles: options.articles ?? getAllArticles(),
   });
 }
@@ -322,6 +328,11 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
               // stadium, not part of the name. Without this the fixture appeared
               // twice, once from each source.
               .replace(/^ستاد\s+/, '')
+              // Saudi «أهلي جدة» is written «الأهلي» by the other source, and both
+              // are the same club — not Egypt's Al Ahly, which never plays Al Nassr
+              // in this competition. Normalised to one form so one fixture is one row.
+              .replace(/^الاهلي$/, 'اهلي')
+              .replace(/^اهلي جده$/, 'اهلي')
               .replace(/\s+/g, ' ')
               .trim(),
           ),
@@ -364,14 +375,15 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
       );
     }
   }
-  // A stable, readable order: Egyptian first, then by competition name, then time.
-  return [...seen.values()].sort((a, b) => {
-    const priority = (m: MatchRow): number =>
-      m.competitionId === 'egyptian-premier' ? 0 : m.competitionId === 'other' ? 2 : 1;
-    return (
-      priority(a) - priority(b) ||
+  // The competition's own priority decides the order (Egypt first), so the app
+  // renders what it is served and every screen agrees. Unknown competitions sort
+  // last, then by name and kickoff time.
+  const rankOf = (m: MatchRow): number =>
+    COMPETITIONS.find((c) => c.id === m.competitionId)?.priority ?? 99;
+  return [...seen.values()].sort(
+    (a, b) =>
+      rankOf(a) - rankOf(b) ||
       a.competitionName.localeCompare(b.competitionName, 'ar') ||
-      (a.kickoff ?? '99:99').localeCompare(b.kickoff ?? '99:99')
-    );
-  });
+      (a.kickoff ?? '99:99').localeCompare(b.kickoff ?? '99:99'),
+  );
 }

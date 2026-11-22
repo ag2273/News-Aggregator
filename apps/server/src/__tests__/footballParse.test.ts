@@ -144,6 +144,7 @@ describe('ESPN fallback', () => {
     yallakoraTourId: '93',
     espnSlug: 'eng.1',
     country: 'GB',
+    priority: 22,
   };
   const payload = {
     events: [

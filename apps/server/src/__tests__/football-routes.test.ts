@@ -89,7 +89,7 @@ describe('football API', () => {
 
   it('never shows a false 0-0 for an ESPN match that has not started', () => {
 
-    const competition = { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', yallakoraName: 'الدوري الإنجليزي', yallakoraTourId: '93', espnSlug: 'eng.1', country: 'GB' };
+    const competition = { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', yallakoraName: 'الدوري الإنجليزي', yallakoraTourId: '93', espnSlug: 'eng.1', country: 'GB', priority: 22 };
     const rows = parseEspnScoreboard(
       {
         events: [
@@ -132,7 +132,7 @@ describe('football API', () => {
   it('shows an ESPN kickoff in Cairo time, not raw UTC', () => {
     // ESPN sends `2026-11-22T14:00Z`; Cairo is UTC+2, so the app must show 16:00.
     // Asserted through the parser, because that is the value the app renders.
-    const competition = { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', yallakoraName: 'الدوري الإنجليزي', yallakoraTourId: '93', espnSlug: 'eng.1', country: 'GB' };
+    const competition = { id: 'eng-premier', nameAr: 'الدوري الإنجليزي', yallakoraName: 'الدوري الإنجليزي', yallakoraTourId: '93', espnSlug: 'eng.1', country: 'GB', priority: 22 };
     const rows = parseEspnScoreboard(
       {
         events: [
@@ -228,6 +228,38 @@ describe('football API', () => {
       };
       expect(data.match.home).toBe('الجونة');
       expect(data.detail?.commentator).toBe('بلال علام');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('serves competitions in priority order, Egypt first', () => {
+    // The user's #25: every grouping must lead with الدوري المصري.
+    return app.request('/api/football/competitions').then(async (res) => {
+      const { data } = (await res.json()) as { data: Array<{ id: string; priority: number }> };
+      expect(data[0]!.id).toBe('egyptian-premier');
+      const prios = data.map((c) => c.priority);
+      expect([...prios].sort((a, b) => a - b)).toEqual(prios);
+      // The field is served, so a per-user order (#26) can reuse it later.
+      for (const c of data) expect(typeof c.priority).toBe('number');
+    });
+  });
+
+  it('carries the competition priority on every match row', async () => {
+    vi.stubGlobal('fetch', async () =>
+      new Response(
+        `<div data-matches-scroller><h6><span>الدوري المصري</span></h6>
+         <div class="cin_cntnr"><a href="/matches/1/x"><div class="f"><strong>الأهلي</strong><b> 1 </b></div>
+         <div class="m"><span class="status over">انتهت</span></div>
+         <div class="s"><strong>بيراميدز</strong><b> 0</b></div>
+         <div class="match-aux"><span>23-11-2026 - 20:00</span></div></a></div></div>`,
+        { status: 200 },
+      ),
+    );
+    try {
+      const res = await app.request('/api/football/matches?date=2026-11-23');
+      const { data } = (await res.json()) as { data: { matches: Array<{ competitionPriority?: number }> } };
+      expect(data.matches[0]!.competitionPriority).toBe(10);
     } finally {
       vi.unstubAllGlobals();
     }

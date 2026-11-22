@@ -170,4 +170,29 @@ describe('clubs whose name is an institution', () => {
     expect(mentionsTeam('نادي الجمارك يتعاقد مع مدرب جديد', 'الجمارك')).toBe(true);
     expect(mentionsTeam('فريق الجمارك يفوز في الدوري الموريتاني', 'الجمارك')).toBe(true);
   });
+
+  it('never mixes two clubs that share their first word', () => {
+    // Issue #23, from a device: an Italian match showed six MLS articles, because
+    // «إنتر ميلان» and «إنتر ميامي» share «إنتر».
+    const mls = 'إنتر ميامي يضم لاعبا جديدا قبل انطلاق الدوري الأمريكي';
+    const seria = 'إنتر ميلان يفوز على يوفنتوس في الدوري الإيطالي';
+    expect(mentionsTeam(mls, 'إنتر ميلان', undefined, 'IT')).toBe(false);
+    expect(mentionsTeam(seria, 'إنتر ميامي', undefined, 'US')).toBe(false);
+    expect(mentionsTeam(seria, 'إنتر ميلان', undefined, 'IT')).toBe(true);
+    expect(mentionsTeam(mls, 'إنتر ميامي', undefined, 'US')).toBe(true);
+  });
+
+  it('keeps Real Madrid out of Real Sociedad coverage', () => {
+    expect(mentionsTeam('ريال سوسيداد يفوز على خيتافي', 'ريال مدريد', undefined, 'ES')).toBe(false);
+    expect(mentionsTeam('ريال مدريد يفوز على برشلونة', 'ريال مدريد', undefined, 'ES')).toBe(true);
+  });
+
+  it('returns zero MLS articles for an Italian match, end to end', () => {
+    const corpus = [
+      { id: 'a', title: 'إنتر ميامي يتعاقد مع مدرب جديد', sourceName: 's', url: 'u', publishedAt: 2, summary: null },
+      { id: 'b', title: 'إنتر ميلان يستعد للديربي أمام ميلان', sourceName: 's', url: 'u', publishedAt: 1, summary: null },
+    ];
+    const hits = relatedNews('أتالانتا', 'إنتر ميلان', { articles: corpus, country: 'IT' });
+    expect(hits.map((h) => h.id)).toEqual(['b']);
+  });
 });

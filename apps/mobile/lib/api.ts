@@ -654,6 +654,8 @@ export interface FootballMatch {
   url?: string;
   minute: number | null;
   dataSource: 'yallakora' | 'filgoal' | 'espn';
+  /** The competition's display rank, served by the API (Egypt first). */
+  competitionPriority?: number;
   /** Broadcasting channel, when the source names one. */
   channel?: string | null;
   /** Stadium, when the source names one. */
@@ -815,6 +817,8 @@ export interface FootballCompetition {
   nameAr: string;
   country: string;
   isCup: boolean;
+  /** Display rank, Egypt first. Served, not computed, so #26 can reorder it. */
+  priority?: number;
 }
 
 /** Every competition we cover, as the server defines them (no stale copy here). */
