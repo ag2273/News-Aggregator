@@ -19,6 +19,7 @@ import { useArticleSheet } from '../../components/ArticleSheet';
 import { TeamCrest } from '../../components/TeamCrest';
 import { MatchNewsCard } from '../../components/MatchNewsCard';
 import { MatchTimeline } from '../../components/MatchTimeline';
+import { TacticalPitch, PitchStats, type PitchPlayer } from '../../components/TacticalPitch';
 import {
   fetchMatch,
   fetchTeamFollows,
@@ -26,11 +27,28 @@ import {
   unfollowFootballTeam,
   isNetworkFailure,
   type FootballMatch,
+  type LineupPlayer,
   type MatchDetail,
   type MatchNews,
 } from '../../lib/api';
 
 type NewsItem = MatchNews;
+
+/**
+ * A line-up row as the pitch draws it.
+ *
+ * The pitch shows the starting XI only — a substitute belongs on the bench, which
+ * this screen lists underneath — so the caller filters before mapping.
+ */
+function toPitchPlayers(players: LineupPlayer[]): PitchPlayer[] {
+  return players
+    .filter((p) => p.isStarter)
+    .map((p) => ({
+      shirtNumber: p.shirtNumber,
+      name: p.name,
+      position: p.position,
+    }));
+}
 
 const TABS = [
   // Short labels because four tabs share a 360dp width (~78dp each), where
@@ -328,6 +346,33 @@ export default function MatchCenterScreen() {
             ) : null}
 
             {tab === 'lineups' ? (
+              <>
+              {/* The tactical pitch (#28), drawn to the approved preview: away on
+                  top, home at the bottom. A side whose XI the source has not
+                  published draws the file's honest-state card, never a guessed XI. */}
+              {detail?.lineups ? (
+                <TacticalPitch
+                  t={t}
+                  home={{
+                    name: match.home,
+                    formation: detail.lineups.homeFormation ?? null,
+                    side: 'home',
+                    players: toPitchPlayers(detail.lineups.home),
+                  }}
+                  away={{
+                    name: match.away,
+                    formation: detail.lineups.awayFormation ?? null,
+                    side: 'away',
+                    players: toPitchPlayers(detail.lineups.away),
+                  }}
+                  honestText={
+                    match.status === 'upcoming'
+                      ? 'المصدر مش ناشر التشكيل لسه. بينزل قبل انطلاق المباراة بقليل.'
+                      : 'المصدر مش ناشر تشكيل الفريق ده.'
+                  }
+                />
+              ) : null}
+
               <View style={styles.centerInline}>
                 {detail?.homeCoach || detail?.awayCoach ? (
                   <View style={[styles.coachBox, { backgroundColor: t.surface }]}>
@@ -382,9 +427,9 @@ export default function MatchCenterScreen() {
                     ))}
                   </View>
                 ) : (
-                  // Measured: an unplayed match has an empty squad array, and a
-                  // played Egyptian one now has a real XI — so "unavailable" is
-                  // about timing, not about Egyptian football.
+                  // No line-up at all. The pitch above is not drawn either, so the
+                  // tab must still say why rather than going blank — this branch was
+                  // lost in the #28 restructure and a test caught it.
                   <Text style={[styles.emptyBody, { color: t.textMuted }]}>
                     {match.status === 'upcoming'
                       ? 'المصدر مش ناشر التشكيل لسه. بينزل قبل انطلاق المباراة بقليل.'
@@ -392,6 +437,7 @@ export default function MatchCenterScreen() {
                   </Text>
                 )}
               </View>
+              </>
             ) : null}
 
             {tab === 'standings' ? (

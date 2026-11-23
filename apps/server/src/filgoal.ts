@@ -326,6 +326,9 @@ export interface FilGoalPlayer {
 export interface FilGoalLineups {
   homeTeamId: string | null;
   awayTeamId: string | null;
+  /** «4-2-3-1» as the page names it; null when it publishes no shape. */
+  homeFormation: string | null;
+  awayFormation: string | null;
   home: FilGoalPlayer[];
   away: FilGoalPlayer[];
 }
@@ -391,6 +394,12 @@ export function parseFilGoalLineups(html: string): FilGoalLineups | null {
   // Home/away from the page's own ids, so the sides are not guessed from order.
   const homeTeamId = html.match(/"HomeTeamId":(\d+)/)?.[1] ?? null;
   const awayTeamId = html.match(/"AwayTeamId":(\d+)/)?.[1] ?? null;
+  // The shape the page publishes, e.g. «4-2-3-1». Measured on a played fixture; an
+  // unplayed match carries the literal string «null».
+  const shape = (raw: string | undefined): string | null =>
+    raw && /^\d(-\d)+$/.test(raw) ? raw : null;
+  const homeFormation = shape(html.match(/"HomeTeamFormationName"\s*:\s*"([^"]*)"/)?.[1]);
+  const awayFormation = shape(html.match(/"AwayTeamFormationName"\s*:\s*"([^"]*)"/)?.[1]);
   const home = homeTeamId ? mapped.filter((p) => p.teamId === homeTeamId) : [];
   const away = awayTeamId ? mapped.filter((p) => p.teamId === awayTeamId) : [];
   if (!home.length || !away.length) {
@@ -407,6 +416,8 @@ export function parseFilGoalLineups(html: string): FilGoalLineups | null {
       return {
         homeTeamId,
         awayTeamId,
+        homeFormation,
+        awayFormation,
         home: isHome ? mapped : [],
         away: isHome ? [] : mapped,
       };
@@ -415,10 +426,12 @@ export function parseFilGoalLineups(html: string): FilGoalLineups | null {
     return {
       homeTeamId: teams[0] ?? null,
       awayTeamId: teams[1] ?? null,
+      homeFormation,
+      awayFormation,
       home: mapped.filter((p) => p.teamId === teams[0]),
       away: mapped.filter((p) => p.teamId === teams[1]),
     };
   }
-  return { homeTeamId, awayTeamId, home, away };
+  return { homeTeamId, awayTeamId, homeFormation, awayFormation, home, away };
 }
 

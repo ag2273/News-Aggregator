@@ -679,8 +679,10 @@ describe('upcoming fixtures screen', () => {
     render(<MatchCenterScreen />);
     await waitFor(() => expect(screen.getByText('التشكيل')).toBeTruthy());
     fireEvent.press(screen.getByText('التشكيل'));
-    await waitFor(() => expect(screen.getByText('أليسون بيكر')).toBeTruthy());
-    expect(screen.getByText('محمد صلاح')).toBeTruthy();
+    // The name appears twice now: on the tactical pitch (#28) and in the list
+    // below it. Both are the same player, so either rendering proves it.
+    await waitFor(() => expect(screen.getAllByText('أليسون بيكر').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('محمد صلاح').length).toBeGreaterThan(0);
     // A substitute is not in the starting XI.
     expect(screen.queryByText('بديل')).toBeNull();
   });
@@ -708,8 +710,8 @@ describe('upcoming fixtures screen', () => {
     render(<MatchCenterScreen />);
     await waitFor(() => expect(screen.getByText('التشكيل')).toBeTruthy());
     fireEvent.press(screen.getByText('التشكيل'));
-    await waitFor(() => expect(screen.getByText('مهدي سليمان')).toBeTruthy());
-    expect(screen.getByText('عبد الله السعيد')).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText('مهدي سليمان').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('عبد الله السعيد').length).toBeGreaterThan(0);
     // The unpublished side says so, per club, instead of blanking the whole tab.
     expect(screen.getByText(/لسه معلنش/)).toBeTruthy();
   });
@@ -726,6 +728,10 @@ describe('upcoming fixtures screen', () => {
     fireEvent.press(screen.getByText('التشكيل'));
     // The fixture is upcoming, so the honest sentence is "not announced yet" —
     // not "unavailable", which read as if the source never publishes one.
-    await waitFor(() => expect(screen.getByText(/مش ناشر التشكيل لسه/)).toBeTruthy());
+    // The honest line lives in the pitch's state card now (#28), and the list below
+    // no longer repeats it — the pitch is the place a reader looks.
+    await waitFor(() =>
+      expect(screen.getAllByText(/مش ناشر التشكيل لسه/).length).toBeGreaterThan(0),
+    );
   });
 });

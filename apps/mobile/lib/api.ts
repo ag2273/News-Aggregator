@@ -737,6 +737,9 @@ export interface LineupPlayer {
 export interface Lineups {
   homeTeamId: string | null;
   awayTeamId: string | null;
+  /** «4-3-3» as the source publishes it; null when it publishes no shape. */
+  homeFormation?: string | null;
+  awayFormation?: string | null;
   home: LineupPlayer[];
   away: LineupPlayer[];
 }

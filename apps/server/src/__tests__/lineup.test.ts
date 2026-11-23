@@ -41,4 +41,23 @@ describe('lineups', () => {
     expect(lu!.home).toHaveLength(0);
     expect(lu!.away[0]!.name).toBe('مهدي سليمان');
   });
+
+  it('reads the formation the page publishes, and rejects its «null» string', () => {
+    // Measured on الزمالك × المقاولون: the page carries
+    // `"HomeTeamFormationName":"4-2-3-1"`, and an unplayed match carries the
+    // literal string «null» rather than a JSON null — which used to be served as a
+    // formation called «null» (#28 needs the shape to draw the pitch).
+    const played = `{"HomeTeamId":2,"AwayTeamId":617,
+      "HomeTeamFormationName":"4-2-3-1","AwayTeamFormationName":"4-3-3",
+      "MatchTeamsSquads":[
+        {"PersonName":"أ","TeamId":"2","ShirtNumber":1,"PlayerPositionName":"حارس مرمى","IsSpare":false},
+        {"PersonName":"ب","TeamId":"617","ShirtNumber":1,"PlayerPositionName":"حارس مرمى","IsSpare":false}
+      ]}`;
+    const lu = parseFilGoalLineups(played)!;
+    expect(lu.homeFormation).toBe('4-2-3-1');
+    expect(lu.awayFormation).toBe('4-3-3');
+
+    const unplayed = played.replace('"4-2-3-1"', '"null"');
+    expect(parseFilGoalLineups(unplayed)!.homeFormation).toBeNull();
+  });
 });
