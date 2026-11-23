@@ -135,6 +135,7 @@ import { COMPETITIONS, hasLiveForReader } from './football.js';
 import {
   followLeague,
   followTeam,
+  getCachedStandings,
   getLeagueFollows,
   getTeamFollows,
   setLeagueNotify,
@@ -145,6 +146,7 @@ import {
 import { pollFootball } from './footballPush.js';
 import { crestCacheStats, getCrest, registerLogoSource } from './crests.js';
 import { buildTeamPage } from './teamPage.js';
+import { buildFollowCatalog } from './followCatalog.js';
 import { buildCompetitionPage } from './competitionPage.js';
 import { privacyCopy, privacyLang, renderPrivacyPage } from './privacy.js';
 import {
@@ -1419,6 +1421,9 @@ app.get('/api/football/matches', async (c) => {
         .map((x) => ({
           id: x.id,
           nameAr: x.nameAr,
+          // The group header's flag badge is chosen from the country, so it is
+          // served with the list rather than guessed from the Arabic name.
+          country: x.country,
           isCup: Boolean(x.isCup),
           priority: x.priority,
         })),
@@ -1542,7 +1547,51 @@ app.get('/api/football/matches/:id', async (c) => {
   });
 });
 
-/** Standings for one competition; `unavailable` when the source refused. */
+/**
+ * The follow screen's catalogue: club lists by section, each with its crest, its
+ * league position and its next fixture.
+ *
+ * Built from the standings we already cache and the days we already hold, so it
+ * adds no source traffic. A league whose table has never been read contributes
+ * nothing rather than a guessed roster.
+ */
+app.get('/api/football/follow-catalog', async (c) => {
+  // Warm the tables the screen shows, so a first visit is not an empty list.
+  await Promise.all(
+    [
+      'egyptian-premier',
+      'ita-serie-a',
+      'esp-la-liga',
+      'eng-premier',
+      'ger-bundesliga',
+      'saudi-pro-league',
+    ].map((id) => loadStandings(id).catch(() => null)),
+  );
+  await Promise.all(
+    [0, 1, 2].map((offset) =>
+      loadDay(todayCairo(Date.now() + offset * 86_400_000)).catch(() => null),
+    ),
+  );
+  // Register each crest's real source URL before the app can ask for it. Without
+  // this the catalogue carries crest paths that 404 — the bug that made every
+  // Egyptian crest a blank shield on the standings screen.
+  const catalog = buildFollowCatalog();
+  const wanted = new Set(catalog.sections.flatMap((s) => s.teams.map((t) => t.competitionId)));
+  for (const competitionId of wanted) {
+    for (const table of getCachedStandings(competitionId)?.tables ?? []) {
+      for (const row of table.rows) {
+        if (row.logo && row.teamId) {
+          const key = row.logo.split('/').pop();
+          if (key) registerLogoSource(key, row.logoSource ?? null);
+        }
+      }
+    }
+  }
+  return c.json({ data: catalog });
+});
+
+/**
+ * Standings for one competition; `unavailable` when the source refused. */
 app.get('/api/football/standings', async (c) => {
   const competitionId = (c.req.query('competition') ?? 'egyptian-premier').trim();
   if (!competitionOf(competitionId)) return c.json({ error: 'unknown competition' }, 400);

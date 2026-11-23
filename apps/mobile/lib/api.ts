@@ -758,6 +758,13 @@ export interface MatchNews {
   sourceName: string;
   url: string;
   publishedAt: number;
+  /**
+   * The article's lead image from the feed, when it carried one.
+   *
+   * Most Egyptian coverage has none, so the card draws the design's football
+   * glyph rather than an empty box. Never invented.
+   */
+  imageUrl?: string | null;
   /** `both` when the article names the two clubs in the same piece. */
   team: 'home' | 'away' | 'both';
 }
@@ -846,6 +853,37 @@ export interface FootballCompetition {
   isCup: boolean;
   /** Display rank, Egypt first. Served, not computed, so #26 can reorder it. */
   priority?: number;
+}
+
+/** A club or national team offered on the follow screen. */
+export interface CatalogTeam {
+  name: string;
+  competitionId: string;
+  competitionName: string;
+  section: 'egypt' | 'europe' | 'arab' | 'national';
+  /** Crest on our own server, or null when the source has none. */
+  logo: string | null;
+  /** League position from the cached table, when there is one. */
+  position: number | null;
+  /** Emoji flag for a national team; null for a club. */
+  flag: string | null;
+  nextMatch: { opponent: string; kickoff: string | null; isHome: boolean } | null;
+}
+
+export interface FollowCatalog {
+  sections: Array<{ id: CatalogTeam['section']; title: string; teams: CatalogTeam[] }>;
+}
+
+/**
+ * The follow screen's catalogue.
+ *
+ * The server builds it from the standings and days it already caches, so this
+ * costs the reader one request and the sources nothing.
+ */
+export async function fetchFollowCatalog(): Promise<FollowCatalog> {
+  const res = await fetch(`${API_BASE}/api/football/follow-catalog`);
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: FollowCatalog }).data;
 }
 
 /** Every competition we cover, as the server defines them (no stale copy here). */
