@@ -12,17 +12,15 @@ name: Deploy server to VM
 # then a pull and a restart: seconds of CPU instead of a full TypeScript compile
 # and layer export, and a failed build can no longer take the site with it.
 
+# DISABLED ON PUSH, 2026-11-23.
+#
+# Production went down twice in one day because a push rebuilt the image on the
+# 1GB box that serves traffic. The CI path below is the fix, but it cannot be
+# verified while the VM is unreachable — so the automatic trigger is off until the
+# box is back and one manual run has proved the pull-only deploy works.
+#
+# Re-enable by restoring the `push:` block, once `workflow_dispatch` has run green.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/server/**'
-      - 'docker-compose.yml'
-      - 'deploy/**'
-      - '.github/workflows/deploy.yml'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
   workflow_dispatch: {}
 
 concurrency:
