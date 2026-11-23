@@ -6,8 +6,10 @@ import {
   arabicTeam,
   cairoClock,
   arabicChannel,
+  competitionForLeague,
   hasLiveForReader,
   isFootballLeague,
+  isWomenLeague,
   minuteOf,
   parseEspnScoreboard,
   parseFullStandings,
@@ -286,5 +288,25 @@ describe('the live-minute ceiling', () => {
     const live = parseYallakoraDay(fixture('day-live.html'), '2026-11-22').filter((m) => m.status === 'live');
     expect(live.length).toBeGreaterThan(0);
     for (const m of live) expect(m.minute).toBeNull();
+  });
+});
+
+describe("women's competition mapping", () => {
+  it('does not file a women\'s fixture under the men\'s league', () => {
+    // Measured on production: «الدوري المصري | سيدات» contains the men's name, so
+    // the plain includes() lookup put seven women's fixtures under «الدوري المصري» —
+    // and their «الأهلي | سيدات» names then pulled men's Al Ahly news onto them.
+    const women = competitionForLeague('الدوري المصري  | سيدات');
+    expect(women?.id).toBe('egyptian-women');
+    expect(women?.nameAr).toBe('الدوري المصري للسيدات');
+    // The men's league is untouched.
+    expect(competitionForLeague('الدوري المصري')?.id).toBe('egyptian-premier');
+  });
+
+  it('recognises the «سيدات» marker the source uses', () => {
+    expect(isWomenLeague('الدوري المصري | سيدات')).toBe(true);
+    expect(isWomenLeague('الدوري المصري')).toBe(false);
+    // A men's club whose name happens to contain a similar word is not a women's side.
+    expect(isWomenLeague('سيدات القاهرة للناشئين')).toBe(true);
   });
 });

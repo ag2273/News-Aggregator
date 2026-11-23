@@ -59,6 +59,12 @@ export const COMPETITIONS: Competition[] = [
   { id: 'ger-bundesliga', nameAr: 'الدوري الألماني', yallakoraName: 'الدوري الألماني', yallakoraTourId: '98', espnSlug: 'ger.1', country: 'DE' , priority: 40 },
   { id: 'fra-ligue-1', nameAr: 'الدوري الفرنسي', yallakoraName: 'الدوري الفرنسي', yallakoraTourId: '95', espnSlug: 'fra.1', country: 'FR' , priority: 41 },
   { id: 'saudi-pro-league', nameAr: 'الدوري السعودي', yallakoraName: 'الدوري السعودي', yallakoraTourId: '102', espnSlug: 'ksa.1', country: 'SA' , priority: 42 },
+  // The women's league is a real competition the sources publish, and it is not
+  // the men's league. Before this it was filed under «الدوري المصري» — seven
+  // women's fixtures on one day, whose club names then pulled men's club news onto
+  // them. Its own entry keeps it visible and correctly labelled instead of
+  // silently dropping fixtures the source actually carries.
+  { id: 'egyptian-women', nameAr: 'الدوري المصري للسيدات', yallakoraName: 'الدوري المصري سيدات', yallakoraTourId: '', country: 'EG', priority: 90 },
 ];
 
 export type MatchStatus = 'live' | 'upcoming' | 'finished' | 'unknown';
@@ -217,8 +223,27 @@ export function isFootballLeague(name: string): boolean {
   return !/كرة يد|كرة سلة|طائرة|سلة|يد -|تنس|سباحة|ألعاب/.test(name);
 }
 
-/** `1`-indexed competition lookup by the source's league heading. */
+/**
+ * A women's competition.
+ *
+ * Measured: FilGoal files the women's league as «الدوري المصري | سيدات», which
+ * `includes('الدوري المصري')` maps to the MEN'S competition. The result was seven
+ * women's fixtures sitting under «الدوري المصري» on 20 November, and — worse — their
+ * club names carry the same words as the men's clubs, so the match-news matcher
+ * pulled men's Al Ahly coverage onto a women's fixture.
+ *
+ * The source marks them unambiguously with «سيدات». Until we cover the women's
+ * league on its own terms, they must not be filed under the men's.
+ */
+export function isWomenLeague(name: string): boolean {
+  return /سيدات|نساء|women/i.test(name);
+}
+
+/** Competition lookup by the source's league heading. */
 export function competitionForLeague(league: string): Competition | undefined {
+  // The women's league is checked FIRST: «الدوري المصري | سيدات» contains the
+  // men's name, so the plain lookup below would file it as the men's league.
+  if (isWomenLeague(league)) return COMPETITIONS.find((c) => c.id === 'egyptian-women');
   return COMPETITIONS.find((c) => league.includes(c.yallakoraName));
 }
 

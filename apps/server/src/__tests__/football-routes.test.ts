@@ -28,10 +28,14 @@ describe('football API', () => {
   it('lists the competitions', async () => {
     const res = await app.request('/api/football/competitions');
     const { data } = (await res.json()) as { data: Array<{ id: string; nameAr: string }> };
-    // 11 competitions now: كأس الكونفدرالية was added with the FilGoal batch.
-    expect(data.length).toBe(11);
+    // 12: the women's league is now its own competition instead of being filed
+    // under the men's (see the «سيدات» mapping test).
+    expect(data.length).toBe(12);
     expect(data.map((x) => x.id)).toContain('egyptian-premier');
     expect(data.find((x) => x.id === 'egyptian-premier')?.nameAr).toBe('الدوري المصري');
+    expect(data.find((x) => x.id === 'egyptian-women')?.nameAr).toBe('الدوري المصري للسيدات');
+    // It sorts last: it is the lowest-priority competition we cover.
+    expect(data[data.length - 1]!.id).toBe('egyptian-women');
   });
 
   it('rejects a malformed date instead of guessing', async () => {

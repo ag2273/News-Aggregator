@@ -243,4 +243,21 @@ describe('clubs whose name is an institution', () => {
       ),
     ).toBe(false);
   });
+
+  it("does not put men's club news on a women's fixture", () => {
+    // Measured on production: the women's league files clubs as «الأهلي | سيدات»,
+    // so every club word is identical to the men's side. A men's «الأهلي يهزم
+    // الزمالك» headline matched a women's fixture before this rule.
+    expect(
+      mentionsTeam('الأهلي يهزم الزمالك في قمة الدوري المصري', 'الأهلي | سيدات'),
+    ).toBe(false);
+    // …and the women's article is still found, in the other direction too.
+    expect(
+      mentionsTeam('الأهلي للسيدات يفوز على وادي دجلة', 'الأهلي | سيدات'),
+    ).toBe(true);
+  });
+
+  it("does not put a women's article on a men's fixture", () => {
+    expect(mentionsTeam('الأهلي للسيدات يفوز على وادي دجلة', 'الأهلي')).toBe(false);
+  });
 });

@@ -67,6 +67,16 @@ const PLACE_WORDS = new Set(['وادي', 'وادى', 'مدينه', 'مدينة',
 const AMBIGUOUS_ONLY_NAMES = new Set(['الجمارك', 'الشرطه', 'البنك', 'المصرف']);
 
 /**
+ * Words that mark an article as being about women's football.
+ *
+ * Measured: the women's league files its clubs as «الأهلي | سيدات», so the club
+ * words are identical to the men's side and a men's «الأهلي يهزم الزمالك» article
+ * matched a women's fixture. Gender is the only thing that separates them, so it
+ * is compared explicitly, in both directions.
+ */
+const WOMEN_WORDS = /سيدات|نساء|للسيدات|women/i;
+
+/**
  * Words that place an article in a competition's country.
  *
  * Used only to disambiguate a club whose short name is shared («إنتر» in Italy vs
@@ -152,7 +162,14 @@ export function stripPrefixes(word: string): string {
  * «باريس إف سي» would otherwise match everything.
  */
 export function teamWords(name: string): string[] {
-  const generic = new Set(['منتخب', 'فريق', 'نادي', 'نادى', 'كلوب', 'club', 'fc', 'اف', 'سي']);
+  // Gender words are not identities: «سيدات» says which side, not which club, and
+  // leaving it in the word list made «الأهلي للسيدات» match only on «للسيدات»,
+  // which a headline writes with a different prefix («للسيدات» vs «سيدات»).
+  // Which side it is, is decided by the gender rule in `mentionsTeam`.
+  const generic = new Set([
+    'منتخب', 'فريق', 'نادي', 'نادى', 'كلوب', 'club', 'fc', 'اف', 'سي',
+    'سيدات', 'للسيدات', 'نساء', 'women',
+  ]);
   return normalizeArabic(name)
     .split(' ')
     .filter((w) => w.length >= 3 && !generic.has(w));
@@ -260,6 +277,14 @@ export function mentionsTeam(
   const haystack = normalizeArabic(text);
   if (!haystack || !words.length) return false;
   const tokens = haystack.split(' ');
+
+  // 0. Gender must agree. A women's side and a men's side share every club word,
+  //    so without this a men's «الأهلي يهزم الزمالك» headline is coverage of
+  //    «الأهلي | سيدات». The marker is in the name, and it must also be in the
+  //    text (or absent from both — most coverage names neither).
+  const teamIsWomen = WOMEN_WORDS.test(team);
+  const textIsWomen = WOMEN_WORDS.test(`${text} ${haystack}`);
+  if (teamIsWomen !== textIsWomen) return false;
 
   // Distinctive words first: a club with any non-generic word is matched only by
   // those, never by the generic part. This is the fix for the European Union.
