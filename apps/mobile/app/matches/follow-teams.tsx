@@ -84,7 +84,7 @@ export default function FollowTeamsScreen() {
       .then((c) => setSections(c.sections))
       .catch(() => setError('تعذّر تحميل قائمة الفرق.'));
     try {
-      const list = await fetchCompetitions();
+      const list = await fetchCompetitions(token);
       setCompetitions(list);
     } catch {
       /* the catalogue carries its own competition names */

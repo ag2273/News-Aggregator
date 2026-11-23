@@ -75,6 +75,14 @@ export interface FootballStore {
   follows: Record<string, TeamFollow[]>;
   /** Followed competitions, per user. Additive: team follows are untouched. */
   leagueFollows: Record<string, LeagueFollow[]>;
+  /**
+   * A reader's own competition order (#26).
+   *
+   * An id list, not a copy of the competition objects: the objects change (a name,
+   * a priority), the reader's intent does not. Ids of competitions we stop covering
+   * are harmless — the resolver ignores anything it does not recognise.
+   */
+  competitionOrders: Record<string, string[]>;
 }
 
 let cache: FootballStore | null = null;
@@ -88,9 +96,10 @@ function load(): FootballStore {
       standings: parsed.standings ?? {},
       follows: parsed.follows ?? {},
       leagueFollows: parsed.leagueFollows ?? {},
+      competitionOrders: parsed.competitionOrders ?? {},
     };
   } catch {
-    cache = { days: {}, standings: {}, follows: {}, leagueFollows: {} };
+    cache = { days: {}, standings: {}, follows: {}, leagueFollows: {}, competitionOrders: {} };
   }
   return cache;
 }
@@ -110,6 +119,9 @@ function persist(): void {
       standings: store.standings,
       follows: store.follows,
       leagueFollows: store.leagueFollows,
+      // A reader's own order is a preference like a follow: it must survive a
+      // restart, which is the whole point of keeping it server-side.
+      competitionOrders: store.competitionOrders,
     }),
   );
 }
@@ -272,4 +284,31 @@ export function leagueFollowersOf(competitionId: string): Array<{ userId: string
     if (follow) out.push({ userId, follow });
   }
   return out;
+}
+
+// --- per-user competition order (#26) ---
+
+/** This reader's saved order, or an empty list when they never rearranged. */
+export function getCompetitionOrder(userId: string): string[] {
+  return load().competitionOrders[userId] ?? [];
+}
+
+/**
+ * Replace this reader's order.
+ *
+ * Whole-list replacement, not a patch: the screen sends what the reader arranged,
+ * and a merge would make a removed competition impossible to express.
+ */
+export function setCompetitionOrder(userId: string, order: string[]): string[] {
+  const store = load();
+  store.competitionOrders[userId] = [...order];
+  persist();
+  return store.competitionOrders[userId];
+}
+
+/** Forget the saved order, so the reader falls back to the default. */
+export function clearCompetitionOrder(userId: string): void {
+  const store = load();
+  delete store.competitionOrders[userId];
+  persist();
 }

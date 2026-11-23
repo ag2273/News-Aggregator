@@ -63,10 +63,12 @@ export default function StandingsScreen() {
   const [followed, setFollowed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetchCompetitions()
+    // Pass the token so the strip arrives in the reader's own order (#26). A guest
+    // sends nothing and gets the Egypt-first default, which is the same list.
+    fetchCompetitions(token)
       .then((list) => setCompetitions(list.length ? list : FALLBACK_COMPETITIONS))
       .catch(() => setCompetitions(FALLBACK_COMPETITIONS));
-  }, []);
+  }, [token]);
 
   const load = useCallback(async () => {
     setLoading(true);

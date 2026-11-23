@@ -12,6 +12,7 @@
 // rather than showing a made-up friendly.
 
 import { COMPETITIONS, type MatchRow } from './football.js';
+import { competitionOrderFor } from './competitionOrder.js';
 import { getCachedDay, getCachedStandings } from './footballStore.js';
 
 /**
@@ -90,7 +91,9 @@ const sameTeam = (a: string, b: string): boolean =>
  * guessed list: the app asks for the table it already shows on the standings
  * screen, so by the time a reader opens follow they have been warmed.
  */
-export function buildFollowCatalog(options: { matches?: MatchRow[] } = {}): {
+export function buildFollowCatalog(
+  options: { matches?: MatchRow[]; userId?: string | null } = {},
+): {
   sections: Array<{ id: CatalogSection; title: string; teams: CatalogTeam[] }>;
 } {
   const matches = options.matches ?? cachedMatches();
@@ -102,9 +105,10 @@ export function buildFollowCatalog(options: { matches?: MatchRow[] } = {}): {
     national: [],
   };
 
-  const ordered = [...COMPETITIONS].sort(
-    (a, b) => a.priority - b.priority || a.nameAr.localeCompare(b.nameAr, 'ar'),
-  );
+  // The reader's own order when they arranged one (#26). The sections keep their
+  // fixed hierarchy — that is a layout, not a ranking — but a club's position inside
+  // its section follows the order the reader expects from every other screen.
+  const ordered = competitionOrderFor(options.userId ?? null);
 
   for (const competition of ordered) {
     const table = getCachedStandings(competition.id)?.tables?.[0];

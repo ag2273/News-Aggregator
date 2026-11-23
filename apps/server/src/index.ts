@@ -138,6 +138,9 @@ import {
   getCachedStandings,
   getLeagueFollows,
   getTeamFollows,
+  clearCompetitionOrder,
+  getCompetitionOrder,
+  setCompetitionOrder,
   setLeagueNotify,
   setTeamNotify,
   unfollowLeague,
@@ -146,6 +149,7 @@ import {
 import { pollFootball } from './footballPush.js';
 import { crestCacheStats, getCrest, registerLogoSource } from './crests.js';
 import { buildTeamPage } from './teamPage.js';
+import { competitionOrderFor, normaliseCompetitionOrder } from './competitionOrder.js';
 import { buildFollowCatalog } from './followCatalog.js';
 import { buildCompetitionPage } from './competitionPage.js';
 import { privacyCopy, privacyLang, renderPrivacyPage } from './privacy.js';
@@ -1376,19 +1380,21 @@ app.post('/api/digest/build', async (c) => {
  * renders in served order and a future per-user ordering (#26) only has to reorder
  * data it already receives.
  */
-app.get('/api/football/competitions', (c) =>
-  c.json({
-    data: [...COMPETITIONS]
-      .sort((a, b) => a.priority - b.priority || a.nameAr.localeCompare(b.nameAr, 'ar'))
-      .map((x) => ({
-        id: x.id,
-        nameAr: x.nameAr,
-        country: x.country,
-        isCup: Boolean(x.isCup),
-        priority: x.priority,
-      })),
-  }),
-);
+app.get('/api/football/competitions', (c) => {
+  // The reader's own order when they have arranged one (#26), the Egypt-first
+  // default otherwise. `priority` is still served, so a client that shows the
+  // default ranking has the number it needs.
+  const userId = extractUserId(c.req.header('Authorization'));
+  return c.json({
+    data: competitionOrderFor(userId).map((x) => ({
+      id: x.id,
+      nameAr: x.nameAr,
+      country: x.country,
+      isCup: Boolean(x.isCup),
+      priority: x.priority,
+    })),
+  });
+});
 
 /**
  * Matches for one Cairo day. `date` is YYYY-MM-DD; `unavailable` is honest when
@@ -1416,17 +1422,17 @@ app.get('/api/football/matches', async (c) => {
       // match today. Without this the app can only show the leagues that happened
       // to play, so a league with no fixture vanished from the screen entirely —
       // the user could not find الدوري المصري at all.
-      competitions: [...COMPETITIONS]
-        .sort((a, b) => a.priority - b.priority || a.nameAr.localeCompare(b.nameAr, 'ar'))
-        .map((x) => ({
-          id: x.id,
-          nameAr: x.nameAr,
-          // The group header's flag badge is chosen from the country, so it is
-          // served with the list rather than guessed from the Arabic name.
-          country: x.country,
-          isCup: Boolean(x.isCup),
-          priority: x.priority,
-        })),
+      // Same resolver as the competitions endpoint, so the day's groups and the
+      // standings strip cannot disagree about the order (#26).
+      competitions: competitionOrderFor(userId).map((x) => ({
+        id: x.id,
+        nameAr: x.nameAr,
+        // The group header's flag badge is chosen from the country, so it is
+        // served with the list rather than guessed from the Arabic name.
+        country: x.country,
+        isCup: Boolean(x.isCup),
+        priority: x.priority,
+      })),
       // Each row carries its competition's rank, so a screen that groups them can
       // render in served order without holding a copy of the priority map.
       matches: day.matches.map((m) => {
@@ -1575,7 +1581,7 @@ app.get('/api/football/follow-catalog', async (c) => {
   // Register each crest's real source URL before the app can ask for it. Without
   // this the catalogue carries crest paths that 404 — the bug that made every
   // Egyptian crest a blank shield on the standings screen.
-  const catalog = buildFollowCatalog();
+  const catalog = buildFollowCatalog({ userId: extractUserId(c.req.header('Authorization')) });
   const wanted = new Set(catalog.sections.flatMap((s) => s.teams.map((t) => t.competitionId)));
   for (const competitionId of wanted) {
     for (const table of getCachedStandings(competitionId)?.tables ?? []) {
@@ -1617,6 +1623,64 @@ app.get('/api/football/standings', async (c) => {
       })),
     },
   });
+});
+
+// --- Per-user competition order (#26) ---
+//
+// A preference, not a permission: reading the order needs no account (a guest gets
+// the default), and only the reader who owns the order can change it. It is stored
+// per user for the reasons in competitionOrder.ts — the app is already account-bound
+// for follows, and the server is what every screen renders its order from.
+
+/** The caller's own order, plus the default so a client can show both. */
+app.get('/api/football/competition-order', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  const order = userId ? getCompetitionOrder(userId) : [];
+  return c.json({
+    data: {
+      // Empty means "never arranged": the served competition list is already in the
+      // default order, so an empty array is the honest answer, not a 404.
+      order,
+      /** True when this is the reader's own arrangement rather than the default. */
+      personalised: order.length > 0,
+      defaultOrder: competitionOrderFor(null).map((x) => x.id),
+    },
+  });
+});
+
+/** Save the reader's order. Verified accounts only, exactly like a follow. */
+app.put('/api/football/competition-order', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+
+  let body: { order?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  const normalised = normaliseCompetitionOrder(body.order);
+  if (normalised === null) {
+    return c.json({ error: 'order must be an array of competition ids' }, 400);
+  }
+  if (normalised.length === 0) {
+    // An empty list is a reset, not a saved order: storing [] would be
+    // indistinguishable from never having arranged, so say so explicitly.
+    return c.json({ error: 'order is empty — DELETE to reset' }, 400);
+  }
+  return c.json({
+    data: { order: setCompetitionOrder(userId, normalised), personalised: true },
+  });
+});
+
+/** Forget the saved order and fall back to the default. */
+app.delete('/api/football/competition-order', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  clearCompetitionOrder(userId);
+  return c.json({ data: { order: [], personalised: false } });
 });
 
 // --- Followed leagues ---

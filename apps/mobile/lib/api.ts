@@ -958,10 +958,61 @@ export const FALLBACK_COMPETITIONS: FootballCompetition[] = [
   { id: 'saudi-pro-league', nameAr: 'الدوري السعودي', country: 'SA', isCup: false },
 ];
 
-export async function fetchCompetitions(): Promise<FootballCompetition[]> {
-  const res = await fetch(`${API_BASE}/api/football/competitions`);
+/**
+ * Every competition we cover, in the reader's order when they have arranged one
+ * (#26), otherwise the Egypt-first default. The token is optional: a guest gets the
+ * default, which is also what a reader sees before rearranging anything.
+ */
+export async function fetchCompetitions(token?: string | null): Promise<FootballCompetition[]> {
+  const res = await fetch(`${API_BASE}/api/football/competitions`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
   if (!res.ok) throw await apiError(res);
   return ((await res.json()) as { data: FootballCompetition[] }).data;
+}
+
+/** The reader's saved competition order, and the default it falls back to. */
+export interface CompetitionOrder {
+  /** Empty when the reader never arranged one. */
+  order: string[];
+  /** True when `order` is theirs rather than the default. */
+  personalised: boolean;
+  /** The default order, so a screen can offer "reset to default" honestly. */
+  defaultOrder: string[];
+}
+
+export async function fetchCompetitionOrder(token?: string | null): Promise<CompetitionOrder> {
+  const res = await fetch(`${API_BASE}/api/football/competition-order`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: CompetitionOrder }).data;
+}
+
+/** Save a new order. Verified accounts only, like a follow. */
+export async function saveCompetitionOrder(
+  token: string,
+  order: string[],
+): Promise<{ order: string[]; personalised: boolean }> {
+  const res = await fetch(`${API_BASE}/api/football/competition-order`, {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify({ order }),
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { order: string[]; personalised: boolean } }).data;
+}
+
+/** Forget the saved order and fall back to the default. */
+export async function resetCompetitionOrder(
+  token: string,
+): Promise<{ order: string[]; personalised: boolean }> {
+  const res = await fetch(`${API_BASE}/api/football/competition-order`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { order: string[]; personalised: boolean } }).data;
 }
 
 // --- followed leagues ---
