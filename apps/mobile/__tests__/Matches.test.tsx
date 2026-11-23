@@ -119,14 +119,55 @@ describe('match center', () => {
     expect(screen.getByText('الأخبار')).toBeTruthy();
   });
 
-  it('says plainly when there is no timeline yet', async () => {
+  it('renders the real timeline when the source published one', async () => {
+    // The box DOES publish minute, event and scorer — measured on finished
+    // Egyptian league fixtures. The old «impossible» copy was wrong.
+    mockMatch.mockResolvedValue({
+      match: match({ status: 'finished', statusText: 'انتهت', homeScore: 2, awayScore: 1 }),
+      detail: {
+        commentator: null, channel: null, homeCoach: null, awayCoach: null, lineups: null,
+        events: [
+          { minute: 88, type: 'هدف', player: 'شيكو بانزا', side: 'r' },
+          { minute: 57, type: 'هدف', player: 'محمد عبد الناصر', side: 'l' },
+        ],
+      },
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('الأحداث')).toBeTruthy());
+    fireEvent.press(screen.getByText('الأحداث'));
+    await waitFor(() => expect(screen.getByText('شيكو بانزا')).toBeTruthy());
+    expect(screen.getByText("88'")).toBeTruthy();
+    expect(screen.getByText('محمد عبد الناصر')).toBeTruthy();
+  });
+
+  it('says honestly when the source has no timeline for a match', async () => {
     mockMatch.mockResolvedValue({ match: match(), news: [], unavailable: false });
     render(<MatchCenterScreen />);
     await waitFor(() => expect(screen.getByText('الأحداث')).toBeTruthy());
     fireEvent.press(screen.getByText('الأحداث'));
+    // Unplayed: the honest line is that it has not started, not that events are
+    // impossible.
     await waitFor(() => expect(screen.getByText(/لم تبدأ المباراة بعد/)).toBeTruthy());
-    // It must not promise an event feed the sources do not publish.
-    expect(screen.queryByText(/ستظهر الأهداف والكروت هنا فور انطلاقها/)).toBeNull();
+    expect(screen.queryByText(/شريط أحداث.*لا يوفّره/)).toBeNull();
+  });
+
+  it('never shows a minute it was not given', async () => {
+    mockMatch.mockResolvedValue({
+      match: match({ status: 'finished', statusText: 'انتهت' }),
+      detail: {
+        commentator: null, channel: null, homeCoach: null, awayCoach: null, lineups: null,
+        events: [],
+      },
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('الأحداث')).toBeTruthy());
+    fireEvent.press(screen.getByText('الأحداث'));
+    await waitFor(() => expect(screen.getByText(/مش بنضيف دقائق من عندنا/)).toBeTruthy());
+    expect(screen.queryByText(/^\d+'$/)).toBeNull();
   });
 
   it('shows no coverage message instead of a blank tab', async () => {

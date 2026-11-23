@@ -37,11 +37,13 @@ import {
 } from './footballStore.js';
 import {
   fetchFilGoalDay,
-  fetchFilGoalDetail,
-  fetchFilGoalLineups,
+  parseFilGoalDetail,
+  parseFilGoalLineups,
+  FILGOAL_BASE,
   type FilGoalMatch,
   type FilGoalLineups,
 } from './filgoal.js';
+import { parseMatchEvents, type MatchEvent } from './matchEvents.js';
 import { getAllArticles } from './db.js';
 import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
 
@@ -223,20 +225,35 @@ export async function loadMatchDetail(
   homeCoach: string | null;
   awayCoach: string | null;
   lineups: FilGoalLineups | null;
+  /** The goal/card timeline as the page publishes it. */
+  events: MatchEvent[];
 } | null> {
   if (match.dataSource !== 'filgoal' || !match.providerMatchId) return null;
-  const detail = await fetchFilGoalDetail(match.providerMatchId, options.fetchImpl);
-  if (!detail) return null;
+  // ONE page fetch, parsed three ways. It used to fetch this page twice (once for
+  // the commentator, once for the line-ups), which doubled the source traffic of
+  // every match a reader opened.
+  const html = await getPage(
+    `${FILGOAL_BASE}/matches/${match.providerMatchId}`,
+    options.fetchImpl,
+  );
+  if (!html) return null;
+  const detail = parseFilGoalDetail(html);
   // The line-ups come from the same page. Measured: European fixtures carry 40-45
   // players, Egyptian ones carry none — so `null` here is the honest answer the
   // screen renders as «غير متاح», not a failure.
-  const lineups = await fetchFilGoalLineups(match.providerMatchId, options.fetchImpl).catch(() => null);
+  const lineups = parseFilGoalLineups(html);
+  // The timeline is in the page's markup, not its JSON payload — the reason the
+  // first measurement called it impossible. Verified against real finished
+  // Egyptian fixtures; see `matchEvents.ts`.
+  const events = parseMatchEvents(html);
+  if (!detail && !lineups && events.length === 0) return null;
   return {
-    commentator: detail.commentator,
-    channel: match.channel ?? detail.channel,
-    homeCoach: detail.homeCoach,
-    awayCoach: detail.awayCoach,
+    commentator: detail?.commentator ?? null,
+    channel: match.channel ?? detail?.channel ?? null,
+    homeCoach: detail?.homeCoach ?? null,
+    awayCoach: detail?.awayCoach ?? null,
     lineups,
+    events,
   };
 }
 

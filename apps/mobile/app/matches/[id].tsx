@@ -18,6 +18,7 @@ import { useAuth } from '../../lib/auth';
 import { useArticleSheet } from '../../components/ArticleSheet';
 import { TeamCrest } from '../../components/TeamCrest';
 import { MatchNewsCard } from '../../components/MatchNewsCard';
+import { MatchTimeline } from '../../components/MatchTimeline';
 import {
   fetchMatch,
   fetchTeamFollows,
@@ -310,18 +311,19 @@ export default function MatchCenterScreen() {
             ) : null}
 
             {tab === 'events' ? (
-              <View style={styles.centerInline}>
-                {/* Measured: neither source publishes a goal timeline — no
-                    MatchEvents, no scorer names, no minutes, and Yallakora's
-                    minute endpoint returns 500. So this never promises an
-                    event feed that cannot arrive; it states the score and that
-                    the timeline is not published. */}
-                <Text style={[styles.emptyBody, { color: t.textMuted }]}>
-                  {match.status === 'upcoming'
-                    ? 'لم تبدأ المباراة بعد. النتيجة ستظهر هنا، أما شريط الأهداف فالمصدر لا يوفّره.'
-                    : 'المصدر يوفّر النتيجة فقط، ولا يوفّر شريط أحداث (هدافين أو دقائق) لهذه المباراة.'}
-                </Text>
-              </View>
+              // The real timeline. The earlier copy on this tab said a goal
+              // timeline was impossible; that was measured against the page's
+              // JSON payload only, and it was wrong — the box publishes minute,
+              // event and scorer in its own markup. Verified on finished Egyptian
+              // league fixtures («88' هدف شيكو بانزا»). Rows appear only when
+              // published; no minute is ever computed.
+              <MatchTimeline
+                t={t}
+                events={detail?.events ?? []}
+                home={match.home}
+                away={match.away}
+                status={match.status}
+              />
             ) : null}
 
             {tab === 'lineups' ? (

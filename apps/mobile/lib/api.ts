@@ -742,6 +742,18 @@ export interface Lineups {
 }
 
 /** What only the provider's match page knows. */
+/** One row of the match timeline, as the source published it. */
+export interface MatchEvent {
+  /** Minute as published. Null for a status-only row (filtered out before render). */
+  minute: number | null;
+  /** «هدف», «بطاقة صفراء», … */
+  type: string;
+  /** Scorer or booked player, when the row names one. */
+  player: string | null;
+  /** Which column the page put it in; `r` is the home side in this RTL layout. */
+  side: 'r' | 'l' | null;
+}
+
 export interface MatchDetail {
   commentator: string | null;
   channel: string | null;
@@ -749,6 +761,13 @@ export interface MatchDetail {
   awayCoach: string | null;
   /** Null when the source publishes no line-up for this match. */
   lineups: Lineups | null;
+  /**
+   * The goal/card timeline, in the order the source lists it.
+   *
+   * Present for finished and in-play matches the source covers; empty when it
+   * publishes none. An empty array is a fact, not a failure.
+   */
+  events?: MatchEvent[];
 }
 
 /** An article about one of a match's two clubs, from our own corpus. */
