@@ -11,7 +11,7 @@
 
 import { normalizeTeam, type MatchRow } from './football.js';
 import { COMPETITIONS } from './football.js';
-import { getCachedDay } from './footballStore.js';
+import { getCachedDay, getCachedStandings } from './footballStore.js';
 import { relatedNews } from './matchNews.js';
 import { getAllArticles } from './db.js';
 
@@ -26,6 +26,30 @@ export interface TeamPage {
   upcoming: MatchRow[];
   recent: MatchRow[];
   news: ReturnType<typeof relatedNews>;
+  /**
+   * This club's row in its league table, when we hold one.
+   *
+   * The four columns the sources actually publish (played, goal difference, points,
+   * position). No W/D/L: the Egyptian league does not send them, and printing zeros
+   * would read as "every match drawn" (#40's stated constraint).
+   */
+  standing: {
+    competitionId: string;
+    position: number;
+    played: number;
+    goalDiff: number;
+    points: number;
+    /** True when the position qualifies for a continental place, per the table size. */
+    continental: boolean;
+  } | null;
+  /**
+   * The last few results as W/D/L, newest first.
+   *
+   * Computed ONLY from finished matches whose score we actually hold. A match with
+   * a null score is skipped rather than guessed — the approved #40 correction is
+   * explicit that the form strip comes from real results only.
+   */
+  form: Array<'W' | 'D' | 'L'>;
 }
 
 /** Every cached day, newest fetch first, so a page reflects what we hold. */
@@ -92,6 +116,47 @@ export function buildTeamPage(name: string, options: { matches?: MatchRow[] } = 
     country,
   });
 
+  // The club's league row, read from the table we already cache for the standings
+  // screen — no extra source request for a page a reader opens.
+  const standing = ((): TeamPage['standing'] => {
+    // The order to search: the competitions this club has played in, then every
+    // competition we hold a table for. A club can sit in a table without a cached
+    // fixture yet (a fresh page, or a quiet week), and its row is still true.
+    const candidates = [
+      ...ordered,
+      ...COMPETITIONS.map((c) => c.id).filter((id) => !ordered.includes(id)),
+    ];
+    for (const competitionId of candidates) {
+      const rows = getCachedStandings(competitionId)?.tables?.[0]?.rows ?? [];
+      const row = rows.find((r) => sameTeam(r.team, name));
+      if (!row) continue;
+      // The top two places are the continental places, the convention the standings
+      // screen already uses; nothing is invented beyond that one rule.
+      const continental = row.position <= 2 && rows.length > 4;
+      return {
+        competitionId,
+        position: row.position,
+        played: row.played,
+        goalDiff: row.goalsFor - row.goalsAgainst,
+        points: row.points,
+        continental,
+      };
+    }
+    return null;
+  })();
+
+  // Form from real scores only: newest first, and a match with no score is skipped
+  // rather than counted as anything.
+  const form: Array<'W' | 'D' | 'L'> = [];
+  for (const m of recent) {
+    if (m.homeScore === null || m.awayScore === null) continue;
+    const isHome = sameTeam(m.home, name);
+    const scored = isHome ? m.homeScore : m.awayScore;
+    const conceded = isHome ? m.awayScore : m.homeScore;
+    form.push(scored > conceded ? 'W' : scored < conceded ? 'L' : 'D');
+    if (form.length === 5) break;
+  }
+
   return {
     name,
     logo,
@@ -100,5 +165,7 @@ export function buildTeamPage(name: string, options: { matches?: MatchRow[] } = 
     upcoming,
     recent,
     news,
+    standing,
+    form,
   };
 }

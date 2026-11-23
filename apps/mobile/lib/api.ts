@@ -1076,6 +1076,20 @@ export interface TeamPage {
   upcoming: FootballMatch[];
   recent: FootballMatch[];
   news: MatchNews[];
+  /**
+   * The club's league row, with the four columns the sources publish. Null when we
+   * hold no table for its competition — never a padded row of zeros.
+   */
+  standing: {
+    competitionId: string;
+    position: number;
+    played: number;
+    goalDiff: number;
+    points: number;
+    continental: boolean;
+  } | null;
+  /** Last results as W/D/L, newest first, from real scores only. */
+  form: Array<'W' | 'D' | 'L'>;
 }
 
 export async function fetchTeamPage(name: string): Promise<TeamPage> {

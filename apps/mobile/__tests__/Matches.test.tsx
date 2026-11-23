@@ -545,7 +545,13 @@ describe('upcoming fixtures screen', () => {
   it('says there is no coverage, without offering anything misleading', async () => {
     mockMatch.mockResolvedValue({ match: match(), detail: null, news: [], unavailable: false });
     render(<MatchCenterScreen />);
-    await waitFor(() => expect(screen.getByText(/لا توجد تغطية صحفية لهذه المباراة/)).toBeTruthy());
+    // The approved #41 empty state: a richer card, but the claim is still exactly
+    // true — no coverage *published yet*, never a promise that it is coming.
+    await waitFor(() =>
+      expect(screen.getAllByText(/لا توجد تغطية صحفية منشورة لهذه المباراة/).length).toBeGreaterThan(0),
+    );
+    // No invented outlet count: the sentence names no number at all.
+    expect(screen.queryByText(/29 مصدر|٢٩ مصدر/)).toBeNull();
   });
 
   it('shows the Egyptian league first, above the European groups', async () => {

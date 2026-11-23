@@ -20,6 +20,7 @@ import { TeamCrest } from '../../components/TeamCrest';
 import { MatchNewsCard } from '../../components/MatchNewsCard';
 import { MatchTimeline } from '../../components/MatchTimeline';
 import { TacticalPitch, PitchStats, type PitchPlayer } from '../../components/TacticalPitch';
+import { EmptyMatchNews } from '../../components/EmptyMatchNews';
 import {
   fetchMatch,
   fetchTeamFollows,
@@ -319,12 +320,29 @@ export default function MatchCenterScreen() {
                   ))}
                 </>
               ) : (
-                <View style={styles.centerInline}>
-                  <Ionicons name="newspaper-outline" size={26} color={t.textMuted} />
-                  <Text style={[styles.emptyBody, { color: t.textMuted }]}>
-                    لا توجد تغطية صحفية لهذه المباراة في مصادرنا حتى الآن.
-                  </Text>
-                </View>
+                // The approved #41 empty state: honest copy, and only the routes
+                // that exist for this match. The pitch button appears only when a
+                // real line-up arrived — the measured sources publish one for
+                // European fixtures only.
+                <EmptyMatchNews
+                  t={t}
+                  home={match.home}
+                  away={match.away}
+                  hasEvents={(detail?.events ?? []).length > 0}
+                  hasLineups={Boolean(
+                    detail?.lineups &&
+                      (detail.lineups.home.some((p) => p.isStarter) ||
+                        detail.lineups.away.some((p) => p.isStarter)),
+                  )}
+                  onOpenEvents={() => setTab('events')}
+                  onOpenLineups={() => setTab('lineups')}
+                  onOpenHome={() =>
+                    router.push({ pathname: '/team/[name]', params: { name: match.home } })
+                  }
+                  onOpenAway={() =>
+                    router.push({ pathname: '/team/[name]', params: { name: match.away } })
+                  }
+                />
               )
             ) : null}
 
