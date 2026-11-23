@@ -6,6 +6,7 @@ import {
   arabicTeam,
   cairoClock,
   arabicChannel,
+  canonicalCompetition,
   competitionForLeague,
   hasLiveForReader,
   isFootballLeague,
@@ -301,6 +302,15 @@ describe("women's competition mapping", () => {
     expect(women?.nameAr).toBe('الدوري المصري للسيدات');
     // The men's league is untouched.
     expect(competitionForLeague('الدوري المصري')?.id).toBe('egyptian-premier');
+  });
+
+  it("keeps the women's name when the day is canonicalised", () => {
+    // The id fix alone was not enough: the display name is rewritten by
+    // canonicalCompetition, and «الدوري المصري | سيدات» still matched the men's
+    // pattern, so the screen showed the women's fixtures under the men's league
+    // even after they had the right id.
+    expect(canonicalCompetition('الدوري المصري  | سيدات')).toBe('الدوري المصري للسيدات');
+    expect(canonicalCompetition('الدوري المصري')).toBe('الدوري المصري');
   });
 
   it('recognises the «سيدات» marker the source uses', () => {

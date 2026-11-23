@@ -670,6 +670,10 @@ export function canonicalCompetition(name: string): string {
   if (/الدوري الالماني/.test(n)) return 'الدوري الألماني';
   if (/الدوري الفرنسي/.test(n)) return 'الدوري الفرنسي';
   if (/الدوري السعودي/.test(n)) return 'الدوري السعودي';
+  // BEFORE the men's line: «الدوري المصري | سيدات» normalises to something that
+  // still matches /الدوري المصري/, so without this the canonical name rewrote the
+  // women's league back to the men's and the id correction was undone at display.
+  if (/سيدات/.test(n)) return 'الدوري المصري للسيدات';
   if (/الدوري المصري/.test(n)) return 'الدوري المصري';
   // The two sources name the same league differently («الدوري التونسي» and
   // «الرابطة التونسية المحترفة»). Without folding them, one fixture arrived twice
