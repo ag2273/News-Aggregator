@@ -7,6 +7,10 @@ on:
       - 'apps/server/**'
       - 'docker-compose.yml'
       - 'deploy/**'
+      # The workflow file itself: without this, a fix to the deploy job never
+      # runs the deploy job, so a broken one stays broken until the next unrelated
+      # server change.
+      - '.github/workflows/deploy.yml'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
