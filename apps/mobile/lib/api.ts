@@ -768,6 +768,23 @@ export interface MatchDetail {
    * publishes none. An empty array is a fact, not a failure.
    */
   events?: MatchEvent[];
+  /**
+   * Scorers with their minutes, when a source publishes them.
+   *
+   * Yallakora's match page carries a name and a minute per goal for Egyptian
+   * fixtures — the data the project twice believed did not exist.
+   */
+  goals?: MatchGoal[];
+}
+
+/** One goal, as a source lists it. */
+export interface MatchGoal {
+  /** Goal minute as published; null when the row carries none. */
+  minute: number | null;
+  player: string;
+  /** Which side: the page's `teamA` / `teamB` column. */
+  side: 'A' | 'B';
+  ownGoal: boolean;
 }
 
 /** An article about one of a match's two clubs, from our own corpus. */

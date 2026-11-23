@@ -320,6 +320,7 @@ export default function MatchCenterScreen() {
               <MatchTimeline
                 t={t}
                 events={detail?.events ?? []}
+                goals={detail?.goals ?? []}
                 home={match.home}
                 away={match.away}
                 status={match.status}

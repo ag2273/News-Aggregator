@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Theme } from '../constants/colors';
-import type { MatchEvent } from '../lib/api';
+import type { MatchEvent, MatchGoal } from '../lib/api';
 
 /**
  * The match timeline.
@@ -20,18 +20,28 @@ import type { MatchEvent } from '../lib/api';
 export function MatchTimeline({
   t,
   events,
+  goals: goalList,
   home,
   away,
   status,
 }: {
   t: Theme;
   events: MatchEvent[];
+  /**
+   * Scorers with minutes, from a source that publishes them.
+   *
+   * Shown as its own summary above the timeline: Yallakora carries this for
+   * Egyptian fixtures, where the goal list is what a reader looks for first.
+   */
+  goals?: MatchGoal[];
   home: string;
   away: string;
   /** `upcoming` hides the empty-timeline line behind the "not started" copy. */
   status: 'live' | 'upcoming' | 'finished' | 'unknown';
 }) {
-  if (events.length === 0) {
+  const goals = goalList ?? [];
+
+  if (events.length === 0 && goals.length === 0) {
     return (
       <View style={styles.empty}>
         <Ionicons name="time-outline" size={24} color={t.textMuted} />
@@ -46,6 +56,28 @@ export function MatchTimeline({
 
   return (
     <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.borderLight }]}>
+      {/* Scorers first: «مين سجل ومتى» is the question a reader opens this tab for,
+          and a source that publishes it deserves to be shown before the detail. */}
+      {goals.length ? (
+        <View style={[styles.goalsBox, { borderBottomColor: t.borderLight }]}>
+          <Text style={[styles.goalsTitle, { color: t.accent }]}>⚽ الهدافون</Text>
+          {goals.map((g, i) => (
+            <View key={`${g.player}-${g.minute}-${i}`} style={styles.goalRow}>
+              <Text style={[styles.goalSide, { color: t.textMuted }]} numberOfLines={1}>
+                {g.side === 'A' ? home : away}
+              </Text>
+              <Text style={[styles.goalPlayer, { color: t.textPrimary }]} numberOfLines={1}>
+                {`${g.player}${g.ownGoal ? ' (هدف ذاتي)' : ''}`}
+              </Text>
+              <Text style={[styles.goalMinute, { color: t.accent }]}>
+                {g.minute === null ? '—' : `${g.minute}'`}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {events.length === 0 ? null : (
+      <>
       <View style={[styles.head, { borderBottomColor: t.borderLight }]}>
         <Text style={[styles.headTeam, { color: t.textPrimary }]} numberOfLines={1}>
           {home}
@@ -89,6 +121,8 @@ export function MatchTimeline({
           </View>
         );
       })}
+      </>
+      )}
     </View>
   );
 }
@@ -123,6 +157,12 @@ function EventBit({
 
 const styles = StyleSheet.create({
   card: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  goalsBox: { paddingHorizontal: 12, paddingVertical: 10, gap: 6, borderBottomWidth: 1 },
+  goalsTitle: { fontFamily: 'Cairo_700Bold', fontSize: 12, marginBottom: 2 },
+  goalRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  goalSide: { fontFamily: 'Cairo_400Regular', fontSize: 10, flex: 1.1 },
+  goalPlayer: { fontFamily: 'Cairo_600SemiBold', fontSize: 12, flex: 1.4 },
+  goalMinute: { fontFamily: 'Cairo_700Bold', fontSize: 11, fontVariant: ['tabular-nums'] },
   head: {
     flexDirection: 'row',
     alignItems: 'center',

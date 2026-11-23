@@ -44,6 +44,7 @@ import {
   type FilGoalLineups,
 } from './filgoal.js';
 import { parseMatchEvents, type MatchEvent } from './matchEvents.js';
+import { parseYallakoraGoals, type MatchGoal } from './yallakoraMatch.js';
 import { getAllArticles } from './db.js';
 import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
 
@@ -227,7 +228,33 @@ export async function loadMatchDetail(
   lineups: FilGoalLineups | null;
   /** The goal/card timeline as the page publishes it. */
   events: MatchEvent[];
+  /**
+   * Scorers with their minutes, when a source publishes them.
+   *
+   * Yallakora's match page carries a `playerScorers` block with a name and a
+   * minute per goal — measured on a real finished Egyptian fixture. This is the
+   * «هدافين بدقائق» the earlier measurement called impossible.
+   */
+  goals: MatchGoal[];
 } | null> {
+  // Yallakora publishes the scorer list on its own match page, which is the
+  // source that carries Egyptian scorers with minutes. FilGoal's page has the
+  // goal timeline but only after the match; its live pages show a score with no
+  // events (measured: 7-0 with zero events during play).
+  if (match.dataSource === 'yallakora') {
+    if (!match.url) return null;
+    const html = await getPage(match.url, options.fetchImpl);
+    if (!html) return null;
+    return {
+      commentator: null,
+      channel: match.channel ?? null,
+      homeCoach: null,
+      awayCoach: null,
+      lineups: null,
+      events: [],
+      goals: parseYallakoraGoals(html),
+    };
+  }
   if (match.dataSource !== 'filgoal' || !match.providerMatchId) return null;
   // ONE page fetch, parsed three ways. It used to fetch this page twice (once for
   // the commentator, once for the line-ups), which doubled the source traffic of
@@ -255,6 +282,16 @@ export async function loadMatchDetail(
     awayCoach: detail?.awayCoach ?? null,
     lineups,
     events,
+    // FilGoal carries the timeline; its rows name the scorer too, so the goals
+    // list is derived from the same page rather than fetched twice.
+    goals: events
+      .filter((e) => !e.isStatus && /هدف|ركلة جزاء/.test(e.type) && e.player && e.minute !== null)
+      .map((e) => ({
+        minute: e.minute,
+        player: e.player!,
+        side: e.side === 'r' ? ('A' as const) : ('B' as const),
+        ownGoal: /own|ذاتي/i.test(e.type),
+      })),
   };
 }
 
