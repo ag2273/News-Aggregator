@@ -26,16 +26,31 @@ import {
   type MatchesDay,
 } from '../../lib/api';
 import { cairoDay, ribbonLabel } from '../../lib/dates';
-import { TeamCrest } from '../../components/TeamCrest';
+import { LeagueStrip, MatchCard, matchCountLabel } from '../../components/FootballCard';
 
 type Filter = 'all' | 'live' | 'followed' | 'finished' | 'upcoming';
 
+const FILTERS: Array<{ id: Filter; label: string }> = [
+  { id: 'all', label: 'الكل' },
+  { id: 'live', label: 'مباشر' },
+  { id: 'followed', label: 'فرقي' },
+  { id: 'finished', label: 'انتهت' },
+  { id: 'upcoming', label: 'القادمة' },
+];
+
+/** A group: a competition name, its served rank and country, and its rows. */
+interface Group {
+  key: string;
+  name: string;
+  country?: string;
+  competitionId?: string;
+  rank: number;
+  rows: FootballMatch[];
+}
+
 /**
- * Group order, as served.
- *
- * The server already sorts a day by competition priority (Egypt first) and each
- * match carries its competition's priority, so this only has to read that field.
- * The name-based fallback is for a match whose competition we do not know.
+ * Server rank first, then the name-based fallback for a row whose competition we
+ * do not recognise (Yallakora groups its extra leagues under «other»).
  */
 function rankOf(m: FootballMatch): number {
   if (typeof m.competitionPriority === 'number') return m.competitionPriority;
@@ -46,19 +61,14 @@ function rankOf(m: FootballMatch): number {
   return 50;
 }
 
-const FILTERS: Array<{ id: Filter; label: string }> = [
-  { id: 'all', label: 'الكل' },
-  { id: 'live', label: 'مباشر' },
-  { id: 'followed', label: 'الفرق المتابعة' },
-  { id: 'finished', label: 'انتهت' },
-  { id: 'upcoming', label: 'القادمة' },
-];
-
 /**
  * جدول المباريات.
  *
- * Every section can be empty independently: the day may have no Egyptian
- * fixtures, no live match and no followed team. Each states that plainly rather
+ * Rebuilt to the approved design: ONE merged row holding the live toggle and the
+ * day ribbon (it was two rows and ate a quarter of the screen), the followed
+ * teams pinned above the leagues, then a league strip per competition.
+ *
+ * Every section can be empty independently, and each states that plainly rather
  * than rendering a blank area that looks broken.
  */
 export default function MatchesScreen() {
@@ -93,12 +103,7 @@ export default function MatchesScreen() {
   const followedLeagues = useMemo(() => new Set(day?.followedLeagues ?? []), [day]);
   const matches = day?.matches ?? [];
 
-  /**
-   * Is this match one the reader chose to follow?
-   *
-   * Either club, or the whole competition. A league follow is why a reader follows
-   * «الدوري المصري» in the first place: every Egyptian fixture today, not one club.
-   */
+  /** Either club, or the whole competition: a league follow pins every fixture. */
   const isFavourite = useCallback(
     (m: FootballMatch): boolean =>
       followed.has(m.home) || followed.has(m.away) || followedLeagues.has(m.competitionId),
@@ -121,218 +126,180 @@ export default function MatchesScreen() {
   }, [matches, filter, isFavourite]);
 
   const pinned = visible.filter(isFavourite);
+  // Live matches that are NOT already pinned. A pinned live match belongs in the
+  // favourites strip; printing it twice on one screen is the duplication the user
+  // photographed on the old cards.
   const liveNow = visible.filter((m) => m.status === 'live' && !pinned.includes(m));
   const rest = visible.filter((m) => !pinned.includes(m) && !liveNow.includes(m));
-  /**
-   * Groups in the order the spec ranks them: Egyptian league first, then Africa,
-   * then Europe, then the rest.
-   *
-   * They used to come out in whatever order the API returned, so the Egyptian
-   * league sat below seven European groups on a busy day — the user's «فين الدوري
-   * المصري؟». Ordering here means it is always the first heading on the screen.
-   */
-  /**
-   * Competitions we cover that have no match on this day.
-   *
-   * Computed from the served competition list, so a league that is simply not
-   * playing today still gets its heading instead of vanishing.
-   */
+
+  /** Competitions with no fixture today, so their heading never disappears. */
   const emptyGroups = useMemo<FootballCompetition[]>(() => {
     if (!day?.competitions?.length) return [];
     const names = new Set(matches.map((m) => m.competitionName));
     return day.competitions.filter((c) => !names.has(c.nameAr));
   }, [day, matches]);
 
-  /**
-   * Groups, including the competitions with nothing on this day.
-   *
-   * A league with no fixture used to disappear, which is why the Egyptian league
-   * could not be found at all on a quiet day. Every competition we cover is now a
-   * group, with the honest line «لا توجد مباريات لهذا الدوري اليوم» when it has
-   * none. The empty groups only show under the «الكل» filter: a reader filtering
-   * for live or finished matches does not want ten empty headings.
-   */
-  const groups = useMemo(() => {
+  const groups = useMemo<Group[]>(() => {
     const map = new Map<string, FootballMatch[]>();
     for (const m of rest) {
       const key = m.competitionName || 'بطولات أخرى';
       map.set(key, [...(map.get(key) ?? []), m]);
     }
-    const present = [...map.entries()].sort(
-      (a, b) => rankOf(a[1][0]!) - rankOf(b[1][0]!) || a[0].localeCompare(b[0], 'ar'),
-    );
-    if (filter !== 'all' || emptyGroups.length === 0) return present;
-    // Insert each empty competition at its priority position.
-    const all: Array<{ name: string; rows: FootballMatch[]; rank: number }> = [
-      ...present.map(([name, rows]) => ({ name, rows, rank: rankOf(rows[0]!) })),
-      ...emptyGroups.map((c) => ({ name: c.nameAr, rows: [], rank: c.priority ?? 99 })),
-    ];
-    all.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name, 'ar'));
-    return all.map((g) => [g.name, g.rows] as [string, FootballMatch[]]);
-  }, [rest, filter, emptyGroups]);
-
-  /**
-   * Follow or unfollow a league from its group header.
-   *
-   * The group is identified by its display name, so the id comes from the served
-   * competition list rather than being re-derived from the name.
-   */
-  const toggleLeagueByName = useCallback(
-    async (name: string) => {
+    // «other» is Yallakora's bucket for a competition we do not follow, so each of
+    // its names is still its own group — never merged into one «بطولات أخرى» pile.
+    const present: Group[] = [...map.entries()].map(([name, rows]) => {
       const comp = day?.competitions?.find((c) => c.nameAr === name);
-      if (!comp) return;
+      return {
+        key: comp?.id ?? name,
+        name,
+        country: comp?.country,
+        competitionId: comp?.id ?? rows[0]?.competitionId,
+        rank: rankOf(rows[0]!),
+        rows,
+      };
+    });
+    if (filter !== 'all') {
+      return present.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name, 'ar'));
+    }
+    const withEmpty: Group[] = emptyGroups.map((c) => ({
+      key: c.id,
+      name: c.nameAr,
+      country: c.country,
+      competitionId: c.id,
+      rank: c.priority ?? 99,
+      rows: [],
+    }));
+    return [...present, ...withEmpty].sort(
+      (a, b) => a.rank - b.rank || a.name.localeCompare(b.name, 'ar'),
+    );
+  }, [rest, filter, emptyGroups, day]);
+
+  const toggleLeague = useCallback(
+    async (competitionId: string | undefined) => {
+      if (!competitionId) return;
       if (!token) {
         gate.open();
         return;
       }
       try {
-        const isOn = followedLeagues.has(comp.id);
+        const isOn = followedLeagues.has(competitionId);
         const next = isOn
-          ? await unfollowLeague(token, comp.id)
-          : await followLeague(token, comp.id);
+          ? await unfollowLeague(token, competitionId)
+          : await followLeague(token, competitionId);
         setDay((d) => (d ? { ...d, followedLeagues: next.map((l) => l.competitionId) } : d));
       } catch {
         /* the star simply does not change */
       }
     },
-    [day, token, followedLeagues, gate],
+    [token, followedLeagues, gate],
   );
 
-  /** A competition the reader follows, so its heading can say so. */
-  const leagueFollowed = (name: string): boolean => {
-    const group = groups.find(([n]) => n === name)?.[1];
-    return Boolean(group?.[0] && followedLeagues.has(group[0].competitionId));
-  };
+  const openTeam = useCallback((name: string) => {
+    router.push({ pathname: '/team/[name]', params: { name } });
+  }, []);
+
+  const card = (m: FootballMatch) => (
+    <MatchCard
+      key={m.id}
+      t={t}
+      m={m}
+      favourite={isFavourite(m)}
+      onPress={() => router.push({ pathname: '/matches/[id]', params: { id: m.id, date } })}
+      onPressTeam={openTeam}
+    />
+  );
 
   const liveCount = matches.filter((m) => m.status === 'live').length;
   const followedCount = matches.filter(isFavourite).length;
-
-  const card = (m: FootballMatch) => {
-    const isLive = m.status === 'live';
-    return (
-      <TouchableOpacity
-        key={m.id}
-        style={[
-          styles.card,
-          { backgroundColor: t.surface, borderColor: isLive ? t.accent : t.borderLight },
-        ]}
-        onPress={() =>
-          router.push({ pathname: '/matches/[id]', params: { id: m.id, date } })
-        }
-        accessibilityRole="button"
-        accessibilityLabel={`${m.home} ضد ${m.away}`}
-      >
-        <View style={styles.cardTop}>
-          <View style={styles.teamCell}>
-            <TeamCrest logo={m.homeLogo} name={m.home} size={22} t={t} />
-            <TouchableOpacity
-              onPress={() => router.push({ pathname: '/team/[name]', params: { name: m.home } })}
-              accessibilityRole="button"
-              accessibilityLabel={`${m.home} — صفحة الفريق`}
-              style={styles.teamTap}
-            >
-              <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
-                {m.home}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.scoreWrap}>
-            {m.homeScore === null || m.awayScore === null ? (
-              <Text style={[styles.kickoff, { color: t.textSecondary }]}>{m.kickoff ?? '—'}</Text>
-            ) : (
-              <Text style={[styles.score, { color: isLive ? t.accent : t.textPrimary }]}>
-                {m.homeScore} - {m.awayScore}
-              </Text>
-            )}
-            <Text style={[styles.status, { color: isLive ? t.accent : t.textMuted }]}>
-              {isLive && m.minute ? `${m.minute}'` : m.statusText}
-            </Text>
-          </View>
-          <View style={styles.teamCell}>
-            <TeamCrest logo={m.awayLogo} name={m.away} size={22} t={t} />
-            <TouchableOpacity
-              onPress={() => router.push({ pathname: '/team/[name]', params: { name: m.away } })}
-              accessibilityRole="button"
-              accessibilityLabel={`${m.away} — صفحة الفريق`}
-              style={styles.teamTap}
-            >
-              <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
-                {m.away}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        {isLive ? (
-          <View style={styles.liveDotRow}>
-            <View style={[styles.liveDot, { backgroundColor: t.accent }]} />
-            <Text style={[styles.liveText, { color: t.accent }]}>مباشر</Text>
-          </View>
-        ) : null}
-        {/* Round and channel are different facts and are labelled as such. The
-            old line joined them with a dot, so a card read «الجولة الثانية ·
-            الكأس 9» and looked like a garbled round name. The channel name
-            («الكأس 9») is a broadcaster, not a stadium or a round. */}
-        {m.round ? (
-          <Text style={[styles.round, { color: t.textMuted }]} numberOfLines={1}>
-            {m.round}
-          </Text>
-        ) : null}
-        {m.channel ? (
-          <Text style={[styles.round, { color: t.textMuted }]} numberOfLines={1}>
-            {`تُنقل على ${m.channel}`}
-          </Text>
-        ) : null}
-        {isFavourite(m) ? (
-          <Ionicons name="star" size={12} color={t.accent} style={styles.star} />
-        ) : null}
-      </TouchableOpacity>
-    );
-  };
 
   return (
     <LinearGradient colors={[t.bgGradientTop, t.bgGradientMid, t.bgGradientBottom]} style={styles.root}>
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="رجوع">
-            <Ionicons name="chevron-forward" size={22} color={t.textPrimary} />
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={[styles.headerBtn, { backgroundColor: t.badgePlate, borderColor: t.borderLight }]}
+            accessibilityRole="button"
+            accessibilityLabel="رجوع"
+          >
+            <Ionicons name="chevron-forward" size={20} color={t.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: t.textPrimary }]}>مباريات اليوم</Text>
+          <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={1}>
+            مباريات اليوم
+          </Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity onPress={() => router.push('/matches/upcoming')} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="المباريات القادمة ومواعيد البث">
-              <Ionicons name="calendar-outline" size={19} color={t.textPrimary} />
+            <TouchableOpacity
+              onPress={() => router.push('/matches/standings')}
+              style={[styles.headerBtn, { backgroundColor: t.badgePlate, borderColor: t.borderLight }]}
+              accessibilityRole="button"
+              accessibilityLabel="جداول الترتيب"
+            >
+              <Ionicons name="stats-chart" size={17} color={t.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/matches/follow-teams')} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="الفرق المتابعة">
-              <Ionicons name="star-outline" size={20} color={t.textPrimary} />
+            <TouchableOpacity
+              onPress={() => router.push('/matches/follow-teams')}
+              style={[styles.headerBtn, { backgroundColor: t.badgePlate, borderColor: t.borderLight }]}
+              accessibilityRole="button"
+              accessibilityLabel="الفرق المتابعة"
+            >
+              <Ionicons name="star-outline" size={17} color={t.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Date ribbon: seven days, today highlighted. */}
+        {/* ONE merged filter row: the live toggle, then the day ribbon. It used to
+            be two rows, which took a quarter of a 360dp screen before any match. */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.strip}
-          contentContainerStyle={styles.ribbon}
+          contentContainerStyle={styles.mergedRow}
         >
+          <TouchableOpacity
+            onPress={() => setFilter(filter === 'live' ? 'all' : 'live')}
+            style={[
+              styles.liveToggle,
+              {
+                backgroundColor: filter === 'live' ? t.liveRedBorder : t.liveRedBg,
+                borderColor: t.liveRedBorder,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: filter === 'live' }}
+            accessibilityLabel="مباشر فقط"
+          >
+            <View style={[styles.liveDot, { backgroundColor: t.liveRed }]} />
+            <Text style={[styles.liveToggleText, { color: t.liveRed }]}>
+              {liveCount ? `مباشر (${liveCount})` : 'مباشر'}
+            </Text>
+          </TouchableOpacity>
+          <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
           {[-3, -2, -1, 0, 1, 2, 3].map((off) => (
             <TouchableOpacity
               key={off}
               onPress={() => setOffset(off)}
               style={[
-                styles.ribbonItem,
-                { backgroundColor: off === offset ? t.accent : t.pillInactiveBg },
+                styles.dateChip,
+                off === offset
+                  ? { backgroundColor: t.surfaceElevated, borderColor: t.borderLight, borderWidth: 1 }
+                  : null,
               ]}
               accessibilityRole="button"
               accessibilityState={{ selected: off === offset }}
             >
-              <Text style={[styles.ribbonText, { color: off === offset ? '#FFFFFF' : t.textSecondary }]}>
+              <Text
+                style={[
+                  styles.dateChipText,
+                  { color: off === offset ? t.textPrimary : t.textMuted },
+                ]}
+              >
                 {ribbonLabel(off, cairoDay(off))}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {/* Status filters with live counts. */}
+        {/* Status filters, one line, no counts competing with the live toggle. */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -340,18 +307,30 @@ export default function MatchesScreen() {
           contentContainerStyle={styles.filters}
         >
           {FILTERS.map((f) => {
-            const count =
-              f.id === 'live' ? liveCount : f.id === 'followed' ? followedCount : 0;
-            const label = count ? `${f.label} (${count})` : f.label;
+            const label =
+              f.id === 'followed' && followedCount
+                ? `${f.label} (${followedCount})`
+                : f.label;
             return (
               <TouchableOpacity
                 key={f.id}
                 onPress={() => setFilter(f.id)}
-                style={[styles.filterPill, { backgroundColor: f.id === filter ? t.pillActiveBg : t.pillInactiveBg }]}
+                style={[
+                  styles.filterPill,
+                  {
+                    backgroundColor: f.id === filter ? t.pillActiveBg : 'transparent',
+                    borderColor: f.id === filter ? t.pillActiveBg : t.borderLight,
+                  },
+                ]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: f.id === filter }}
               >
-                <Text style={[styles.filterText, { color: f.id === filter ? t.pillActiveText : t.pillInactiveText }]}>
+                <Text
+                  style={[
+                    styles.filterText,
+                    { color: f.id === filter ? t.pillActiveText : t.textSecondary },
+                  ]}
+                >
                   {label}
                 </Text>
               </TouchableOpacity>
@@ -364,9 +343,6 @@ export default function MatchesScreen() {
             <ActivityIndicator color={t.accent} />
           </View>
         ) : error ? (
-          /* Every non-list state is a scroller with a growing content area, so it
-             stays centered on a tall screen, scrolls on a short one (keyboard,
-             large font), and never collapses into the header above it. */
           <ScrollView contentContainerStyle={styles.stateScroll}>
             <Ionicons name="cloud-offline-outline" size={30} color={t.textMuted} />
             <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>{error}</Text>
@@ -378,7 +354,9 @@ export default function MatchesScreen() {
           <ScrollView contentContainerStyle={styles.stateScroll}>
             <Ionicons name="time-outline" size={30} color={t.textMuted} />
             <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>البيانات غير متاحة حاليًا</Text>
-            <Text style={[styles.emptyBody, { color: t.textMuted }]}>مصدر النتائج لم يستجب لهذا اليوم. جرّب يومًا آخر أو أعد المحاولة بعد قليل.</Text>
+            <Text style={[styles.emptyBody, { color: t.textMuted }]}>
+              مصدر النتائج لم يستجب لهذا اليوم. جرّب يومًا آخر أو أعد المحاولة بعد قليل.
+            </Text>
             <TouchableOpacity style={[styles.retry, { borderColor: t.accent }]} onPress={load} accessibilityRole="button">
               <Text style={{ color: t.accent }}>إعادة المحاولة</Text>
             </TouchableOpacity>
@@ -411,66 +389,55 @@ export default function MatchesScreen() {
           <ScrollView contentContainerStyle={styles.list}>
             {pinned.length ? (
               <>
-                <Text style={[styles.section, { color: t.textMuted }]}>مباريات فرقي المفضلة</Text>
+                {/* «فرقك» whether one club or five: the strip is the reader's
+                    followed fixtures, and the count is already on the filter. */}
+                <Text style={[styles.section, { color: t.accent }]}>
+                  ⭐ مباريات فرقك المتابعة
+                </Text>
                 {pinned.map(card)}
               </>
             ) : null}
             {liveNow.length ? (
               <>
-                <Text style={[styles.section, { color: t.accent }]}>مباشر الآن</Text>
+                <Text style={[styles.section, { color: t.liveRed }]}>مباشر الآن</Text>
                 {liveNow.map(card)}
               </>
             ) : null}
-            {groups.map(([name, rows]) => {
-              const followedThis = leagueFollowed(name);
-              return (
-                <View key={name}>
-                  <View style={styles.groupHeaderRow}>
-                    <TouchableOpacity
-                      style={styles.groupHeaderTap}
-                      onPress={() => setCollapsed((c) => ({ ...c, [name]: !c[name] }))}
-                      accessibilityRole="button"
-                      accessibilityState={{ expanded: !collapsed[name] }}
-                    >
-                      <Ionicons
-                        name={collapsed[name] ? 'chevron-back' : 'chevron-down'}
-                        size={16}
-                        color={t.textMuted}
-                      />
-                      <Text
-                        style={[styles.groupTitle, { color: followedThis ? t.accent : t.textSecondary }]}
-                        numberOfLines={1}
-                      >
-                        {name}
-                      </Text>
-                    </TouchableOpacity>
-                    {/* Follow the league from the group itself: this is where a
-                        reader is when they decide they care about it. */}
-                    <TouchableOpacity
-                      onPress={() => toggleLeagueByName(name)}
-                      style={styles.groupFollow}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        followedThis ? `إلغاء متابعة ${name}` : `متابعة ${name}`
-                      }
-                    >
-                      <Ionicons
-                        name={followedThis ? 'star' : 'star-outline'}
-                        size={16}
-                        color={followedThis ? t.accent : t.textMuted}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  {collapsed[name] ? null : rows.length === 0 ? (
-                    <Text style={[styles.groupEmpty, { color: t.textMuted }]}>
-                      لا توجد مباريات لهذا الدوري اليوم
-                    </Text>
-                  ) : (
-                    rows.map(card)
-                  )}
-                </View>
-              );
-            })}
+            {groups.map((g) => (
+              <View key={g.key}>
+                <LeagueStrip
+                  t={t}
+                  name={g.name}
+                  country={g.country}
+                  rows={g.rows}
+                  followed={Boolean(g.competitionId && followedLeagues.has(g.competitionId))}
+                  collapsed={Boolean(collapsed[g.name])}
+                  onToggleCollapse={() => setCollapsed((c) => ({ ...c, [g.name]: !c[g.name] }))}
+                  onToggleFollow={() => toggleLeague(g.competitionId)}
+                  onOpen={
+                    g.competitionId && g.competitionId !== 'other'
+                      ? () =>
+                          router.push({
+                            pathname: '/competition/[id]',
+                            params: { id: g.competitionId! },
+                          })
+                      : undefined
+                  }
+                />
+                {collapsed[g.name] ? null : g.rows.length === 0 ? (
+                  <Text style={[styles.groupEmpty, { color: t.textMuted }]}>
+                    لا توجد مباريات لهذا الدوري اليوم
+                  </Text>
+                ) : (
+                  g.rows.map(card)
+                )}
+              </View>
+            ))}
+            {visible.length ? (
+              <Text style={[styles.footnote, { color: t.textDim }]}>
+                {`${matchCountLabel(visible.length)} — النتائج كما يعلنها المصدر، بلا دقائق غير منشورة.`}
+              </Text>
+            ) : null}
           </ScrollView>
         )}
         <AccountGateSheet t={t} gate={gate} message="عشان تتابع البطولة" />
@@ -482,50 +449,49 @@ export default function MatchesScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   safe: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 4 },
-  headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  headerActions: { flexDirection: 'row', alignItems: 'center' },
-  title: { fontSize: 19, fontWeight: '700' },
-  // A horizontal strip must have its own height. Without it, a ScrollView inside
-  // a column flex container either swallows the leftover space (RN-web stretched
-  // the day ribbon to 300px) or collapses to nothing (the filter row vanished).
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    gap: 8,
+  },
+  headerBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  title: { flex: 1, textAlign: 'center', fontFamily: 'Cairo_700Bold', fontSize: 17 },
+  // A horizontal strip must own its height, or a column flex lets it swallow the
+  // screen (measured: the day ribbon stretched to 300px and hid the filters).
   strip: { flexGrow: 0, flexShrink: 0 },
-  ribbon: { paddingHorizontal: 12, gap: 8, paddingVertical: 10 },
-  ribbonItem: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
-  ribbonText: { fontSize: 12, fontWeight: '600' },
-  filters: { paddingHorizontal: 12, gap: 8, paddingBottom: 8 },
-  filterPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 15 },
-  filterText: { fontSize: 12, fontWeight: '600' },
+  mergedRow: { alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8 },
+  liveToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  liveDot: { width: 7, height: 7, borderRadius: 4 },
+  liveToggleText: { fontFamily: 'Cairo_700Bold', fontSize: 12 },
+  divider: { width: 1, height: 22, marginHorizontal: 2 },
+  dateChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: 'transparent' },
+  dateChipText: { fontFamily: 'Cairo_700Bold', fontSize: 11 },
+  filters: { paddingHorizontal: 12, gap: 6, paddingBottom: 8 },
+  filterPill: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
+  filterText: { fontFamily: 'Cairo_600SemiBold', fontSize: 12 },
   list: { padding: 12, gap: 8, paddingBottom: 40 },
-  section: { fontSize: 12, fontWeight: '700', marginTop: 8, marginBottom: 4 },
-  groupHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
-  groupHeaderTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
-  groupFollow: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  groupEmpty: { fontSize: 12, paddingVertical: 10, paddingHorizontal: 6 },
-  groupTitle: { fontSize: 13, fontWeight: '700' },
-  card: { borderRadius: 18, padding: 12, borderWidth: 1 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
-  // `flexShrink` plus a smaller base size keeps a long club name («رويال يونيون
-  // سان جيلواز») from being cut mid-glyph on a 360dp phone; the ellipsis is the
-  // last resort, not the first thing that happens.
-  // Two lines, so «رويال يونيون سان جيلواز» fits on a 360dp phone instead of
-  // ending in an ellipsis at 113px. Long names are the norm in Arabic coverage.
-  teamCell: { flex: 1, flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  teamTap: { flexShrink: 1 },
-  team: { flexShrink: 1, fontSize: 13, fontWeight: '600', lineHeight: 19 },
-  scoreWrap: { alignItems: 'center', width: 68 },
-  score: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  kickoff: { fontSize: 14, fontWeight: '700' },
-  status: { fontSize: 10, marginTop: 2 },
-  round: { fontSize: 10, marginTop: 6, textAlign: 'center' },
-  liveDotRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, justifyContent: 'center' },
-  liveDot: { width: 6, height: 6, borderRadius: 3 },
-  liveText: { fontSize: 10, fontWeight: '700' },
-  star: { position: 'absolute', top: 8, insetInlineStart: 8 },
-  // The empty and error states sit in a scrollable container with a generous
-  // minimum height, so they stay centered on a phone and never clip at large
-  // font sizes. `flex:1` on a child of a padded SafeAreaView is what collapsed
-  // the layout; contentContainerStyle owns the centering instead.
+  section: { fontFamily: 'Cairo_700Bold', fontSize: 12, marginTop: 4 },
+  groupEmpty: { fontFamily: 'Cairo_400Regular', fontSize: 12, paddingVertical: 10, paddingHorizontal: 6 },
+  footnote: { fontFamily: 'Cairo_400Regular', fontSize: 10, lineHeight: 16, textAlign: 'center', marginTop: 14 },
   stateScroll: {
     flexGrow: 1,
     alignItems: 'center',
@@ -535,9 +501,7 @@ const styles = StyleSheet.create({
     paddingVertical: 36,
   },
   stateWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  // A fixed line height on a variable number of lines is what clipped a sentence
-  // at large system fonts. These let the text grow and wrap instead.
-  emptyTitle: { fontSize: 15, fontWeight: '700', textAlign: 'center', flexShrink: 1, lineHeight: 24 },
-  emptyBody: { fontSize: 12, textAlign: 'center', flexShrink: 1, lineHeight: 20 },
+  emptyTitle: { fontFamily: 'Cairo_700Bold', fontSize: 15, textAlign: 'center', flexShrink: 1, lineHeight: 24 },
+  emptyBody: { fontFamily: 'Cairo_400Regular', fontSize: 12, textAlign: 'center', flexShrink: 1, lineHeight: 20 },
   retry: { marginTop: 6, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, borderWidth: 1 },
 });

@@ -46,6 +46,26 @@ export const palette = {
     // Borders
     borderLight: 'rgba(226, 232, 240, 0.6)',
 
+    // --- football screens, per the approved design file ---
+    // The design is drawn on the forest-obsidian palette, which the dark theme
+    // already matches exactly. These are the same roles resolved for light, so a
+    // reader on the light theme gets the same hierarchy rather than a dark blob.
+    cardGradientStart: '#FFFFFF',
+    cardGradientEnd: '#F4FAF6',
+    surfaceElevated: '#F2F8F4',
+    textDim: '#94A3B8',
+    liveRed: '#DC2626',
+    liveRedBg: 'rgba(220, 38, 38, 0.10)',
+    liveRedBorder: 'rgba(220, 38, 38, 0.32)',
+    accentSoft: 'rgba(16, 185, 129, 0.12)',
+    accentBorder: 'rgba(16, 185, 129, 0.38)',
+    accentInk: '#064E3B',
+    /** The rounded plate behind a group-header flag or trophy. */
+    badgePlate: 'rgba(15, 23, 42, 0.05)',
+    /** Crest monogram fallback: two tones so a club is still distinguishable. */
+    monogramBg: '#DCEFE4',
+    monogramInk: '#065F46',
+
     // --- compatibility aliases used by older screens ---
     background: '#EEF6F1',
     surfaceSubtle: 'rgba(255, 255, 255, 0.85)',
@@ -87,6 +107,21 @@ export const palette = {
     accent: '#34D399',
 
     borderLight: 'rgba(255, 255, 255, 0.1)',
+
+    // --- football screens, per the approved design file (exact values) ---
+    cardGradientStart: '#182721',
+    cardGradientEnd: '#12211A',
+    surfaceElevated: '#20352D',
+    textDim: '#64748B',
+    liveRed: '#EF4444',
+    liveRedBg: 'rgba(239, 68, 68, 0.15)',
+    liveRedBorder: 'rgba(239, 68, 68, 0.3)',
+    accentSoft: 'rgba(52, 211, 153, 0.12)',
+    accentBorder: 'rgba(52, 211, 153, 0.3)',
+    accentInk: '#062014',
+    badgePlate: 'rgba(255, 255, 255, 0.08)',
+    monogramBg: '#1E312A',
+    monogramInk: '#6EE7B7',
 
     // --- compatibility aliases ---
     background: '#12221B',
