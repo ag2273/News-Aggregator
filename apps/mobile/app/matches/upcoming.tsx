@@ -15,7 +15,9 @@ import { router } from 'expo-router';
 import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { fetchMatches, isNetworkFailure, type FootballMatch } from '../../lib/api';
-import { cairoDay, ribbonLabel } from '../../lib/dates';
+import { cairoDay, ribbonLabel, toArabicDigits } from '../../lib/dates';
+import { TeamCrest } from '../../components/TeamCrest';
+import { MatchCard, matchCountLabel } from '../../components/FootballCard';
 
 /**
  * مباريات اليوم القادمة ومواعيد البث.
@@ -73,7 +75,12 @@ export default function UpcomingScreen() {
           <View style={styles.headerBtn} />
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ribbon}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.strip}
+          contentContainerStyle={styles.ribbon}
+        >
           {[1, 2, 3, 4, 5, 6, 7].map((off) => (
             <TouchableOpacity
               key={off}
@@ -106,35 +113,25 @@ export default function UpcomingScreen() {
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
+            {/* A numeric date heading, per the design: «مواجهات السبت ٢٣ نوفمبر»
+                with the day's count, not a bare league name. */}
+            <Text style={[styles.dayHeading, { color: t.textPrimary }]}>
+              {`مواجهات ${ribbonLabel(offset, date)} • ${matchCountLabel(matches.length)}`}
+            </Text>
             {groups.map(([league, rows]) => (
               <View key={league}>
-                <Text style={[styles.groupTitle, { color: t.textMuted }]}>{league}</Text>
+                <Text style={[styles.groupTitle, { color: t.textMuted }]}>
+                  {`${league} • ${matchCountLabel(rows.length)}`}
+                </Text>
                 {rows.map((m) => (
-                  <TouchableOpacity
+                  <MatchCard
                     key={m.id}
-                    style={[styles.card, { backgroundColor: t.surface, borderColor: t.borderLight }]}
+                    t={t}
+                    m={m}
                     onPress={() => router.push({ pathname: '/matches/[id]', params: { id: m.id, date } })}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${m.home} ضد ${m.away}`}
-                  >
-                    <View style={styles.row}>
-                      <Text style={[styles.kickoff, { color: t.accent }]}>{m.kickoff ?? '—'}</Text>
-                      <View style={styles.teams}>
-                        <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={1}>{m.home}</Text>
-                        <Text style={[styles.versus, { color: t.textMuted }]}>ضد</Text>
-                        <Text style={[styles.team, { color: t.textPrimary }]} numberOfLines={1}>{m.away}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.metaRow}>
-                      <Ionicons name="tv-outline" size={12} color={t.textMuted} />
-                      <Text style={[styles.meta, { color: t.textMuted }]}>
-                        {m.channel ?? 'القناة الناقلة غير معلنة بعد'}
-                      </Text>
-                      {m.round ? (
-                        <Text style={[styles.meta, { color: t.textMuted }]}>· {m.round}</Text>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
+                    onPressTeam={(name) => router.push({ pathname: '/team/[name]', params: { name } })}
+                    channelFallback="القناة الناقلة غير معلنة بعد"
+                  />
                 ))}
               </View>
             ))}
@@ -157,8 +154,10 @@ const styles = StyleSheet.create({
   ribbon: { paddingHorizontal: 12, gap: 8, paddingVertical: 10 },
   ribbonItem: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
   ribbonText: { fontSize: 12, fontWeight: '600' },
+  strip: { flexGrow: 0, flexShrink: 0 },
   list: { padding: 12, gap: 8, paddingBottom: 40 },
-  groupTitle: { fontSize: 12, fontWeight: '700', marginTop: 8, marginBottom: 4 },
+  dayHeading: { fontFamily: 'Cairo_700Bold', fontSize: 14, marginTop: 2, marginBottom: 4 },
+  groupTitle: { fontFamily: 'Cairo_700Bold', fontSize: 11, marginTop: 10, marginBottom: 4 },
   card: { borderRadius: 16, padding: 12, gap: 8, borderWidth: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   kickoff: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'], minWidth: 48 },

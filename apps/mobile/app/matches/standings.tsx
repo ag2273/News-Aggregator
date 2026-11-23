@@ -26,11 +26,24 @@ import {
   type StandingRow,
 } from '../../lib/api';
 
-/** Colours that mark qualification and relegation, per the spec. */
-function zoneColor(position: number, total: number): string | null {
-  if (position <= 2) return '#34D399'; // continental places
-  if (position <= 4) return '#3B82F6'; // secondary competition
-  if (total > 6 && position >= total - 2) return '#EF4444'; // relegation
+/**
+ * Colours that mark qualification and relegation.
+ *
+ * Derived from the position and the table size, so they can only mark a place
+ * that actually exists — a seven-row table does not pretend to have a relegation
+ * zone it cannot show.
+ */
+function zoneOf(position: number, total: number): 'continental' | 'secondary' | 'relegation' | null {
+  if (position <= 2) return 'continental';
+  if (position <= 4) return 'secondary';
+  if (total > 6 && position >= total - 2) return 'relegation';
+  return null;
+}
+
+function zoneColor(zone: 'continental' | 'secondary' | 'relegation' | null): string | null {
+  if (zone === 'continental') return '#34D399';
+  if (zone === 'secondary') return '#3B82F6';
+  if (zone === 'relegation') return '#EF4444';
   return null;
 }
 
@@ -132,6 +145,7 @@ export default function StandingsScreen() {
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
             {group ? <Text style={[styles.group, { color: t.textMuted }]}>{group}</Text> : null}
+            <View style={[styles.tableCard, { backgroundColor: t.surface, borderColor: t.borderLight }]}>
             <View style={[styles.tableHead, { borderBottomColor: t.borderLight }]}>
               <Text style={[styles.th, styles.colPos, { color: t.textMuted }]}>#</Text>
               <Text style={[styles.th, styles.colTeam, { color: t.textMuted }]}>الفريق</Text>
@@ -140,7 +154,7 @@ export default function StandingsScreen() {
               ))}
             </View>
             {rows.map((r) => {
-              const zone = zoneColor(r.position, rows.length);
+              const zone = zoneOf(r.position, rows.length);
               const isFollowed = followed.has(r.team);
               return (
                 <View
@@ -151,7 +165,9 @@ export default function StandingsScreen() {
                     isFollowed && { backgroundColor: t.surfaceSubtle },
                   ]}
                 >
-                  {zone ? <View style={[styles.zone, { backgroundColor: zone }]} /> : null}
+                  {zone ? (
+                    <View style={[styles.zone, { backgroundColor: zoneColor(zone)! }]} />
+                  ) : null}
                   <Text style={[styles.td, styles.colPos, { color: t.textSecondary }]}>{r.position}</Text>
                   <View style={styles.teamCell}>
                     <TeamCrest logo={r.logo} name={r.team} size={18} t={t} />
@@ -184,6 +200,26 @@ export default function StandingsScreen() {
                 </View>
               );
             })}
+            </View>
+            {/* The legend names only the zones this table can actually have. */}
+            <View style={styles.legend}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: zoneColor('continental')! }]} />
+                <Text style={[styles.legendText, { color: t.textMuted }]}>البطولات القارية</Text>
+              </View>
+              {rows.length > 4 ? (
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: zoneColor('secondary')! }]} />
+                  <Text style={[styles.legendText, { color: t.textMuted }]}>المسابقة الثانية</Text>
+                </View>
+              ) : null}
+              {rows.length > 6 ? (
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: zoneColor('relegation')! }]} />
+                  <Text style={[styles.legendText, { color: t.textMuted }]}>الهبوط</Text>
+                </View>
+              ) : null}
+            </View>
             {fullRecord ? null : (
               <Text style={[styles.note, { color: t.textMuted }]}>
                 المصدر يعرض لهذه البطولة عدد المباريات والأهداف والنقاط فقط، بدون تفصيل الفوز والتعادل والخسارة.
@@ -201,18 +237,23 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 4 },
   headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 18, fontWeight: '700' },
+  title: { fontFamily: 'Cairo_700Bold', fontSize: 18 },
   strip: { flexGrow: 0, flexShrink: 0 },
   tabs: { gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
   tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
-  tabText: { fontSize: 12, fontWeight: '600' },
+  tabText: { fontFamily: 'Cairo_600SemiBold', fontSize: 12 },
   list: { paddingHorizontal: 12, paddingBottom: 40 },
+  tableCard: { borderRadius: 18, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 4 },
   group: { fontSize: 11, fontWeight: '700', paddingVertical: 6 },
   tableHead: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1 },
-  th: { fontSize: 10, fontWeight: '700' },
+  th: { fontFamily: 'Cairo_700Bold', fontSize: 10 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1 },
   zone: { width: 3, height: 18, borderRadius: 2, marginEnd: 6 },
-  td: { fontSize: 12 },
+  td: { fontFamily: 'Cairo_400Regular', fontSize: 12 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontFamily: 'Cairo_400Regular', fontSize: 10 },
   colPos: { width: 22, textAlign: 'center' },
   colTeam: { flex: 1, marginEnd: 6 },
   teamCell: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7, marginEnd: 6 },

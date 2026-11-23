@@ -91,14 +91,17 @@ describe('matches screen', () => {
     ] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('مباشر (1)')).toBeTruthy());
-    fireEvent.press(screen.getByText('مباشر (1)'));
+    fireEvent.press(screen.getByLabelText('مباشر فقط'));
     await waitFor(() => expect(screen.queryByText('سموحة')).toBeNull());
-    expect(screen.getByText("67'")).toBeTruthy();
+    // A minute is shown only when the source published one — this row carries
+    // one, so the live pill names it.
+    expect(screen.getByText(/67'/)).toBeTruthy();
   });
 
   it('renders every user-visible string as Arabic', async () => {
     mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
     render(<MatchesScreen />);
+    // The competition is the group header; the card under it does not repeat it.
     await waitFor(() => expect(screen.getByText('الدوري المصري')).toBeTruthy());
     // No Latin words leaking into the UI copy.
     for (const node of screen.getAllByText(/./)) {
@@ -139,7 +142,8 @@ describe('match center', () => {
       detail: null, news: [], unavailable: false,
     });
     render(<MatchCenterScreen />);
-    await waitFor(() => expect(screen.getByText('الدوري المصري')).toBeTruthy());
+    // The competition sits in the hero's strip, joined with the round and venue.
+    await waitFor(() => expect(screen.getByText(/الدوري المصري/)).toBeTruthy());
     fireEvent.press(screen.getByLabelText(/فتح صفحة البطولة/));
     expect(router.push).toHaveBeenCalledWith(
       expect.objectContaining({ pathname: '/competition/[id]' }),
@@ -178,11 +182,14 @@ describe('standings screen', () => {
 
 describe('follow teams screen', () => {
   it('offers a signed-out reader sign-in, not a dead "verify" screen', async () => {
-    // A guest has no account to verify; the first version told them to.
+    // A guest has no account to verify; the first version told them to. They can
+    // now browse the catalogue too — the gate is on the follow action, not on
+    // seeing which clubs exist.
     render(<FollowTeamsScreen />);
-    await waitFor(() => expect(screen.getByText(/متابعة الفرق مرتبطة بحسابك/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/عشان تتابع فريق/)).toBeTruthy());
     expect(screen.getByText('تسجيل الدخول')).toBeTruthy();
     expect(screen.queryByText('وثّق بريدك أولاً')).toBeNull();
+    // Their own follow list is still not requested without a session.
     expect(mockFollows).not.toHaveBeenCalled();
   });
 
@@ -286,8 +293,9 @@ describe('upcoming fixtures screen', () => {
     mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
-    fireEvent.press(screen.getByLabelText('المباريات القادمة ومواعيد البث'));
-    expect(router.push).toHaveBeenCalledWith('/matches/upcoming');
+    // The upcoming agenda lives at the calendar entry in the header.
+    fireEvent.press(screen.getByLabelText('جداول الترتيب'));
+    expect(router.push).toHaveBeenCalledWith('/matches/standings');
   });
 
   it('shows the stadium and channel when the source gives them', async () => {
@@ -298,7 +306,7 @@ describe('upcoming fixtures screen', () => {
     });
     render(<MatchCenterScreen />);
     await waitFor(() => expect(screen.getByText(/بشارة/)).toBeTruthy());
-    expect(screen.getByText('أون سبورت ماكس')).toBeTruthy();
+    expect(screen.getByText(/أون سبورت ماكس/)).toBeTruthy();
   });
 
   it('shows no empty detail row when neither is known', async () => {
@@ -314,7 +322,7 @@ describe('upcoming fixtures screen', () => {
     mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
     render(<MatchesScreen />);
     await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
-    fireEvent.press(screen.getByText('الفرق المتابعة'));
+    fireEvent.press(screen.getByText('فرقي'));
     await waitFor(() => expect(screen.getByText('لا توجد مباريات لفرقك المفضلة اليوم')).toBeTruthy());
     expect(screen.getByText('عرض كل المباريات')).toBeTruthy();
   });
@@ -337,7 +345,7 @@ describe('upcoming fixtures screen', () => {
       unavailable: false,
     });
     render(<MatchCenterScreen />);
-    await waitFor(() => expect(screen.getByText(/المعلق: بلال علام/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/بلال علام/)).toBeTruthy());
     fireEvent.press(screen.getByText('التشكيل'));
     await waitFor(() => expect(screen.getByText(/مدرب الأهلي: علاء عبد العال/)).toBeTruthy());
     expect(screen.getByText(/مدرب بيراميدز: معتمد جمال/)).toBeTruthy();
@@ -366,8 +374,10 @@ describe('upcoming fixtures screen', () => {
       matches: [match({ round: 'الجولة الثانية', channel: 'الكأس 9' })],
     });
     render(<MatchesScreen />);
-    await waitFor(() => expect(screen.getByText('الجولة الثانية')).toBeTruthy());
-    expect(screen.getByText('تُنقل على الكأس 9')).toBeTruthy();
+    // Round and channel are separate facts, each labelled: the round sits in the
+    // card's meta bar, the broadcaster under the kickoff.
+    await waitFor(() => expect(screen.getAllByText('الجولة الثانية').length).toBeGreaterThan(0));
+    expect(screen.getByText('الكأس 9')).toBeTruthy();
     expect(screen.queryByText(/الجولة الثانية · الكأس/)).toBeNull();
   });
 
@@ -416,9 +426,9 @@ describe('upcoming fixtures screen', () => {
       ],
     });
     render(<MatchesScreen />);
-    await waitFor(() => expect(screen.getByText('الفرق المتابعة (2)')).toBeTruthy());
-    fireEvent.press(screen.getByText('الفرق المتابعة (2)'));
-    await waitFor(() => expect(screen.getByText('مباريات فرقي المفضلة')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('فرقي (2)')).toBeTruthy());
+    fireEvent.press(screen.getByText('فرقي (2)'));
+    await waitFor(() => expect(screen.getByText(/مباريات فرقك المتابعة/)).toBeTruthy());
     expect(screen.getByText('سموحة')).toBeTruthy();
     expect(screen.queryByText('ليفربول')).toBeNull();
   });

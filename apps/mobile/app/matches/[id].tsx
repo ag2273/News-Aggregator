@@ -17,6 +17,7 @@ import type { Theme } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { useArticleSheet } from '../../components/ArticleSheet';
 import { TeamCrest } from '../../components/TeamCrest';
+import { MatchNewsCard } from '../../components/MatchNewsCard';
 import {
   fetchMatch,
   fetchTeamFollows,
@@ -132,92 +133,102 @@ export default function MatchCenterScreen() {
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
-            {/* Hero scoreboard, as the spec asks: wide, dark, 28dp corners. */}
-            <View style={[styles.hero, { backgroundColor: t.surface }]}>
-              <View style={styles.heroSide}>
-                <TeamCrest logo={match.homeLogo} name={match.home} size={48} t={t} />
+            {/* Match centre hero, to the approved design: one dark plate holding
+                the competition line, the two crests with the score, and the facts
+                the source published about the fixture. */}
+            <View
+              style={[
+                styles.hero,
+                { backgroundColor: t.cardGradientStart, borderColor: t.accentBorder },
+              ]}
+            >
+              {/* Competition, round and stadium in one line — the design's strip.
+                  Each part is dropped when the source did not send it. */}
+              <TouchableOpacity
+                style={styles.compStrip}
+                onPress={() =>
+                  router.push({ pathname: '/competition/[id]', params: { id: match.competitionId } })
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`${match.competitionName} — فتح صفحة البطولة`}
+              >
+                <Ionicons name="trophy-outline" size={13} color={t.accent} />
+                <Text style={[styles.compStripText, { color: t.textSecondary }]} numberOfLines={1}>
+                  {[match.competitionName, match.round, match.stadium].filter(Boolean).join(' • ')}
+                </Text>
+                <Ionicons name="chevron-back" size={13} color={t.textMuted} />
+              </TouchableOpacity>
+
+              <View style={styles.heroRow}>
                 <TouchableOpacity
+                  style={styles.heroSide}
                   onPress={() => router.push({ pathname: '/team/[name]', params: { name: match.home } })}
                   accessibilityRole="button"
                   accessibilityLabel={`${match.home} — صفحة الفريق`}
                 >
-                  <Text style={[styles.heroTeam, { color: t.textPrimary }]} numberOfLines={1}>{match.home}</Text>
+                  <TeamCrest logo={match.homeLogo} name={match.home} size={52} t={t} />
+                  <Text style={[styles.heroTeam, { color: t.textPrimary }]} numberOfLines={2}>
+                    {match.home}
+                  </Text>
                 </TouchableOpacity>
-              </View>
-              <View style={styles.heroCenter}>
-                <Text style={[styles.heroScore, { color: match.status === 'live' ? t.accent : t.textPrimary }]}>
-                  {match.homeScore === null || match.awayScore === null
-                    ? match.kickoff ?? '—'
-                    : `${match.homeScore} - ${match.awayScore}`}
-                </Text>
-                <Text style={[styles.heroStatus, { color: match.status === 'live' ? t.accent : t.textMuted }]}>
-                  {match.status === 'live' && match.minute ? `${match.minute}'` : match.statusText}
-                </Text>
-                {match.round ? <Text style={[styles.heroRound, { color: t.textMuted }]}>{match.round}</Text> : null}
-              </View>
-              <View style={styles.heroSide}>
-                <TeamCrest logo={match.awayLogo} name={match.away} size={48} t={t} />
+                <View style={styles.heroCenter}>
+                  <Text style={[styles.heroScore, { color: t.textPrimary }]}>
+                    {match.homeScore === null || match.awayScore === null
+                      ? match.kickoff ?? '—'
+                      : `${match.homeScore} - ${match.awayScore}`}
+                  </Text>
+                  {match.status === 'live' ? (
+                    <View
+                      style={[
+                        styles.livePill,
+                        { backgroundColor: t.liveRedBg, borderColor: t.liveRedBorder },
+                      ]}
+                    >
+                      <View style={[styles.liveDot, { backgroundColor: t.liveRed }]} />
+                      <Text style={[styles.liveText, { color: t.liveRed }]} numberOfLines={1}>
+                        {/* Score + half. A minute only when the source published
+                            one; the Egyptian ceiling is «بدون دقيقة». */}
+                        {match.minute
+                          ? `${match.minute}' • ${match.statusText || 'مباشر'}`
+                          : match.statusText || 'مباشر'}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={[styles.heroStatus, { color: t.textMuted }]} numberOfLines={1}>
+                      {match.statusText}
+                    </Text>
+                  )}
+                </View>
                 <TouchableOpacity
+                  style={styles.heroSide}
                   onPress={() => router.push({ pathname: '/team/[name]', params: { name: match.away } })}
                   accessibilityRole="button"
                   accessibilityLabel={`${match.away} — صفحة الفريق`}
                 >
-                  <Text style={[styles.heroTeam, { color: t.textPrimary }]} numberOfLines={1}>{match.away}</Text>
+                  <TeamCrest logo={match.awayLogo} name={match.away} size={52} t={t} />
+                  <Text style={[styles.heroTeam, { color: t.textPrimary }]} numberOfLines={2}>
+                    {match.away}
+                  </Text>
                 </TouchableOpacity>
               </View>
+
+              {/* The channel and the commentator, when the provider published
+                  them. Omitted, never blank. */}
+              {match.channel || detail?.commentator ? (
+                <View style={styles.heroFacts}>
+                  {detail?.commentator ? (
+                    <Text style={[styles.heroFact, { color: t.textSecondary }]} numberOfLines={1}>
+                      {`🎙 ${detail.commentator}`}
+                    </Text>
+                  ) : null}
+                  {match.channel ? (
+                    <Text style={[styles.heroFact, { color: t.textSecondary }]} numberOfLines={1}>
+                      {`📺 ${match.channel}`}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
-
-            {/* What the source knows about the fixture itself: stadium and the
-                channel showing it. Both are omitted when absent rather than
-                shown blank. */}
-            {match.stadium || match.channel || detail?.commentator ? (
-              <View style={[styles.detailRow, { backgroundColor: t.surface }]}>
-                {match.stadium ? (
-                  <View style={styles.detailItem}>
-                    <Ionicons name="location-outline" size={13} color={t.textMuted} />
-                    <Text style={[styles.detailText, { color: t.textSecondary }]} numberOfLines={1}>
-                      {match.stadium}
-                    </Text>
-                  </View>
-                ) : null}
-                {match.channel ? (
-                  <View style={styles.detailItem}>
-                    <Ionicons name="tv-outline" size={13} color={t.textMuted} />
-                    <Text style={[styles.detailText, { color: t.textSecondary }]} numberOfLines={1}>
-                      {match.channel}
-                    </Text>
-                  </View>
-                ) : null}
-                {detail?.commentator ? (
-                  <View style={styles.detailItem}>
-                    <Ionicons name="mic-outline" size={13} color={t.textMuted} />
-                    <Text style={[styles.detailText, { color: t.textSecondary }]} numberOfLines={1}>
-                      {`المعلق: ${detail.commentator}`}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-
-            {/* Which competition this match is in, and the way to its page. This
-                is where a league lives on a day it does not play. */}
-            <TouchableOpacity
-              style={styles.compRow}
-              onPress={() =>
-                router.push({
-                  pathname: '/competition/[id]',
-                  params: { id: match.competitionId },
-                })
-              }
-              accessibilityRole="button"
-              accessibilityLabel={`${match.competitionName} — فتح صفحة البطولة`}
-            >
-              <Ionicons name="trophy-outline" size={14} color={t.textSecondary} />
-              <Text style={[styles.compName, { color: t.textSecondary }]} numberOfLines={1}>
-                {match.competitionName}
-              </Text>
-              <Ionicons name="chevron-back" size={14} color={t.textMuted} />
-            </TouchableOpacity>
 
             {/* Four tabs share the width instead of scrolling: in RTL a horizontal
                 strip starts at the right edge, so the last tab sat permanently
@@ -229,13 +240,15 @@ export default function MatchCenterScreen() {
                   onPress={() => setTab(x.id)}
                   style={[
                     styles.tab,
-                    { backgroundColor: x.id === tab ? t.accent : t.pillInactiveBg },
+                    x.id === tab
+                      ? { backgroundColor: t.accentSoft, borderColor: t.accent }
+                      : { backgroundColor: 'transparent', borderColor: t.borderLight },
                   ]}
                   accessibilityRole="tab"
                   accessibilityState={{ selected: x.id === tab }}
                 >
                   <Text
-                    style={[styles.tabText, { color: x.id === tab ? '#FFFFFF' : t.textSecondary }]}
+                    style={[styles.tabText, { color: x.id === tab ? t.accent : t.textSecondary }]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     minimumFontScale={0.7}
@@ -248,42 +261,47 @@ export default function MatchCenterScreen() {
 
             {tab === 'news' ? (
               news.length ? (
-                news.map((n) => (
-                  <TouchableOpacity
-                    key={n.id}
-                    style={[styles.newsCard, { backgroundColor: t.surface }]}
-                    onPress={() =>
-                      // Hand the existing reader a card-shaped article so the news
-                      // tab opens the same reader as the feed.
-                      sheet.open({
-                        id: n.id,
-                        title: n.title,
-                        summary: null,
-                        imageUrl: null,
-                        url: n.url,
-                        sourceId: '',
-                        sourceName: n.sourceName,
-                        category: 'sports',
-                        country: 'EG',
-                        publishedAt: n.publishedAt,
-                        isBreaking: false,
-                      })
-                    }
-                    accessibilityRole="button"
-                    accessibilityLabel={n.title}
-                  >
-                    <Text style={[styles.newsSource, { color: t.accent }]}>
-                      {n.sourceName}
-                      {n.team === 'both' ? ' · الفريقان' : ''}
+                <>
+                  <View style={styles.sectionHeadline}>
+                    <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>
+                      📰 أحدث الأخبار المتعلقة بالمباراة
                     </Text>
-                    {/* Three lines: two clipped real headlines mid-sentence («... جر»). The
-                      card is the only place a reader sees the story, so it gets
-                      room to finish. */}
-                    <Text style={[styles.newsTitle, { color: t.textPrimary }]} numberOfLines={3}>{n.title}</Text>
-                  </TouchableOpacity>
-                ))
+                    <Text style={[styles.counter, { color: t.accent, backgroundColor: t.accentSoft }]}>
+                      من مصادرك المعتمدة
+                    </Text>
+                  </View>
+                  {news.map((n) => (
+                    <MatchNewsCard
+                      key={n.id}
+                      t={t}
+                      title={n.title}
+                      sourceName={n.sourceName}
+                      publishedAt={n.publishedAt}
+                      imageUrl={n.imageUrl ?? null}
+                      both={n.team === 'both'}
+                      onPress={() =>
+                        // Hand the existing reader a card-shaped article, so the
+                        // news tab opens the same reader as the feed.
+                        sheet.open({
+                          id: n.id,
+                          title: n.title,
+                          summary: null,
+                          imageUrl: n.imageUrl ?? null,
+                          url: n.url,
+                          sourceId: '',
+                          sourceName: n.sourceName,
+                          category: 'sports',
+                          country: 'EG',
+                          publishedAt: n.publishedAt,
+                          isBreaking: false,
+                        })
+                      }
+                    />
+                  ))}
+                </>
               ) : (
                 <View style={styles.centerInline}>
+                  <Ionicons name="newspaper-outline" size={26} color={t.textMuted} />
                   <Text style={[styles.emptyBody, { color: t.textMuted }]}>
                     لا توجد تغطية صحفية لهذه المباراة في مصادرنا حتى الآن.
                   </Text>
@@ -388,14 +406,43 @@ const styles = StyleSheet.create({
   headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 18, fontWeight: '700', flex: 1, textAlign: 'center' },
   list: { padding: 14, gap: 10, paddingBottom: 40 },
-  hero: { flexDirection: 'row', alignItems: 'center', borderRadius: 28, padding: 18, gap: 10 },
+  hero: { borderRadius: 24, borderWidth: 1, padding: 16, gap: 14 },
+  compStrip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  compStripText: { flex: 1, fontFamily: 'Cairo_600SemiBold', fontSize: 11 },
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   heroSide: { flex: 1, alignItems: 'center', gap: 6 },
-  crest: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  heroTeam: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
-  heroCenter: { alignItems: 'center', minWidth: 96 },
-  heroScore: { fontSize: 26, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  heroStatus: { fontSize: 11, fontWeight: '700' },
-  heroRound: { fontSize: 10 },
+  heroTeam: { fontFamily: 'Cairo_700Bold', fontSize: 14, textAlign: 'center', lineHeight: 19 },
+  heroCenter: { alignItems: 'center', minWidth: 92, gap: 4 },
+  heroScore: {
+    fontFamily: 'Cairo_700Bold',
+    fontSize: 30,
+    letterSpacing: 2,
+    fontVariant: ['tabular-nums'],
+  },
+  heroStatus: { fontFamily: 'Cairo_700Bold', fontSize: 11 },
+  livePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  liveDot: { width: 6, height: 6, borderRadius: 3 },
+  liveText: { fontFamily: 'Cairo_700Bold', fontSize: 10 },
+  heroFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
+  heroFact: { fontFamily: 'Cairo_400Regular', fontSize: 11 },
+  sectionHeadline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  sectionTitle: { fontFamily: 'Cairo_700Bold', fontSize: 13, flexShrink: 1 },
+  counter: {
+    fontFamily: 'Cairo_700Bold',
+    fontSize: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
   detailRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 14 },
   detailItem: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
   detailText: { fontSize: 11 },
@@ -414,13 +461,13 @@ const styles = StyleSheet.create({
   compRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 2 },
   compName: { fontSize: 12, fontWeight: '700', flexShrink: 1 },
   tabs: { flexDirection: 'row', gap: 6, paddingVertical: 6 },
-  tab: { flex: 1, paddingHorizontal: 6, paddingVertical: 8, borderRadius: 16, alignItems: 'center' },
-  tabText: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  tab: { flex: 1, paddingHorizontal: 6, paddingVertical: 8, borderRadius: 16, alignItems: 'center', borderWidth: 1 },
+  tabText: { fontFamily: 'Cairo_600SemiBold', fontSize: 12, textAlign: 'center' },
   newsCard: { borderRadius: 16, padding: 12, gap: 4 },
   newsSource: { fontSize: 11, fontWeight: '700' },
   newsTitle: { fontSize: 14, fontWeight: '600', lineHeight: 22, flexShrink: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 28 },
-  centerInline: { padding: 20, alignItems: 'center' },
+  centerInline: { padding: 24, alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 15, fontWeight: '700', textAlign: 'center' },
   emptyBody: { fontSize: 12, lineHeight: 20, textAlign: 'center' },
   retry: { marginTop: 6, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 14, borderWidth: 1 },

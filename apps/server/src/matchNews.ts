@@ -333,6 +333,8 @@ export interface ArticleLike {
   id: string;
   title: string;
   summary: string | null;
+  /** The article's own lead image, when the feed carried one. */
+  imageUrl?: string | null;
   sourceName: string;
   url: string;
   publishedAt: number;
@@ -373,6 +375,14 @@ export interface RelatedArticle {
   sourceName: string;
   url: string;
   publishedAt: number;
+  /**
+   * The article's lead image, passed through from the corpus.
+   *
+   * Null for most Egyptian coverage: our feeds carry a `media:content` for some
+   * outlets and none for others, so the card draws the design's football glyph
+   * instead of an empty grey box. Never invented, never a source page scrape.
+   */
+  imageUrl: string | null;
   /** `both` when the article names the two clubs in one headline or summary. */
   team: 'home' | 'away' | 'both';
 }
@@ -406,6 +416,7 @@ export function relatedNews(
       sourceName: article.sourceName,
       url: article.url,
       publishedAt: article.publishedAt,
+      imageUrl: article.imageUrl ?? null,
       team: inHome && inAway ? 'both' : inHome ? 'home' : 'away',
     });
   }
