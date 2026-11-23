@@ -52,4 +52,17 @@ jobs:
             # is only reachable on the compose network, so a host curl would fail
             # on a perfectly healthy deploy.
             docker compose ps --format '{{.Service}} {{.Image}} {{.Status}}'
-            test "$(docker inspect --format '{{.State.Health.Status}}' news-aggregator-server-1)" = healthy
+            # The container reports `starting` until its first HEALTHCHECK passes,
+            # which is a few seconds after it is recreated. Testing once, straight
+            # away, failed a deploy that had in fact succeeded — the third variant
+            # of "the job fails while production is fine". Wait for the health to
+            # settle, and fail only if it settles on unhealthy.
+            for i in $(seq 1 24); do
+              status="$(docker inspect --format '{{.State.Health.Status}}' news-aggregator-server-1)"
+              echo "health: $status"
+              [ "$status" = "healthy" ] && exit 0
+              [ "$status" = "unhealthy" ] && exit 1
+              sleep 5
+            done
+            echo "server did not become healthy within 2 minutes"
+            exit 1
