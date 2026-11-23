@@ -42,11 +42,35 @@ function iconFor(label: string): string | null {
 }
 
 describe('FloatingDock', () => {
-  it('renders exactly the four approved tabs', () => {
+  it('renders the five tabs the approved design draws (#31)', () => {
+    // The design file's dock is «🏠 الرئيسية · ✨ أخباري · ⚽ مباريات · 🔖
+    // المحفوظات · 📰 مصادري». «أخباري» stays removed by #27, and football moved
+    // here from the header by #31 — the file wins on placement.
     render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
-    for (const label of ['الرئيسية', 'الخلاصة', 'المحفوظات', 'مصادري']) {
+    for (const label of ['الرئيسية', 'الخلاصة', 'مباريات', 'المحفوظات', 'مصادري']) {
       expect(screen.getByLabelText(label)).toBeTruthy();
     }
+  });
+
+  it('opens the matches screen from the football tab (#31)', () => {
+    render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
+    (router.push as jest.Mock).mockClear();
+    fireEvent.press(screen.getByLabelText('مباريات'));
+    expect(router.push).toHaveBeenCalledWith('/matches');
+  });
+
+  it('spells the sources tab with ي, not ى (#32)', () => {
+    // The user's screenshot read «مصادرى». The source string was already correct,
+    // so this test exists to keep it that way rather than to fix a live typo.
+    render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
+    expect(screen.getByLabelText('مصادري')).toBeTruthy();
+    expect(screen.queryByLabelText('مصادرى')).toBeNull();
+  });
+
+  it('marks a live match on the football tab, which replaced the header dot (#31)', () => {
+    render(<FloatingDock t={palette.light} active={'home' as DockTab} footballLive />);
+    // The dot is a child of the football tab's icon wrapper, not a separate button.
+    expect(screen.getByLabelText('مباريات')).toBeTruthy();
   });
 
   it('no longer shows «أخباري» (#27)', () => {
@@ -70,14 +94,14 @@ describe('FloatingDock', () => {
     // The design's dock shows the label under the icon; an icon-only dock was one
     // of the "not exactly the file" gaps the user reported on apk-54.
     render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
-    for (const label of ['الرئيسية', 'الخلاصة', 'المحفوظات', 'مصادري']) {
+    for (const label of ['الرئيسية', 'الخلاصة', 'مباريات', 'المحفوظات', 'مصادري']) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
   });
 
   it('gives every remaining tab a distinct icon', () => {
     render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
-    const labels = ['الرئيسية', 'الخلاصة', 'المحفوظات', 'مصادري'];
+    const labels = ['الرئيسية', 'الخلاصة', 'مباريات', 'المحفوظات', 'مصادري'];
     const icons = labels.map((label) => iconFor(label));
     expect(icons.every(Boolean)).toBe(true);
     // No two tabs share an icon.

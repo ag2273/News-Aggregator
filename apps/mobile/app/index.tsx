@@ -72,10 +72,10 @@ export default function FeedScreen() {
 
   const offsetRef = useRef(0);
   const hasMoreRef = useRef(true);
-  // The header football dot: on only while a match the reader cares about is
-  // actually running. It pulses instead of blinking flat, per the motion budget.
+  // A match the reader cares about is running: the dock's football tab shows a dot.
+  // It was a pulsing dot on a header button; that button moved into the dock
+  // (#31), so the signal moved with it.
   const [footballLive, setFootballLive] = useState(false);
-  const dotOpacity = useRef(new Animated.Value(1)).current;
 
   const load = useCallback(async (replace: boolean) => {
     try {
@@ -147,23 +147,6 @@ export default function FeedScreen() {
     };
   }, [token]);
 
-  // Pulse only while live, and stop the animation when it is not, so an idle
-  // home screen is not running a loop.
-  useEffect(() => {
-    if (!footballLive) {
-      dotOpacity.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(dotOpacity, { toValue: 0.4, duration: 1000, useNativeDriver: true }),
-        Animated.timing(dotOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [footballLive, dotOpacity]);
-
   useEffect(() => {
     load(true).finally(() => setLoading(false));
   }, [load]);
@@ -233,22 +216,6 @@ export default function FeedScreen() {
     >
       <SafeAreaView style={styles.root} edges={['top']}>
         <View style={styles.header}>
-          {/* The header is the design's three slots, not a cluster of buttons.
-              In the approved file the LEADING slot is the football entry (⚽ as the
-              first thing in the row), then the title, then the action. The user's
-              complaint was that the football entry sat in the action cluster on
-              the far side, which is not where the file puts it. */}
-          <TouchableOpacity
-            style={[styles.footballBtn, { backgroundColor: t.accent }]}
-            onPress={() => router.push('/matches')}
-            accessibilityRole="button"
-            accessibilityLabel={footballLive ? 'المباريات — مباراة جارية الآن' : 'المباريات'}
-          >
-            <Text style={styles.footballGlyph}>⚽</Text>
-            {footballLive ? (
-              <Animated.View style={[styles.liveDotOnAccent, { opacity: dotOpacity }]} />
-            ) : null}
-          </TouchableOpacity>
           <View style={styles.headerTitleWrap}>
             <Text style={[styles.headerDate, { color: t.textMuted }]}>{todayLabel()}</Text>
             <Text
@@ -334,7 +301,7 @@ export default function FeedScreen() {
           </View>
         ) : null}
 
-        <FloatingDock t={t} active="home" />
+        <FloatingDock t={t} active="home" footballLive={footballLive} />
       </SafeAreaView>
     </LinearGradient>
   );

@@ -5,18 +5,39 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import type { Theme } from '../constants/colors';
 
-export type DockTab = 'home' | 'digest' | 'saved' | 'profile';
+export type DockTab = 'home' | 'digest' | 'matches' | 'saved' | 'profile';
 
 /**
- * Floating capsule dock — four tabs.
+ * Floating capsule dock — five tabs.
  *
  * «أخباري» was removed by explicit user decision (#27): it showed the same content
  * as «مصادري», so it was duplication rather than a destination. «الأكثر تداولاً»
  * left the dock at the same time and lives in the header next to the profile.
- * The user authorised touching this dock for that change, which overrides the
- * earlier "never touch the dock" rule for this one edit.
+ *
+ * The FOOTBALL entry lives here too (#31). #29 read the approved design's header
+ * and put the ball in its leading slot; the user's own screenshot and the design
+ * file both disagree with that — the file's dock is «🏠 الرئيسية · ✨ أخباري ·
+ * ⚽ مباريات · 🔖 المحفوظات · 📰 مصادري», so football is a dock tab, and the file
+ * wins on any question of placement.
+ *
+ * The order is the file's, right to left as it renders in RTL: الرئيسية first.
  */
-export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
+export function FloatingDock({
+  t,
+  active,
+  footballLive = false,
+}: {
+  t: Theme;
+  active: DockTab;
+  /**
+   * A match the reader cares about is running.
+   *
+   * This used to be a pulsing dot on the header's football button. The button
+   * moved into the dock (#31), so the signal moves with it — a live match should
+   * still be visible from the home screen, and the tab is now where the ball is.
+   */
+  footballLive?: boolean;
+}) {
   return (
     <View style={[styles.dock, { backgroundColor: t.dockBg, shadowColor: t.dockShadow }]}>
       <DockButton
@@ -32,6 +53,14 @@ export function FloatingDock({ t, active }: { t: Theme; active: DockTab }) {
         icon="today-outline"
         label="الخلاصة"
         onPress={() => router.push('/digest')}
+      />
+      <DockButton
+        t={t}
+        active={active === 'matches'}
+        icon="football-outline"
+        label="مباريات"
+        live={footballLive}
+        onPress={() => router.push('/matches')}
       />
       <DockButton
         t={t}
@@ -56,12 +85,15 @@ function DockButton({
   active,
   icon,
   label,
+  live = false,
   onPress,
 }: {
   t: Theme;
   active: boolean;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
+  /** A live match is on: a small dot on the icon, with an honest label. */
+  live?: boolean;
   onPress?: () => void;
 }) {
   if (active) {
@@ -99,7 +131,10 @@ function DockButton({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Ionicons name={icon} size={22} color={t.textMuted} />
+      <View>
+        <Ionicons name={icon} size={22} color={t.textMuted} />
+        {live ? <View style={[styles.liveDot, { backgroundColor: t.liveRed }]} /> : null}
+      </View>
       <Text style={[styles.label, { color: t.textMuted }]} numberOfLines={1}>
         {label}
       </Text>
@@ -120,8 +155,10 @@ const styles = StyleSheet.create({
     // both, so the height follows the content rather than clipping the label.
     height: 72,
     borderRadius: 31,
-    // Six 44px items plus one 46px active wrap need 266px; with 12px padding a
-    // side that is 290px, so the capsule stays 320 and nothing is dropped.
+    // FIVE 56px tabs need 280px; with 24px of padding and 8px of gaps that is
+    // 312, so the 320 capsule holds all five without dropping one. The active tab
+    // is the same width as the others now that there are five — a wider active
+    // wrap is what pushed the fifth label off a 360dp phone.
     paddingHorizontal: 12,
     gap: 2,
     shadowOpacity: 0.12,
@@ -138,7 +175,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   activeWrap: {
-    width: 62,
+    width: 56,
     height: 54,
     borderRadius: 20,
     alignItems: 'center',
@@ -155,6 +192,14 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  liveDot: {
+    position: 'absolute',
+    top: -1,
+    insetInlineEnd: -2,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
   label: {
     fontFamily: 'Cairo_700Bold',
