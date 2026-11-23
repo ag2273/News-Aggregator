@@ -47,5 +47,9 @@ jobs:
             # image compiles, or the site 502s for the length of the deploy.
             nice -n 10 docker compose up -d --build
             # Report what actually ended up running, so a silent no-op is visible.
+            # The health check reads the container's own HEALTHCHECK rather than
+            # curling localhost:3001 — that port is not published to the host, it
+            # is only reachable on the compose network, so a host curl would fail
+            # on a perfectly healthy deploy.
             docker compose ps --format '{{.Service}} {{.Image}} {{.Status}}'
-            curl -fsS -m 60 http://localhost:3001/health
+            test "$(docker inspect --format '{{.State.Health.Status}}' news-aggregator-server-1)" = healthy
