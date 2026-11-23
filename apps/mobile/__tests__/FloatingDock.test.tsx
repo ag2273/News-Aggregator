@@ -99,12 +99,34 @@ describe('FloatingDock', () => {
     }
   });
 
-  it('gives every remaining tab a distinct icon', () => {
+  it('gives every tab a distinct coloured glyph (#37)', () => {
+    // The design's dock uses emoji, so "coloured" is a property of the glyph itself.
+    // This asserts one distinct glyph per tab, which is also what stops two tabs
+    // from looking alike.
     render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
-    const labels = ['الرئيسية', 'الخلاصة', 'مباريات', 'المحفوظات', 'مصادري'];
-    const icons = labels.map((label) => iconFor(label));
-    expect(icons.every(Boolean)).toBe(true);
-    // No two tabs share an icon.
-    expect(new Set(icons).size).toBe(icons.length);
+    for (const glyph of ['🏠', '✨', '⚽', '🔖', '📰']) {
+      expect(screen.getAllByText(glyph).length).toBeGreaterThan(0);
+    }
   });
+
+  it('draws the football glyph larger than the rest (#37)', () => {
+    // The file gives football the prominent middle slot, and the user asked for it
+    // "bigger and clearer than the others". Read from the LAST style entry, because
+    // React Native flattens a style array and the per-glyph size is the last one.
+    render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
+    const sizeOf = (glyph: string): number => {
+      const node = screen.getAllByText(glyph)[0]!;
+      const raw = node.props.style;
+      const entries = Array.isArray(raw) ? raw : [raw];
+      for (let i = entries.length - 1; i >= 0; i -= 1) {
+        const fs = entries[i]?.fontSize;
+        if (typeof fs === 'number') return fs;
+      }
+      return 0;
+    };
+    expect(sizeOf('⚽')).toBeGreaterThan(sizeOf('🏠'));
+    expect(sizeOf('⚽')).toBeGreaterThan(sizeOf('📰'));
+  });
+
+
 });
