@@ -586,6 +586,8 @@ describe('upcoming fixtures screen', () => {
     render(<MatchCenterScreen />);
     await waitFor(() => expect(screen.getByText('التشكيل')).toBeTruthy());
     fireEvent.press(screen.getByText('التشكيل'));
-    await waitFor(() => expect(screen.getByText('التشكيل غير متاح من المصدر لهذه المباراة.')).toBeTruthy());
+    // The fixture is upcoming, so the honest sentence is "not announced yet" —
+    // not "unavailable", which read as if the source never publishes one.
+    await waitFor(() => expect(screen.getByText(/مش ناشر التشكيل لسه/)).toBeTruthy());
   });
 });

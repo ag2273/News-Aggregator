@@ -239,8 +239,9 @@ export async function loadMatchDetail(
   if (!html) return null;
   const detail = parseFilGoalDetail(html);
   // The line-ups come from the same page. Measured: European fixtures carry 40-45
-  // players, Egyptian ones carry none — so `null` here is the honest answer the
-  // screen renders as «غير متاح», not a failure.
+  // players and so do played Egyptian ones (corrected — the earlier "Egyptian
+  // carries none" was measured before kickoff). An unplayed match carries an empty
+  // array, so `null` here means "not announced yet", and the screen says so.
   const lineups = parseFilGoalLineups(html);
   // The timeline is in the page's markup, not its JSON payload — the reason the
   // first measurement called it impossible. Verified against real finished

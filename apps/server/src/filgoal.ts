@@ -349,10 +349,14 @@ export function squadArray(html: string): string | null {
 /**
  * The two line-ups, from the match page's own payload.
  *
- * Measured: European fixtures carry 40-45 players each with name, position, shirt
- * number and minutes; Egyptian fixtures carry **zero** — the array exists but is
- * empty, and the formation field is null. So this returns an empty list rather than
- * inventing one, and the screen says the source does not publish it.
+ * Measured (corrected 2026-11-23): European fixtures carry 40-45 players each with
+ * name, position, shirt number and minutes, AND SO DO EGYPTIAN LEAGUE FIXTURES once
+ * they have been played — الزمالك × المقاولون العرب carried 40. The earlier note
+ * here said Egyptian fixtures carried zero; that was measured on a match that had
+ * not kicked off yet, where the array is empty and the formation is null.
+ *
+ * An empty array is therefore a real answer for an unplayed match, not a property
+ * of Egyptian football. This returns null for it rather than inventing a line-up.
  */
 export function parseFilGoalLineups(html: string): FilGoalLineups | null {
   const raw = squadArray(html);

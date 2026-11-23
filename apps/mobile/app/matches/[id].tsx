@@ -342,10 +342,10 @@ export default function MatchCenterScreen() {
                     ) : null}
                   </View>
                 ) : null}
-                {/* The source publishes line-ups for European fixtures (40-45
-                    players with name, position and shirt number) and none at all
-                    for Egyptian ones — so this renders real players when they
-                    exist and says so plainly when they do not. Never a guessed XI. */}
+                {/* The source publishes line-ups for played matches — European
+                    AND Egyptian (corrected: the earlier "none for Egyptian" was
+                    measured before kickoff). This renders the real XI when it
+                    exists and says why when it does not. Never a guessed XI. */}
                 {detail?.lineups ? (
                   <View style={styles.lineupWrap}>
                     {([
@@ -377,8 +377,13 @@ export default function MatchCenterScreen() {
                     ))}
                   </View>
                 ) : (
+                  // Measured: an unplayed match has an empty squad array, and a
+                  // played Egyptian one now has a real XI — so "unavailable" is
+                  // about timing, not about Egyptian football.
                   <Text style={[styles.emptyBody, { color: t.textMuted }]}>
-                    التشكيل غير متاح من المصدر لهذه المباراة.
+                    {match.status === 'upcoming'
+                      ? 'المصدر مش ناشر التشكيل لسه. بينزل قبل انطلاق المباراة بقليل.'
+                      : 'التشكيل غير متاح من المصدر لهذه المباراة.'}
                   </Text>
                 )}
               </View>
