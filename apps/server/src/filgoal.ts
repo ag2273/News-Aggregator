@@ -311,16 +311,6 @@ export function parseFilGoalDetail(html: string): FilGoalMatchDetail | null {
   };
 }
 
-/** Fetch a match's detail payload. Returns null when the page could not be read. */
-export async function fetchFilGoalDetail(
-  matchId: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<FilGoalMatchDetail | null> {
-  const html = await getPage(`${FILGOAL_BASE}/matches/${matchId}`, fetchImpl);
-  if (!html) return null;
-  return parseFilGoalDetail(html);
-}
-
 /** One player as the match page lists them. */
 export interface FilGoalPlayer {
   personId: string;
@@ -413,12 +403,3 @@ export function parseFilGoalLineups(html: string): FilGoalLineups | null {
   return { homeTeamId, awayTeamId, home, away };
 }
 
-/** Fetch a match's line-ups. Cached by the caller; null when the source has none. */
-export async function fetchFilGoalLineups(
-  matchId: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<FilGoalLineups | null> {
-  const html = await getPage(`${FILGOAL_BASE}/matches/${matchId}`, fetchImpl);
-  if (!html) return null;
-  return parseFilGoalLineups(html);
-}
