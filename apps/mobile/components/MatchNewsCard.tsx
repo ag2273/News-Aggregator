@@ -1,20 +1,22 @@
 import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import type { Theme } from '../constants/colors';
-import { TeamCrest } from './TeamCrest';
 import { relativeTime } from '../lib/api';
 
 /**
- * The match centre's news card, to the approved design.
+ * The match centre's news card, matching the approved design file.
  *
- * Three facts the design asks for and the old card did not carry: the article's
- * thumbnail, its source as a small plate, and its age as a relative time. When the
- * feed had no image the plate draws the football glyph — the design's own
- * fallback — rather than an empty grey rectangle.
- *
- * The title has room to finish (three lines). Two clipped real Egyptian headlines
- * mid-sentence on the old card was the finding that started this.
+ * Measured against `football-follow-redesign.html`:
+ *   - card: 12px padding, 16px radius, 12px gap, items centred;
+ *   - thumbnail: 82×82, 12px radius, and — per the file — a football glyph on a dark
+ *     green gradient when the feed carried no image. That glyph is the design, not a
+ *     placeholder standing in for a real picture: only about one article in ten from
+ *     our Egyptian outlets carries a lead image, so a page of real photos is not
+ *     something the corpus can give.
+ *   - source: a 16px square plate with the outlet's initial, then the outlet's name
+ *     as plain text in the muted tone, then a dim «منذ …». The previous build put the
+ *     source in a bold accent capsule, which read louder than the headline beneath it
+ *     — the file gives the source a 9px initial and nothing more.
  */
 export function MatchNewsCard({
   t,
@@ -41,25 +43,32 @@ export function MatchNewsCard({
       accessibilityRole="button"
       accessibilityLabel={title}
     >
-      <View style={[styles.thumb, { backgroundColor: t.badgePlate, borderColor: t.borderLight }]}>
+      <View style={[styles.thumb, { borderColor: t.borderLight }]}>
         {imageUrl ? (
           <Image source={{ uri: imageUrl }} style={styles.thumbImg} resizeMode="cover" />
         ) : (
-          <Text style={styles.thumbGlyph}>⚽</Text>
+          // The design's own fallback: a deep-green plate with the ball.
+          <View style={styles.thumbGlyphWrap}>
+            <Text style={styles.thumbGlyph}>⚽</Text>
+          </View>
         )}
       </View>
+
       <View style={styles.body}>
         <View style={styles.metaRow}>
-          <View style={[styles.sourcePlate, { backgroundColor: t.accentSoft }]}>
-            <Text style={[styles.sourceText, { color: t.accent }]} numberOfLines={1}>
-              {sourceName}
+          <View style={[styles.sourcePlate, { backgroundColor: t.badgePlate }]}>
+            <Text style={[styles.sourceInitial, { color: t.textSecondary }]}>
+              {sourceName.trim().charAt(0)}
             </Text>
           </View>
+          <Text style={[styles.sourceName, { color: t.textSecondary }]} numberOfLines={1}>
+            {sourceName}
+          </Text>
           <Text style={[styles.time, { color: t.textDim }]} numberOfLines={1}>
-            {`• ${relativeTime(publishedAt)}`}
+            {`• منذ ${relativeTime(publishedAt).replace('منذ ', '')}`}
           </Text>
           {both ? (
-            <Text style={[styles.both, { color: t.textMuted }]} numberOfLines={1}>
+            <Text style={[styles.time, { color: t.textDim }]} numberOfLines={1}>
               • الفريقان
             </Text>
           ) : null}
@@ -75,28 +84,41 @@ export function MatchNewsCard({
 const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
     borderRadius: 16,
     borderWidth: 1,
-    padding: 10,
-    alignItems: 'flex-start',
+    padding: 12,
+    // The file centres the two columns vertically.
+    alignItems: 'center',
   },
   thumb: {
-    width: 64,
-    height: 64,
+    width: 82,
+    height: 82,
     borderRadius: 12,
     borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
     overflow: 'hidden',
+    backgroundColor: '#12211A',
   },
   thumbImg: { width: '100%', height: '100%' },
-  thumbGlyph: { fontSize: 24 },
+  thumbGlyphWrap: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#064E3B',
+  },
+  thumbGlyph: { fontSize: 26 },
   body: { flex: 1, gap: 4 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
-  sourcePlate: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 7, maxWidth: 130 },
-  sourceText: { fontFamily: 'Cairo_700Bold', fontSize: 10 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  sourcePlate: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sourceInitial: { fontFamily: 'Cairo_700Bold', fontSize: 9 },
+  sourceName: { fontFamily: 'Cairo_400Regular', fontSize: 10, flexShrink: 1 },
   time: { fontFamily: 'Cairo_400Regular', fontSize: 10 },
-  both: { fontFamily: 'Cairo_400Regular', fontSize: 10 },
-  title: { fontFamily: 'Cairo_600SemiBold', fontSize: 13, lineHeight: 20 },
+  title: { fontFamily: 'Cairo_700Bold', fontSize: 12, lineHeight: 18 },
 });

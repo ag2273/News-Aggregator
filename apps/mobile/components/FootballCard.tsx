@@ -271,13 +271,10 @@ export function MatchCard({
         {team(m.away, m.awayLogo)}
       </View>
 
-      {/* Nothing repeats: for an upcoming card the round is in the meta bar
-          above, so there is no second round line. */}
-      {!isLive && !m.round && m.stadium ? (
-        <Text style={[styles.roundLine, { color: t.textMuted }]} numberOfLines={1}>
-          {m.stadium}
-        </Text>
-      ) : null}
+      {/* Nothing else to print: the venue and round are both in the meta bar above,
+          and the channel sits under the kickoff. A second stadium line was the
+          duplication in the user's screenshot (#34), so this block is deliberately
+          gone rather than guarded. */}
     </TouchableOpacity>
   );
 }

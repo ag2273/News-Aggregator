@@ -248,19 +248,23 @@ const styles = StyleSheet.create({
   tableCard: { borderRadius: 18, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 4 },
   group: { fontSize: 11, fontWeight: '700', paddingVertical: 6 },
   tableHead: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1 },
-  th: { fontFamily: 'Cairo_700Bold', fontSize: 10 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1 },
+  th: { fontFamily: 'Cairo_700Bold', fontSize: 10, color: '#64748B' },
+  // Matches the approved file's .standings-row: `padding: 10px 14px`, 11px text.
+  // The table read as compressed because the rows were 9px tall with no horizontal
+  // inset, so the crest and rank sat flush against the card edge (#34).
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderTopWidth: 1 },
   zone: { width: 3, height: 18, borderRadius: 2, marginEnd: 6 },
-  td: { fontFamily: 'Cairo_400Regular', fontSize: 12 },
+  td: { fontFamily: 'Cairo_400Regular', fontSize: 11 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontFamily: 'Cairo_400Regular', fontSize: 10 },
-  colPos: { width: 22, textAlign: 'center' },
+  // The file's grid is 32px rank, 1fr team, 34px played, 34px diff, 38px points.
+  colPos: { width: 26, textAlign: 'center' },
   colTeam: { flex: 1, marginEnd: 6 },
   teamCell: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7, marginEnd: 6 },
   colTeamName: { flexShrink: 1 },
-  colNum: { width: 26, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  colNum: { width: 34, textAlign: 'center', fontVariant: ['tabular-nums'] },
   note: { fontSize: 10, lineHeight: 17, marginTop: 12 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 28 },
   emptyTitle: { fontSize: 15, fontWeight: '700', textAlign: 'center' },

@@ -228,6 +228,15 @@ export default function MatchesScreen() {
             مباريات اليوم
           </Text>
           <View style={styles.headerActions}>
+            {/* The preview's «⚙️ تخصيص» entry: the way into the reorder sheet (#26). */}
+            <TouchableOpacity
+              onPress={() => router.push('/matches/competition-order')}
+              style={[styles.headerBtn, { backgroundColor: t.badgePlate, borderColor: t.borderLight }]}
+              accessibilityRole="button"
+              accessibilityLabel="تخصيص ترتيب البطولات"
+            >
+              <Ionicons name="options-outline" size={17} color={t.accent} />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push('/matches/standings')}
               style={[styles.headerBtn, { backgroundColor: t.badgePlate, borderColor: t.borderLight }]}
