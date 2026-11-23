@@ -1495,10 +1495,15 @@ app.get('/api/football/live-status', async (c) => {
 app.get('/api/football/teams/:name', async (c) => {
   const name = decodeURIComponent(c.req.param('name') ?? '').trim();
   if (!name) return c.json({ error: 'team name is required' }, 400);
-  // Warm the days this page will read, so a first visit is not empty.
-  await Promise.all(
-    [-1, 0, 1].map((offset) => loadDay(todayCairo(Date.now() + offset * 86_400_000)).catch(() => null)),
-  );
+  // Warm what this page will read, so a first visit is not empty. The table matters
+  // as much as the days: without it the club's league row came back null on the very
+  // first request and only appeared after someone else had opened standings (#40).
+  await Promise.all([
+    ...[-1, 0, 1].map((offset) =>
+      loadDay(todayCairo(Date.now() + offset * 86_400_000)).catch(() => null),
+    ),
+    loadStandings('egyptian-premier').catch(() => null),
+  ]);
   const page = buildTeamPage(name);
   return c.json({ data: page });
 });
