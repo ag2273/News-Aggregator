@@ -45,7 +45,12 @@ export function PublisherMeta({
   t,
 }: {
   name: string;
-  relative: string;
+  /**
+   * The article's age. Optional because a surface that already prints it
+   * elsewhere must not print it twice — the hero deck shows it in its footer
+   * metrics bar, and printing it here too read «منذ 9 دقيقة» twice on one card.
+   */
+  relative?: string;
   t: Theme;
 }) {
   return (
@@ -56,7 +61,9 @@ export function PublisherMeta({
         </Text>
         <Ionicons name="checkmark-circle" size={14} color={t.verified} />
       </View>
-      <Text style={[styles.time, { color: t.textMuted }]}>{relative}</Text>
+      {relative ? (
+        <Text style={[styles.time, { color: t.textMuted }]}>{relative}</Text>
+      ) : null}
     </View>
   );
 }

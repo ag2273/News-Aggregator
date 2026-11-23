@@ -89,11 +89,10 @@ function HeroCard({
           accessibilityLabel={article.sourceName}
         >
           <PublisherAvatar name={article.sourceName} size={40} t={t} />
-          <PublisherMeta
-            name={article.sourceName}
-            relative={relativeTime(article.publishedAt)}
-            t={t}
-          />
+          {/* The age is printed ONCE, in the footer's metrics bar. The header
+              used to print it too, so one card read «منذ 9 دقيقة» twice — the
+              duplication the user photographed (#32). */}
+          <PublisherMeta name={article.sourceName} t={t} />
         </Pressable>
         <View style={styles.headerTrailing}>
           {article.isBreaking ? (
@@ -128,14 +127,34 @@ function HeroCard({
         {article.title} 🔥
       </Text>
 
-      <View style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}>
+      <View
+        style={[
+          styles.imageContainer,
+          // With no image the block is not a dead grey panel: it carries the
+          // source's initial and its name, so the space reads as "this outlet's
+          // story" instead of a failed load (#32).
+          coverSource
+            ? { backgroundColor: t.pillInactiveBg }
+            : { backgroundColor: t.accentSoft, borderWidth: 1, borderColor: t.accentBorder },
+        ]}
+      >
         {coverSource ? (
           <Image
             source={coverSource}
             style={[StyleSheet.absoluteFill, styles.image]}
             resizeMode="cover"
           />
-        ) : null}
+        ) : (
+          <View style={styles.noImage}>
+            <PublisherAvatar name={article.sourceName} size={44} t={t} />
+            <Text
+              style={[styles.noImageName, { color: t.textSecondary }]}
+              numberOfLines={1}
+            >
+              {article.sourceName}
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={[styles.metricsBar, { borderTopColor: t.borderLight }]}>
@@ -622,6 +641,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   image: { width: '100%', height: '100%', borderRadius: 20 },
+  noImage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16 },
+  noImageName: { fontFamily: 'Cairo_600SemiBold', fontSize: 13, textAlign: 'center' },
   shareHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   metricsBar: {
     flexDirection: 'row',
