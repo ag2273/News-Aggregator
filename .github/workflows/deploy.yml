@@ -1,5 +1,17 @@
 name: Deploy server to VM
 
+# Why this builds here instead of on the VM
+# -----------------------------------------
+# The original job SSHed in and ran `docker compose up -d --build`. On a 1GB
+# e2-micro that runs 29 feed ingestions, the Docker build pushed the load past 20,
+# the box stopped answering HTTP *and* SSH, and production went down for over an
+# hour — twice. The build is not the problem; doing it on the machine that serves
+# traffic is.
+#
+# So the image is built on a GitHub runner and published to GHCR. The VM's job is
+# then a pull and a restart: seconds of CPU instead of a full TypeScript compile
+# and layer export, and a failed build can no longer take the site with it.
+
 on:
   push:
     branches: [main]
@@ -7,9 +19,6 @@ on:
       - 'apps/server/**'
       - 'docker-compose.yml'
       - 'deploy/**'
-      # The workflow file itself: without this, a fix to the deploy job never
-      # runs the deploy job, so a broken one stays broken until the next unrelated
-      # server change.
       - '.github/workflows/deploy.yml'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -20,9 +29,49 @@ concurrency:
   group: vm-deploy
   cancel-in-progress: false
 
+env:
+  IMAGE: ghcr.io/ag2273/news-aggregator-server
+
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          # The runner's cache lives outside the VM, so a rebuild here is fast and
+          # costs the serving box nothing.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # packages:read so the VM can log in to GHCR and pull the image this run pushed.
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.2
@@ -30,35 +79,37 @@ jobs:
           host: news.nileorbit.com
           username: growthconsulting_ai
           key: ${{ secrets.DEPLOY_KEY }}
-          # The box is a 1GB e2-micro running 29 feed ingestions and a Docker
-          # build at the same time; a rebuild can push its load past 20 and stall
-          # the default timeouts. That is how the deploy for 3f9c837 failed with
-          # the git pull already applied and the container still on the old image:
-          # a timeout is not a failed build, and it left production un-updated
-          # with nothing on the screen to say so.
-          command_timeout: 30m
-          timeout: 120s
+          command_timeout: 10m
+          timeout: 60s
           script_stop: true
           script: |
             set -e
             cd ~/news-aggregator
             git pull --ff-only
-            # Lower the build's priority: intake must keep answering while the
-            # image compiles, or the site 502s for the length of the deploy.
-            nice -n 10 docker compose up -d --build
-            # Report what actually ended up running, so a silent no-op is visible.
-            # The health check reads the container's own HEALTHCHECK rather than
-            # curling localhost:3001 — that port is not published to the host, it
-            # is only reachable on the compose network, so a host curl would fail
-            # on a perfectly healthy deploy.
+
+            # Point compose at the image CI built, and pull it. No compile happens
+            # on this box, so the site keeps serving at full speed during a deploy.
+            export SERVER_IMAGE="ghcr.io/ag2273/news-aggregator-server:${{ github.sha }}"
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull the image CI just pushed. If the pull fails, fall back to a
+            # local build rather than leaving the old container in place: a wrong
+            # image is recoverable, a silent no-op deploy is what went unnoticed
+            # before.
+            if ! docker compose pull server; then
+              echo "pull failed — falling back to a local build"
+              unset SERVER_IMAGE
+              docker compose build server
+            fi
+            docker compose up -d --no-build server
+
             docker compose ps --format '{{.Service}} {{.Image}} {{.Status}}'
-            # The container reports `starting` until its first HEALTHCHECK passes,
-            # which is a few seconds after it is recreated. Testing once, straight
-            # away, failed a deploy that had in fact succeeded — the third variant
-            # of "the job fails while production is fine". Wait for the health to
-            # settle, and fail only if it settles on unhealthy.
+
+            # The container reports `starting` until its first HEALTHCHECK passes.
+            # Sampling that once failed deploys that had in fact succeeded, so wait
+            # for the status to settle and fail only on unhealthy.
             for i in $(seq 1 24); do
-              status="$(docker inspect --format '{{.State.Health.Status}}' news-aggregator-server-1)"
+              status="$(docker inspect --format '{{.State.Health.Status}}' news-aggregator-server-1 2>/dev/null || echo missing)"
               echo "health: $status"
               [ "$status" = "healthy" ] && exit 0
               [ "$status" = "unhealthy" ] && exit 1

@@ -12,7 +12,11 @@ services:
     build:
       context: .
       dockerfile: apps/server/Dockerfile
-    image: news-aggregator-server:local
+    # CI builds this image on a GitHub runner and pushes it; the VM only pulls.
+    # The local tag stays the default so `docker compose up -d --build` still works
+    # on a fresh checkout, and a deploy can point it at a built image instead of
+    # compiling on the serving box.
+    image: ${SERVER_IMAGE:-news-aggregator-server:local}
     environment:
       DATA_DIR: /data
       PORT: "3001"
