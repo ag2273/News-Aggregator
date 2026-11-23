@@ -114,6 +114,8 @@ export function MatchTimeline({
             <View
               key={`${e.minute}-${i}-${e.type}`}
               style={[styles.neutralRow, { borderBottomColor: t.borderLight }]}
+              // An id so a test can find this row without probing flattened styles.
+              testID="timeline-neutral-row"
             >
               <View
                 style={[
