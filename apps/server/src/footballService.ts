@@ -273,7 +273,11 @@ export async function loadMatchDetail(
   // The timeline is in the page's markup, not its JSON payload — the reason the
   // first measurement called it impossible. Verified against real finished
   // Egyptian fixtures; see `matchEvents.ts`.
-  const events = parseMatchEvents(html);
+  // Playable rows only. `parseMatchEvents` returns the status markers too («لم
+  // تبدأ», «بعد قليل», «الشوط الأول») because they explain the page's own state,
+  // but they are not events a reader should see in a timeline — and they carry no
+  // minute, which is how `null'` badges reached the screen (issue #30).
+  const events = parseMatchEvents(html).filter((e) => !e.isStatus);
   if (!detail && !lineups && events.length === 0) return null;
   return {
     commentator: detail?.commentator ?? null,

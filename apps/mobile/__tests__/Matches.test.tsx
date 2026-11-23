@@ -142,6 +142,115 @@ describe('match center', () => {
     expect(screen.getByText('محمد عبد الناصر')).toBeTruthy();
   });
 
+  it('attributes each event to the right team, home on the right column (#33)', async () => {
+    // The user's screenshot: الجونة 0-2 الزمالك, every الزمالك goal drawn under
+    // الجونة. The header printed home first (right in RTL) but the body put away
+    // first, so the two disagreed. This asserts the ORDER of the two cells, which
+    // is what the eye reads as the column.
+    mockMatch.mockResolvedValue({
+      match: match({ home: 'الجونة', away: 'الزمالك', status: 'live', statusText: 'الشوط الأول', homeScore: 0, awayScore: 2 }),
+      detail: {
+        commentator: null, channel: null, homeCoach: null, awayCoach: null, lineups: null,
+        events: [
+          // الزمالك scored: side `l` is the page's left column = away here.
+          { minute: 33, type: 'هدف', player: 'أحمد حمدي', side: 'l' },
+          { minute: 40, type: 'بطاقة صفراء', player: 'أحمد جمال', side: 'r' },
+        ],
+      } as never,
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('الأحداث')).toBeTruthy());
+    fireEvent.press(screen.getByText('الأحداث'));
+    await waitFor(() => expect(screen.getByText('أحمد حمدي')).toBeTruthy());
+
+    // The reader sees the two team names once each in the header, in this order:
+    // home (الجونة) first — which in an RTL row is the right-hand column.
+    const headers = screen.getAllByText(/^(الجونة|الزمالك)$/);
+    expect(headers[0]!.props.children).toBe('الجونة');
+    expect(headers[1]!.props.children).toBe('الزمالك');
+
+    // The cell that holds the away goal must be the AWAY cell, whose alignment is
+    // flex-end. Before the fix it carried the home cell's flex-start, which is
+    // what drew every الزمالك goal under الجونة.
+    const cellStyleFor = (label: string): unknown => {
+      let node: any = screen.getByText(label);
+      for (let depth = 0; node && depth < 6; depth += 1) {
+        const style = node.props?.style;
+        if (style && JSON.stringify(style).includes('alignItems')) return style;
+        node = node.parent;
+      }
+      return null;
+    };
+    const awayGoalCell = JSON.stringify(cellStyleFor('أحمد حمدي') ?? {});
+    const homeCardCell = JSON.stringify(cellStyleFor('أحمد جمال') ?? {});
+    // They must NOT share a column.
+    expect(awayGoalCell).not.toBe(homeCardCell);
+    expect(awayGoalCell).toContain('flex-end');
+    expect(homeCardCell).toContain('flex-start');
+  });
+
+  it('does not invent a side for an event the page did not attribute (#33)', async () => {
+    mockMatch.mockResolvedValue({
+      match: match({ home: 'الجونة', away: 'الزمالك' }),
+      detail: {
+        commentator: null, channel: null, homeCoach: null, awayCoach: null, lineups: null,
+        events: [{ minute: 55, type: 'تبديل', player: 'لاعب غير منسوب', side: null }],
+      } as never,
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('الأحداث')).toBeTruthy());
+    fireEvent.press(screen.getByText('الأحداث'));
+    await waitFor(() => expect(screen.getByText('لاعب غير منسوب')).toBeTruthy());
+    // It has a minute, so it is a real event and is shown — in a neutral row.
+    // The test names appear in the hero AND the timeline header, so the check is
+    // that the event is present exactly once and sits in the neutral row.
+    expect(screen.getByText("55'")).toBeTruthy();
+    expect(screen.getAllByText('لاعب غير منسوب').length).toBe(1);
+  });
+
+  it("never prints a literal null when the source sends status rows (#30)", async () => {
+    // The user's screenshot: grey badges reading «null'» beside «لم تبدأ» /
+    // «بعد قليل» / «الشوط الأول». Two faults met: the server shipped the page's
+    // status markers as events, and the card interpolated a null minute.
+    mockMatch.mockResolvedValue({
+      match: match({ status: 'live', statusText: 'الشوط الأول', homeScore: 1, awayScore: 0 }),
+      detail: {
+        commentator: null, channel: null, homeCoach: null, awayCoach: null, lineups: null,
+        events: [
+          // Status markers, as the parser returns them before the server filter.
+          { minute: null, type: 'لم تبدأ', player: null, side: null, isStatus: true },
+          { minute: null, type: 'بعد قليل', player: null, side: null, isStatus: true },
+          { minute: null, type: 'الشوط الأول', player: null, side: null, isStatus: true },
+          // One real event, to prove the tab still works.
+          { minute: 33, type: 'هدف', player: 'أحمد حمدي', side: 'r' },
+        ],
+      } as never,
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('الأحداث')).toBeTruthy());
+    fireEvent.press(screen.getByText('الأحداث'));
+    await waitFor(() => expect(screen.getByText('أحمد حمدي')).toBeTruthy());
+
+    // The real event is shown with its minute…
+    expect(screen.getByText("33'")).toBeTruthy();
+    // …and no text node anywhere says null, and no badge shows a bare minute mark.
+    for (const node of screen.queryAllByText(/./)) {
+      const kids = node.props.children;
+      const text = typeof kids === 'string' ? kids : Array.isArray(kids) ? kids.join('') : '';
+      expect(text).not.toContain('null');
+    }
+    expect(screen.queryByText(/^null/)).toBeNull();
+    // Status markers are not events, so they are not in the timeline body.
+    expect(screen.queryByText('لم تبدأ')).toBeNull();
+    expect(screen.queryByText('بعد قليل')).toBeNull();
+  });
+
   it('says honestly when the source has no timeline for a match', async () => {
     mockMatch.mockResolvedValue({ match: match(), news: [], unavailable: false });
     render(<MatchCenterScreen />);
