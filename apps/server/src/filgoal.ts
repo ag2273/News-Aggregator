@@ -396,6 +396,21 @@ export function parseFilGoalLineups(html: string): FilGoalLineups | null {
   if (!home.length || !away.length) {
     // Fall back to splitting by team id order, never by guesswork about names.
     const teams = [...new Set(mapped.map((p) => p.teamId))];
+    // ONE side published is a REAL state, not a failure. Measured on الجونة ×
+    // الزمالك at T-54: the source had 19 Zamalek players and no الجونة players
+    // yet, because an XI is announced club by club. Returning null there made the
+    // screen say «التشكيل غير متاح» while the source was publishing one — the
+    // bug behind the user's «لازم يتجاب».
+    if (teams.length === 1) {
+      const only = teams[0]!;
+      const isHome = only === homeTeamId;
+      return {
+        homeTeamId,
+        awayTeamId,
+        home: isHome ? mapped : [],
+        away: isHome ? [] : mapped,
+      };
+    }
     if (teams.length < 2) return null;
     return {
       homeTeamId: teams[0] ?? null,

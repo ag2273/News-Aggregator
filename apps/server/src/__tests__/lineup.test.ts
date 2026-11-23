@@ -26,4 +26,19 @@ describe('lineups', () => {
     expect(parseFilGoalLineups('"MatchTeamsSquads":[],"HomeTeamId":1')).toBeNull();
     expect(parseFilGoalLineups('<html></html>')).toBeNull();
   });
+
+  it('keeps the side that is published when only one club has announced', () => {
+    // Measured on الجونة × الزمالك at T-54: 19 Zamalek players, none for الجونة.
+    // An XI is announced club by club, so one-sided is a real state — returning
+    // null there was the bug that made the screen say «غير متاح».
+    const html = `{"HomeTeamId":617,"AwayTeamId":2,"MatchTeamsSquads":[
+      {"PersonName":"مهدي سليمان","TeamId":"2","ShirtNumber":37,"PlayerPositionName":"حارس مرمى","IsSpare":false},
+      {"PersonName":"عبد الله السعيد","TeamId":"2","ShirtNumber":19,"PlayerPositionName":"وسط","IsSpare":false}
+    ]}`;
+    const lu = parseFilGoalLineups(html);
+    expect(lu).not.toBeNull();
+    expect(lu!.away).toHaveLength(2);
+    expect(lu!.home).toHaveLength(0);
+    expect(lu!.away[0]!.name).toBe('مهدي سليمان');
+  });
 });

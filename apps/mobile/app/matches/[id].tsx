@@ -356,8 +356,12 @@ export default function MatchCenterScreen() {
                       <View key={teamName} style={[styles.lineupCard, { backgroundColor: t.surface }]}>
                         <Text style={[styles.lineupTeam, { color: t.textPrimary }]}>{teamName}</Text>
                         {players.length === 0 ? (
+                          // Measured: an XI is announced club by club, so one side
+                          // can be published while the other is not yet. Saying
+                          // "not announced" per side is accurate; hiding the side
+                          // that IS published was the old bug.
                           <Text style={[styles.emptyBody, { color: t.textMuted }]}>
-                            لا توجد تشكيلة معلنة لهذا الفريق.
+                            تشكيل {teamName} لسه معلنش. المصدر بينشر التشكيل فريق فريق.
                           </Text>
                         ) : (
                           players.map((p) => (

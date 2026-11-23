@@ -576,6 +576,35 @@ describe('upcoming fixtures screen', () => {
     expect(screen.queryByText('بديل')).toBeNull();
   });
 
+  it('shows the side that IS published, and names the side that is not', async () => {
+    // Measured on الجونة × الزمالك at T-54: the source had 19 Zamalek players and
+    // none for الجونة, because an XI is announced club by club. Returning null for
+    // that state made the whole tab say «غير متاح» while real players existed.
+    mockMatch.mockResolvedValue({
+      match: match(),
+      detail: {
+        commentator: null, channel: null, homeCoach: null, awayCoach: null,
+        lineups: {
+          homeTeamId: '1', awayTeamId: '2',
+          home: [
+            { personId: 'a', name: 'مهدي سليمان', position: 'حارس مرمى', shirtNumber: 37, isStarter: true, minutesPlayed: 0, teamId: '1' },
+            { personId: 'b', name: 'عبد الله السعيد', position: 'وسط', shirtNumber: 19, isStarter: true, minutesPlayed: 0, teamId: '1' },
+          ],
+          away: [],
+        },
+      },
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('التشكيل')).toBeTruthy());
+    fireEvent.press(screen.getByText('التشكيل'));
+    await waitFor(() => expect(screen.getByText('مهدي سليمان')).toBeTruthy());
+    expect(screen.getByText('عبد الله السعيد')).toBeTruthy();
+    // The unpublished side says so, per club, instead of blanking the whole tab.
+    expect(screen.getByText(/لسه معلنش/)).toBeTruthy();
+  });
+
   it('says the line-up is unavailable rather than inventing one', async () => {
     mockMatch.mockResolvedValue({
       match: match(),
