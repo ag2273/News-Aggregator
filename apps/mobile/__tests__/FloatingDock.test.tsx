@@ -66,6 +66,15 @@ describe('FloatingDock', () => {
     expect(router.push).toHaveBeenCalledWith('/digest');
   });
 
+  it('labels every tab, as the approved design does (#29)', () => {
+    // The design's dock shows the label under the icon; an icon-only dock was one
+    // of the "not exactly the file" gaps the user reported on apk-54.
+    render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
+    for (const label of ['الرئيسية', 'الخلاصة', 'المحفوظات', 'مصادري']) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    }
+  });
+
   it('gives every remaining tab a distinct icon', () => {
     render(<FloatingDock t={palette.light} active={'home' as DockTab} />);
     const labels = ['الرئيسية', 'الخلاصة', 'المحفوظات', 'مصادري'];

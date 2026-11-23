@@ -49,21 +49,17 @@ import {
  * friendly we cannot confirm.
  */
 
+/** The design file's six pills, verbatim. */
 const FILTERS: Array<{ id: 'all' | CatalogTeam['section']; label: string }> = [
-  { id: 'all', label: 'الكل' },
-  { id: 'egypt', label: 'الدوري المصري' },
-  { id: 'europe', label: 'كبار أوروبا' },
-  { id: 'arab', label: 'الأندية العربية' },
-  { id: 'national', label: 'المنتخبات' },
+  { id: 'all', label: '✨ الكل' },
+  { id: 'egypt', label: '🇪🇬 الدوري المصري' },
+  { id: 'europe', label: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 كبار أوروبا' },
+  { id: 'continental', label: '🏆 البطولات القارية' },
+  { id: 'saudi', label: '🇸🇦 دوري روشن السعودي' },
+  { id: 'national', label: '🌍 المنتخبات الوطنية' },
 ];
 
-/** Section headings carry the design's numbered hierarchy. */
-const SECTION_ICON: Record<CatalogTeam['section'], string> = {
-  egypt: '🇪🇬',
-  europe: '🏆',
-  arab: '🌍',
-  national: '🌍',
-};
+
 
 export default function FollowTeamsScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
@@ -440,8 +436,10 @@ export default function FollowTeamsScreen() {
                 {visibleSections.map((section) => (
                   <View key={section.id}>
                     <View style={styles.sectionHeadline}>
+                      {/* The served title already carries the design's own number
+                          and flag, so it is rendered as-is. */}
                       <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>
-                        {`${SECTION_ICON[section.id]} ${section.title}`}
+                        {section.title}
                       </Text>
                     </View>
                     <View style={styles.grid}>

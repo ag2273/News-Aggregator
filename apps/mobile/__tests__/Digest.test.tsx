@@ -109,7 +109,9 @@ describe('digest screen', () => {
       expect(screen.getByText('مقتل 4 فلسطينيين وإصابة 17 في قصف إسرائيلي بقطاع غزة')).toBeTruthy(),
     );
     expect(screen.getByText('عاجل')).toBeTruthy();
-    expect(screen.getByText('الخلاصة')).toBeTruthy();
+    // «الخلاصة» is both the screen heading and the dock tab's label (the design
+    // labels every tab), so the assertion accepts the heading among matches.
+    expect(screen.getAllByText('الخلاصة').length).toBeGreaterThan(0);
   });
 
   it('says the digest is not ready yet instead of showing a blank page', async () => {

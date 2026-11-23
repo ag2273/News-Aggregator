@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -82,6 +82,12 @@ function DockButton({
         >
           <Ionicons name={icon} size={20} color={t.dockActiveIcon} />
         </LinearGradient>
+        {/* The approved design labels every dock tab under its icon, and colours
+            the active label with the accent. An icon-only dock was one of the
+            "not exactly the file" gaps. */}
+        <Text style={[styles.label, { color: t.accent }]} numberOfLines={1}>
+          {label}
+        </Text>
       </TouchableOpacity>
     );
   }
@@ -94,6 +100,9 @@ function DockButton({
       accessibilityLabel={label}
     >
       <Ionicons name={icon} size={22} color={t.textMuted} />
+      <Text style={[styles.label, { color: t.textMuted }]} numberOfLines={1}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -107,7 +116,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     width: 320,
-    height: 62,
+    // 62 could not hold an icon plus a label; the design's dock is 64 tall with
+    // both, so the height follows the content rather than clipping the label.
+    height: 72,
     borderRadius: 31,
     // Six 44px items plus one 46px active wrap need 266px; with 12px padding a
     // side that is 290px, so the capsule stays 320 and nothing is dropped.
@@ -119,28 +130,36 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   dockItem: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 56,
+    height: 52,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 2,
   },
   activeWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 62,
+    height: 54,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 2,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 6,
   },
   activeGradient: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 23,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  label: {
+    fontFamily: 'Cairo_700Bold',
+    fontSize: 9,
+    lineHeight: 13,
+    textAlign: 'center',
   },
 });

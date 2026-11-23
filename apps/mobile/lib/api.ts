@@ -879,7 +879,7 @@ export interface CatalogTeam {
   name: string;
   competitionId: string;
   competitionName: string;
-  section: 'egypt' | 'europe' | 'arab' | 'national';
+  section: 'egypt' | 'europe' | 'continental' | 'saudi' | 'national';
   /** Crest on our own server, or null when the source has none. */
   logo: string | null;
   /** League position from the cached table, when there is one. */

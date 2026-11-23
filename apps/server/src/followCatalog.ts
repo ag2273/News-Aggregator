@@ -14,7 +14,15 @@
 import { COMPETITIONS, type MatchRow } from './football.js';
 import { getCachedDay, getCachedStandings } from './footballStore.js';
 
-export type CatalogSection = 'egypt' | 'europe' | 'arab' | 'national';
+/**
+ * Sections, in the approved design file's own order and numbering.
+ *
+ * The file draws 1️⃣ Egyptian clubs, 2️⃣ big European clubs, 4️⃣ the Saudi league,
+ * then the national teams, with 3️⃣ reserved for the continental clubs. It skips
+ * 3️⃣ on the day it was written because that day listed none, so an empty section
+ * stays empty rather than being renamed.
+ */
+export type CatalogSection = 'egypt' | 'europe' | 'continental' | 'saudi' | 'national';
 
 export interface CatalogTeam {
   name: string;
@@ -49,8 +57,12 @@ const NATIONAL_TEAMS: Array<{ name: string; flag: string }> = [
 /** Which section a competition belongs to, from its served priority/country. */
 function sectionOf(competitionId: string, country: string): CatalogSection {
   if (competitionId === 'egyptian-premier' || competitionId === 'egypt-cup') return 'egypt';
+  // The Saudi league is its own section in the design, not part of «العربية».
+  if (competitionId === 'saudi-pro-league') return 'saudi';
   if (country === 'GB' || country === 'ES' || country === 'IT') return 'europe';
-  if (country === 'SA' || country === 'AF' || competitionId === 'caf-champions') return 'arab';
+  // The continental competitions the file reserves 3️⃣ for.
+  if (country === 'AF' || country === 'EU' || competitionId.startsWith('caf-')) return 'continental';
+  if (country === 'SA') return 'saudi';
   return 'europe';
 }
 
@@ -85,7 +97,8 @@ export function buildFollowCatalog(options: { matches?: MatchRow[] } = {}): {
   const bySection: Record<CatalogSection, CatalogTeam[]> = {
     egypt: [],
     europe: [],
-    arab: [],
+    continental: [],
+    saudi: [],
     national: [],
   };
 
@@ -134,12 +147,14 @@ export function buildFollowCatalog(options: { matches?: MatchRow[] } = {}): {
     nextMatch: null,
   }));
 
+  // Titles and numbering come from the approved design file, verbatim.
   return {
     sections: [
-      { id: 'egypt' as const, title: 'أندية الدوري المصري', teams: bySection.egypt },
-      { id: 'europe' as const, title: 'كبار أوروبا', teams: bySection.europe },
-      { id: 'arab' as const, title: 'الأندية العربية والقارية', teams: bySection.arab },
-      { id: 'national' as const, title: 'المنتخبات الوطنية', teams: bySection.national },
+      { id: 'egypt' as const, title: '1️⃣ 🇪🇬 أندية الدوري المصري الممتاز', teams: bySection.egypt },
+      { id: 'europe' as const, title: '2️⃣ 🏴󠁧󠁢󠁥󠁮󠁧󠁿 كبار أوروبا (الإنجليزي والإسباني والإيطالي)', teams: bySection.europe },
+      { id: 'continental' as const, title: '3️⃣ 🏆 البطولات القارية', teams: bySection.continental },
+      { id: 'saudi' as const, title: '4️⃣ 🇸🇦 دوري روشن السعودي للمحترفين', teams: bySection.saudi },
+      { id: 'national' as const, title: '🌍 المنتخبات الوطنية والعربية', teams: bySection.national },
     ].filter((s) => s.teams.length > 0),
   };
 }

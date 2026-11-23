@@ -233,6 +233,22 @@ export default function FeedScreen() {
     >
       <SafeAreaView style={styles.root} edges={['top']}>
         <View style={styles.header}>
+          {/* The header is the design's three slots, not a cluster of buttons.
+              In the approved file the LEADING slot is the football entry (⚽ as the
+              first thing in the row), then the title, then the action. The user's
+              complaint was that the football entry sat in the action cluster on
+              the far side, which is not where the file puts it. */}
+          <TouchableOpacity
+            style={[styles.footballBtn, { backgroundColor: t.accent }]}
+            onPress={() => router.push('/matches')}
+            accessibilityRole="button"
+            accessibilityLabel={footballLive ? 'المباريات — مباراة جارية الآن' : 'المباريات'}
+          >
+            <Text style={styles.footballGlyph}>⚽</Text>
+            {footballLive ? (
+              <Animated.View style={[styles.liveDotOnAccent, { opacity: dotOpacity }]} />
+            ) : null}
+          </TouchableOpacity>
           <View style={styles.headerTitleWrap}>
             <Text style={[styles.headerDate, { color: t.textMuted }]}>{todayLabel()}</Text>
             <Text
@@ -245,38 +261,25 @@ export default function FeedScreen() {
             </Text>
           </View>
           <View style={styles.headerActions}>
-            {/* Football entry: the design's direct, filled treatment — not a faint
-                pill. It is the primary sports action in the header. */}
-            <TouchableOpacity
-              style={[styles.footballBtn, { backgroundColor: t.accent }]}
-              onPress={() => router.push('/matches')}
-              accessibilityRole="button"
-              accessibilityLabel={footballLive ? 'المباريات — مباراة جارية الآن' : 'المباريات'}
-            >
-              <Ionicons name="football" size={20} color="#062014" />
-              {footballLive ? (
-                <Animated.View
-                  style={[styles.liveDotOnAccent, { opacity: dotOpacity }]}
-                />
-              ) : null}
-            </TouchableOpacity>
+            {/* The design draws these as COLOURED glyphs, not flat grey icon
+                buttons: 🔥 for trending, 👤 for the profile, and they keep their
+                own colour instead of inheriting the muted text tone. */}
             <TouchableOpacity
               style={[styles.circleBtn, { backgroundColor: t.surface }]}
               onPress={() => router.push('/search')}
               accessibilityRole="button"
               accessibilityLabel="بحث"
             >
-              <Ionicons name="search" size={18} color={t.textSecondary} />
+              <Ionicons name="search" size={18} color={t.accent} />
             </TouchableOpacity>
-            {/* «الأكثر تداولاً» moved here from the dock (#27), next to the profile:
-                same destination, one tap from any screen. */}
+            {/* «الأكثر تداولاً» moved here from the dock (#27), next to the profile. */}
             <TouchableOpacity
               style={[styles.circleBtn, { backgroundColor: t.surface }]}
               onPress={() => router.push('/trending')}
               accessibilityRole="button"
               accessibilityLabel="الأكثر تداولاً"
             >
-              <Ionicons name="trending-up" size={18} color={t.accent} />
+              <Text style={styles.coloredGlyph}>🔥</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.circleBtn, { backgroundColor: t.surface }]}
@@ -284,7 +287,7 @@ export default function FeedScreen() {
               accessibilityRole="button"
               accessibilityLabel="حسابي"
             >
-              <Ionicons name="person" size={18} color={t.accent} />
+              <Ionicons name="person" size={18} color="#F59E0B" />
             </TouchableOpacity>
           </View>
         </View>
@@ -374,7 +377,10 @@ const styles = StyleSheet.create({
    */
   headerTitleWrap: { flex: 1, minWidth: 0, paddingEnd: 8 },
   headerTitle: { fontFamily: 'Cairo_700Bold', fontSize: 26 },
-  headerActions: { flexDirection: 'row', gap: 10 },
+  headerActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  // The design's coloured glyphs, sized to sit inside the 40dp circle.
+  footballGlyph: { fontSize: 21, lineHeight: 26 },
+  coloredGlyph: { fontSize: 17, lineHeight: 22 },
   liveDot: {
     position: 'absolute',
     top: 9,
