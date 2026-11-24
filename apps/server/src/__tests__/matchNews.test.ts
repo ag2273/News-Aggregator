@@ -201,10 +201,13 @@ describe('clubs whose name is an institution', () => {
     // articles. A single shared word can never be a full name.
     expect(mentionsTeam('خسارة قاسية لإنتر ميامي وميسي ينجو من الطرد', 'إنتر', undefined, 'IT')).toBe(false);
     expect(mentionsTeam('إنتر يفوز على يوفنتوس في الكالتشيو', 'إنتر', undefined, 'IT')).toBe(true);
-    // The multi-word form accepts the short name only with country context in the
-    // text — «إنتر» alone is not enough to tell it from Inter Miami.
-    expect(mentionsTeam('إنتر يفوز على يوفنتوس في الكالتشيو', 'إنتر ميلان', undefined, 'IT')).toBe(true);
-    expect(mentionsTeam('إنتر يفوز على يوفنتوس', 'إنتر ميلان', undefined, 'IT')).toBe(false);
+    // The user's standing rule (#43): a MULTI-WORD club matches its full name only.
+    // «إنتر ميلان» therefore does not match a headline that says just «إنتر», even
+    // with Italy in the text. That is a deliberate cost: the old country-context
+    // fallback was how a ministry article («الاتحاد العام … مصر») became coverage of
+    // «الاتحاد السكندري». A fragment plus a country is not a club.
+    expect(mentionsTeam('إنتر يفوز على يوفنتوس في الكالتشيو', 'إنتر ميلان', undefined, 'IT')).toBe(false);
+    expect(mentionsTeam('إنتر ميلان يفوز على يوفنتوس', 'إنتر ميلان', undefined, 'IT')).toBe(true);
   });
 
   it('rejects an MLS article whose summary is where «إنتر» appears', () => {
@@ -260,4 +263,53 @@ describe('clubs whose name is an institution', () => {
   it("does not put a women's article on a men's fixture", () => {
     expect(mentionsTeam('الأهلي للسيدات يفوز على وادي دجلة', 'الأهلي')).toBe(false);
   });
+
+describe('full team name only (user rule, #43)', () => {
+  it('never matches a fragment of a multi-word club', () => {
+    // The user's own example: «أبو قير للأسمدة» is not «أبو».
+    expect(mentionsTeam('أبو ظبي تعلن عن استثمار عقاري جديد', 'أبو قير للأسمدة')).toBe(false);
+    // And «سيراميكا كليوباترا» is not «كليوباترا».
+    expect(mentionsTeam('كليوباترا تطلق منتجاً جديداً في الأسواق', 'سيراميكا كليوباترا')).toBe(false);
+  });
+
+  it('still matches the full name when it is written as the club is named', () => {
+    expect(mentionsTeam('أبو قير للأسمدة يهزم الأهلي في الدوري', 'أبو قير للأسمدة')).toBe(true);
+    expect(mentionsTeam('سيراميكا كليوباترا تفوز على المصري', 'سيراميكا كليوباترا')).toBe(true);
+  });
+
+  it('rejects the five real articles the old matcher served for وادي دجلة × الاتحاد', () => {
+    // Measured on production (issue #43): ten articles were served, five of them
+    // unrelated. Each of these is a real headline from that response.
+    const unrelated = [
+      'وزير الرياضة يبحث مع مجلس إدارة الاتحاد العام لمراكز شباب مصر توسيع التعاون',
+      'الاتحاد ضد باختاكور',
+      'عميد «هندسة عين شمس» يقضي يوماً كشفياً مع طلاب الجوالة في وادي دجلة',
+      '5 آلاف فرصة عمل.. مشروع جديد للملابس الجاهزة في قنا يستهدف أسواق الاتحاد الأوروبي',
+      'تعادل وادي السير والكتة بدوري اليد',
+    ];
+    for (const title of unrelated) {
+      expect(mentionsTeam(title, 'الاتحاد السكندري')).toBe(false);
+      expect(mentionsTeam(title, 'وادي دجلة')).toBe(false);
+    }
+  });
+
+  it('keeps the real coverage of that same fixture', () => {
+    expect(
+      mentionsTeam('التعادل يحسم مباراة وادي دجلة والاتحاد السكندري', 'الاتحاد السكندري'),
+    ).toBe(true);
+    expect(
+      mentionsTeam('حمزة الجمل يقود انتفاضة الاتحاد السكندري في الدوري', 'الاتحاد السكندري'),
+    ).toBe(true);
+    expect(mentionsTeam('وادي دجلة في اختبار صعب أمام الاتحاد السكندري', 'وادي دجلة')).toBe(true);
+  });
+
+  it('requires football context for a club whose name is a place', () => {
+    // The university-trip headline names the valley, not the club.
+    expect(
+      mentionsTeam('عميد «هندسة عين شمس» يقضي يوماً كشفياً مع طلاب الجوالة في وادي دجلة', 'وادي دجلة'),
+    ).toBe(false);
+    // A squad story carries the club with no match at all, and is real coverage.
+    expect(mentionsTeam('وادي دجلة يضم مهاجما جديدا', 'وادي دجلة')).toBe(true);
+  });
+});
 });

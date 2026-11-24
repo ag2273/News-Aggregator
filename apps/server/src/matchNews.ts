@@ -261,10 +261,44 @@ export function needsFullName(words: string[]): boolean {
 /** Does the haystack contain this exact run of tokens, in order? */
 function hasSequence(tokens: string[], sequence: string[]): boolean {
   if (!sequence.length) return false;
+  // A conjunction is glued to the next word in Arabic: «وادي دجلة والاتحاد
+  // السكندري» writes the club as «والاتحاد». Comparing prefix-stripped forms on
+  // BOTH sides lets the full name match there, which is exactly the coverage we
+  // want — while still requiring every word of the name, so a fragment cannot
+  // match.
+  const strip = (w: string): string => stripPrefixes(w);
   for (let i = 0; i + sequence.length <= tokens.length; i += 1) {
-    if (sequence.every((w, k) => tokens[i + k] === w)) return true;
+    if (sequence.every((w, k) => strip(tokens[i + k]!) === strip(w))) return true;
   }
   return false;
+}
+
+/**
+ * Is this a club whose name doubles as a place or an ordinary word?
+ *
+ * «وادي دجلة» is a valley as well as a club, «مدينة» is a city, «شباب» is a youth
+ * side. For those the name alone is not enough: the article must also be about
+ * football. Measured on a real article — «عميد هندسة عين شمس يقضي يوماً... في وادي
+ * دجلة» — the ground's name appeared with no club in it.
+ */
+function needsFootballContext(words: string[]): boolean {
+  // Deliberately NO `stripPrefixes` here. «وادي» *begins* with و, so stripping a
+  // leading conjunction turns it into «ادي» and it stops being a place word — the
+  // bug that let a university trip article match the club.
+  return words.some((w) => PLACE_WORDS.has(w));
+}
+
+function hasFootballContext(haystack: string): boolean {
+  // A different sport is not football, however much of this vocabulary it shares.
+  // «تعادل وادي السير والكتة بدوري اليد» is handball and used to match on «دوري».
+  if (/ (اليد|السله|السلة|الطائره|الطائرة|التنس|السباحه|السباحة) /.test(` ${haystack} `)) return false;
+  // Club-football signals. Squad and transfer vocabulary is included because a real
+  // club story often names no match: «وادي دجلة يضم مهاجما جديدا» is about the club
+  // and says nothing else on this list. Deliberately NOT «دوري» alone — that also
+  // matches «بدوري اليد», a handball league, which is not this club's coverage.
+  return / (الدوري|الممتاز|مباراه|مباراة|مباريات|فريق|نادى|نادي|الاهلي|الزمالك|هدف|اهداف|ملعب|كوره|كورة|انتقال|انتقالات|اصابه|مهاجم|مدافع|لاعب|لاعبين|مدرب|تشكيل|ضم|يضم|تعاقد|اختبار|مواجهه|مواجهة|قمة|لقاء) /.test(
+    ` ${haystack} `,
+  );
 }
 
 export function mentionsTeam(
@@ -288,8 +322,17 @@ export function mentionsTeam(
 
   // Distinctive words first: a club with any non-generic word is matched only by
   // those, never by the generic part. This is the fix for the European Union.
+  // A club whose whole name is a place («وادي دجلة») must be matched on the name as
+  // written. Dropping its place word left only «دجلة», which then matched the valley
+  // in an article about a university trip — the #43 failure. So place-named clubs
+  // keep every word.
+  const placeNamed = needsFootballContext(words);
   const distinctive = words.filter((w) => !isInstitutional(w) && !PLACE_WORDS.has(w));
-  const searchWords = distinctive.length ? distinctive : words.filter((w) => !PLACE_WORDS.has(w));
+  const searchWords = placeNamed
+    ? words
+    : distinctive.length
+      ? distinctive
+      : words.filter((w) => !PLACE_WORDS.has(w));
   if (!searchWords.length) return false;
 
   // 1. A name that is only ever an institution cannot identify a club, unless the
@@ -305,7 +348,10 @@ export function mentionsTeam(
   if (needsFullName(words)) {
     // Only a genuine multi-word name can be satisfied by "the whole name appears".
     // A one-word name would otherwise match here and skip the checks below.
-    if (words.length > 1 && hasSequence(tokens, words)) return true;
+    if (words.length > 1 && hasSequence(tokens, words)) {
+      if (needsFootballContext(words) && !hasFootballContext(haystack)) return false;
+      return true;
+    }
     // A single shared word is judged by what it is NOT: it must appear somewhere
     // that is not a false friend. «إنتر» alone never matches «إنتر ميامي» because
     // the next word is ميامي, not Italy; «الاهلي» never matches «البنك الأهلي».
@@ -323,33 +369,50 @@ export function mentionsTeam(
       }
       return false;
     }
-    // The short form («إنتر» for «إنتر ميلان») is accepted only when the article
-    // itself places the club in THIS competition's country — and not in another
-    // country that the same club's lookalike belongs to. Measured: an MLS article
-    // was accepted for an Italian match because its summary said «الدوري
-    // الأمريكي», which is simply a different country's name.
-    const hint = country ? COUNTRY_WORDS[country] : undefined;
-    const otherCountry = Object.entries(COUNTRY_WORDS)
-      .filter(([code]) => code !== country)
-      .some(([, words]) => words.some((w) => hasWord(haystack, w)));
-    if (otherCountry) return false;
-    if (hint && hint.some((h) => hasWord(haystack, h))) {
-      const first = words[0]!;
-      for (let i = 0; i < tokens.length; i += 1) {
-        if (tokens[i] === first && !isFalseFriend(tokens, i, first)) return true;
-      }
-    }
+    // NO short-form fallback. The user's standing rule (#43) is that a multi-word
+    // club matches its FULL name: «الاتحاد السكندري» is not «الاتحاد».
+    //
+    // This used to accept the first word when the article named the competition's
+    // country, which looked reasonable and was measurably wrong: «وزير الرياضة يبحث
+    // مع مجلس إدارة الاتحاد العام لمراكز شباب مصر» mentions مصر, so a ministry's
+    // story was served as coverage of a club. A country word is not a club.
+    //
+    // «إنتر ميلان» is the case this fallback was originally written for, and it
+    // still works through the full-name check above — that is what the user asked
+    // for, and it is the only thing that belongs here.
     return false;
   }
 
-  // 3. Ordinary names match on any identifying word, as a whole word, with the
-  //    false-friend phrases rejected.
-  for (const word of searchWords) {
-    for (let i = 0; i < tokens.length; i += 1) {
-      if (tokens[i] !== word) continue;
-      if (isFalseFriend(tokens, i, word)) continue;
-      return true;
-    }
+  // 3. A MULTI-WORD club is matched on its full name, never on a fragment.
+  //
+  //    This is the user's standing rule (issue #43) and it replaces the old
+  //    "any identifying word" test, which was measurably wrong: «أبو ظبي تعلن عن
+  //    استثمار جديد» matched «أبو قير للأسمدة» because the two share «أبو», and
+  //    «كليوباترا تطلق منتجاً» matched «سيراميكا كليوباترا». A fragment is not a
+  //    club.
+  //
+  //    The whole normalised name must appear as a contiguous run of tokens. Word
+  //    order is kept, which is how the name is written, and no looser test is
+  //    attempted — a near-miss is a different club.
+  if (searchWords.length > 1) {
+    if (!hasSequence(tokens, searchWords)) return false;
+    // A club whose name IS a place needs football context to be the club.
+    // Measured: «عميد هندسة عين شمس يقضي يوماً مع طلاب الجوالة في وادي دجلة» names
+    // the club's ground, not the club. «وادي دجلة» also names a valley, «مدينة»
+    // a city and «شباب» a youth side, so containing the words is not enough on its
+    // own — the article must also be about football.
+    if (needsFootballContext(words) && !hasFootballContext(haystack)) return false;
+    return true;
+  }
+
+  // 4. A ONE-WORD club can only be matched as that whole word, with the
+  //    false-friend phrases rejected — «الاتحاد» alone is a union, «الأهلي» alone
+  //    is a bank. There is no shorter fragment to fall back to.
+  const only = searchWords[0]!;
+  for (let i = 0; i < tokens.length; i += 1) {
+    if (tokens[i] !== only) continue;
+    if (isFalseFriend(tokens, i, only)) continue;
+    return true;
   }
   return false;
 }
