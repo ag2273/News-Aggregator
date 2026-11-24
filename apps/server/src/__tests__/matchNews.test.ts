@@ -312,4 +312,22 @@ describe('full team name only (user rule, #43)', () => {
     expect(mentionsTeam('وادي دجلة يضم مهاجما جديدا', 'وادي دجلة')).toBe(true);
   });
 });
+
+  it('rejects the same club in another sport (#43, measured on production)', () => {
+    // Three real basketball headlines about «الاتحاد السكندري» reached a football
+    // match, because they name the club and contain «الدوري». A club here is a
+    // football club.
+    const basketball = [
+      'الاتحاد السكندري يتأهل إلى نهائي دوري المرتبط لكرة السلة ويضرب موعدا مع الأهلى',
+      'الاتحاد السكندري يتخطى الجزيرة ويضرب موعدًا مع الأهلي في نهائي دوري المرتبط لكرة السلة',
+      'الاتحاد السكندري يواجه الجزيرة بثاني مواجهات سلسلة نصف نهائي دوري المرتبط للسلة',
+    ];
+    for (const title of basketball) {
+      expect(mentionsTeam(title, 'الاتحاد السكندري')).toBe(false);
+    }
+    // …while its football coverage in the same list survives.
+    expect(
+      mentionsTeam('حمزة الجمل يعلن قائمة الاتحاد السكندري لمواجهة وادي دجلة', 'الاتحاد السكندري'),
+    ).toBe(true);
+  });
 });

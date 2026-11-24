@@ -288,10 +288,20 @@ function needsFootballContext(words: string[]): boolean {
   return words.some((w) => PLACE_WORDS.has(w));
 }
 
+/** Sports that are not football, as the sources name them. */
+const OTHER_SPORT = /(?:^| )(?:ال|لل|بال|كال)?(?:سله|سلة|يد|طائره|طائرة|تنس|سباحه|سباحة|جودو|ملاكمه|ملاكمة)(?: |$)/;
+
 function hasFootballContext(haystack: string): boolean {
   // A different sport is not football, however much of this vocabulary it shares.
-  // «تعادل وادي السير والكتة بدوري اليد» is handball and used to match on «دوري».
-  if (/ (اليد|السله|السلة|الطائره|الطائرة|التنس|السباحه|السباحة) /.test(` ${haystack} `)) return false;
+  // Measured on production: «الاتحاد السكندري … دوري المرتبط لكرة السلة» and «كرة
+  // اليد» were served as football coverage because they contain «الدوري». A club is
+  // a football club in this app, so an article that names another sport is out.
+  if (/ (السله|السلة|اليد|الطائره|الطائرة|التنس|السباحه|السباحة|الجودو|الملاكمة) /.test(` ${haystack} `)) {
+    return false;
+  }
+  // «كرة» alone is ambiguous — «كرة السلة», «كرة اليد» — so the sport word above is
+  // the real test; dropping bare «كورة/كورة» from the positive list keeps this
+  // honest instead of letting a compound through on the first word.
   // Club-football signals. Squad and transfer vocabulary is included because a real
   // club story often names no match: «وادي دجلة يضم مهاجما جديدا» is about the club
   // and says nothing else on this list. Deliberately NOT «دوري» alone — that also
@@ -319,6 +329,13 @@ export function mentionsTeam(
   const teamIsWomen = WOMEN_WORDS.test(team);
   const textIsWomen = WOMEN_WORDS.test(`${text} ${haystack}`);
   if (teamIsWomen !== textIsWomen) return false;
+
+  // A different sport is not this club's football coverage, whatever else it shares.
+  // Measured on production (#43): three basketball stories about «الاتحاد السكندري»
+  // reached a football match because they name the club and contain «الدوري» —
+  // «دوري المرتبط لكرة السلة». A club here is a football club, so this applies to
+  // every match, not only to place-named clubs.
+  if (OTHER_SPORT.test(haystack)) return false;
 
   // Distinctive words first: a club with any non-generic word is matched only by
   // those, never by the generic part. This is the fix for the European Union.
