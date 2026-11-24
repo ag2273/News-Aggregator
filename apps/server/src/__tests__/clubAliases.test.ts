@@ -60,9 +60,12 @@ describe('the alias table names one club one way', () => {
   });
 
   it('carries an outside source for every pairing, so it can be re-checked', () => {
+    // The rule is "an outside source names it", not "ESPN names it": the clubs
+    // outside ESPN's eight leagues are anchored on their own Wikipedia article,
+    // and the entry says which one.
     for (const pair of CLUB_ALIASES) {
       expect(pair.official.length).toBeGreaterThan(2);
-      expect(pair.source).toMatch(/ESPN/);
+      expect(pair.source).toMatch(/ESPN|Wikipedia/);
     }
   });
 });
@@ -143,11 +146,58 @@ describe('the remaining verified pairs fold too (#48)', () => {
 
   it('records which entries are national teams, so a reader need not guess', () => {
     const national = CLUB_ALIASES.filter((p) => p.kind === 'national').map((p) => p.official).sort();
-    expect(national).toEqual(['Luxembourg', 'Montenegro', 'North Macedonia']);
+    expect(national).toEqual([
+      'Faroe Islands',
+      'Israel national football team',
+      'Liechtenstein',
+      'Luxembourg',
+      'Malta',
+      'Montenegro',
+      'North Macedonia',
+    ]);
     // Everything else in the table is a club.
     for (const pair of CLUB_ALIASES) {
       expect(['club', 'national']).toContain(pair.kind);
     }
+  });
+});
+
+describe('the national-team and Asian/African pairs fold too (#49)', () => {
+  it.each([
+    ['جزر الفارو', 'جزر فاروه'],
+    ['مالطا', 'مالطة'],
+    ['ليختنشتاين', 'ليشتنشتاين'],
+    ['نيفتشي فرغانة', 'نيفتشي فرجانة'],
+    ['استقلال طهران', 'الإستقلال'],
+    ['بوهانج ستيلرز', 'بوهانغ ستيلرز'],
+    ['تشونبوك', 'تشونبك هيونداي'],
+    ['جوهور دار التعظيم', 'جوهور دارول تاكزيم'],
+    ['أوموليس فيلاثلون هراكليوس', 'أوفي كريت'],
+    ['شبيبة عمران', 'شبيبة العمران'],
+  ])('folds «%s» onto «%s»', (from, to) => {
+    expect(canonicalClub(from)).toBe(to);
+    expect(canonicalClub(to)).toBe(to);
+  });
+
+  it('merges an Asian club the two feeds name differently into one row', () => {
+    const merged = mergeDay(
+      [row({ competitionId: 'other', competitionName: 'دوري أبطال آسيا', home: 'كيوتو سانجا', away: 'بوهانج ستيلرز' })],
+      [row({ id: 'yk', dataSource: 'yallakora', competitionId: 'other', competitionName: 'دوري أبطال آسيا', home: 'كيوتو سانجا', away: 'بوهانغ ستيلرز' })],
+    );
+    expect(merged).toHaveLength(1);
+  });
+
+  it('shows the name the user chose for the national side', () => {
+    // The user picked «الكيان الصهيوني» as the displayed label. Both feeds' spellings
+    // resolve to it, so one fixture is one row under one name.
+    expect(canonicalClub('إسرائيل')).toBe('الكيان الصهيوني');
+    expect(canonicalClub('الكيان الصهيوني')).toBe('الكيان الصهيوني');
+  });
+
+  it('still keeps two genuinely different clubs apart', () => {
+    // The club in Crete and a different Greek club are not the same side.
+    expect(canonicalClub('أوفي كريت')).toBe('أوفي كريت');
+    expect(canonicalClub('أوليمبياكوس')).toBe('أوليمبياكوس');
   });
 });
 

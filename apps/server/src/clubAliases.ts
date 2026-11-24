@@ -169,6 +169,90 @@ export const CLUB_ALIASES: AliasPair[] = [
     source: 'ESPN ita.1 roster, team 17530',
     kind: 'club',
   },
+  // Further national-team spellings, same evidence rule.
+  {
+    from: 'جزر الفارو',
+    to: 'جزر فاروه',
+    official: 'Faroe Islands',
+    source: 'ESPN uefa.nations roster, team 447',
+    kind: 'national',
+  },
+  {
+    from: 'مالطا',
+    to: 'مالطة',
+    official: 'Malta',
+    source: 'ESPN uefa.nations roster, team 453',
+    kind: 'national',
+  },
+  {
+    from: 'ليختنشتاين',
+    to: 'ليشتنشتاين',
+    official: 'Liechtenstein',
+    source: 'ESPN uefa.nations roster, team 589',
+    kind: 'national',
+  },
+  // Clubs outside ESPN's coverage of our eight leagues. Anchored on the club's own
+  // official name, read from its Wikipedia article (the source allowed for these):
+  // each entry states which article, so the claim can be re-checked at the source.
+  {
+    from: 'نيفتشي فرغانة',
+    to: 'نيفتشي فرجانة',
+    official: 'Neftchi Fergana',
+    source: 'Wikipedia article "FC Neftchi Fergana" (Uzbek club, Istiqlol Stadium)',
+    kind: 'club',
+  },
+  {
+    from: 'استقلال طهران',
+    to: 'الإستقلال',
+    official: 'Esteghlal F.C.',
+    source: 'Wikipedia article "Esteghlal F.C." (Iranian club, Tehran)',
+    kind: 'club',
+  },
+  {
+    from: 'بوهانج ستيلرز',
+    to: 'بوهانغ ستيلرز',
+    official: 'Pohang Steelers',
+    source: 'Wikipedia article "Pohang Steelers" (South Korean club)',
+    kind: 'club',
+  },
+  {
+    from: 'تشونبوك',
+    to: 'تشونبك هيونداي',
+    official: 'Jeonbuk Hyundai Motors',
+    source: 'Wikipedia article "Jeonbuk Hyundai Motors" (South Korean club)',
+    kind: 'club',
+  },
+  {
+    from: 'جوهور دار التعظيم',
+    to: 'جوهور دارول تاكزيم',
+    official: "Johor Darul Ta'zim",
+    source: 'Wikipedia article "Johor Darul Ta\'zim F.C." (Malaysian club)',
+    kind: 'club',
+  },
+  {
+    from: 'أوموليس فيلاثلون هراكليوس',
+    to: 'أوفي كريت',
+    official: 'OFI Crete',
+    source: 'Wikipedia article "OFI Crete F.C." (Greek club, Heraklion)',
+    kind: 'club',
+  },
+  {
+    from: 'شبيبة عمران',
+    to: 'شبيبة العمران',
+    official: 'JS El Omrane',
+    source: 'Wikipedia article "JS El Omrane" (Tunisian club)',
+    kind: 'club',
+  },
+  // The national side both feeds mean, under the two names they use. The displayed
+  // name is the USER'S choice, given through the orchestrator — not this repo's
+  // editorial call, and not something to change on a later whim.
+  {
+    from: 'إسرائيل',
+    to: 'الكيان الصهيوني',
+    official: 'Israel national football team',
+    source: 'ESPN uefa.nations roster (Israel), displayed name chosen by the user',
+    kind: 'national',
+  },
 ];
 
 /** The club a name is written as, when it is one of the pairs above. */
