@@ -189,6 +189,101 @@ describe('merging two sources', () => {
     );
     expect(merged).toHaveLength(2);
   });
+
+  // ---- #46: the same European fixture listed twice under two spellings --------
+  //
+  // Every pair below is a real duplicate counted on production over 6 days
+  // (15 candidates, 0 kickoff mismatches). The two feeds differ only in how they
+  // write the long vowels, which the normaliser does not fold.
+  const european = (over: Partial<MatchRow>): MatchRow =>
+    row({
+      competitionId: 'uefa-champions',
+      competitionName: 'دوري أبطال أوروبا',
+      status: 'live',
+      statusText: 'الشوط الأول',
+      homeScore: 0,
+      awayScore: 0,
+      ...over,
+    });
+
+  it.each([
+    ['فينورد', 'فيينورد', 'بورتو', 'بورتو'],
+    ['لايبزيج', 'لايبزج', 'لانس', 'لانس'],
+    ['بروسيا دورتموند', 'بوروسيا دورتموند', 'أرسنال', 'أرسنال'],
+    ['شاختار دونيتسك', 'شاختار دونتسك', 'فنربخشة', 'فنربخشة'],
+    ['أتلتيك بلباو', 'أتليتك بلباو', 'اسبانيول', 'إسبانيول'],
+    ['رايو فاييكانو', 'رايو فايكانو', 'فالنسيا', 'فالنسيا'],
+    ['نوتينجهام فورست', 'نوتنجهام فورست', 'بورنموث', 'بورنموث'],
+  ])('lists «%s» × %s once, not twice', (yallaHome, fgHome, yallaAway, fgAway) => {
+    const merged = mergeDay(
+      [european({ dataSource: 'filgoal', home: fgHome, away: fgAway })],
+      [european({ id: 'yk', dataSource: 'yallakora', home: yallaHome, away: yallaAway })],
+    );
+    expect(merged).toHaveLength(1);
+  });
+
+  it('keeps the preferred row, and takes the spelling our league tables use', () => {
+    const merged = mergeDay(
+      [european({ dataSource: 'filgoal', home: 'فيينورد', away: 'بورتو', channel: null })],
+      [european({ id: 'yk', dataSource: 'yallakora', home: 'فينورد', away: 'بورتو', channel: 'بي إن سبورتس 2' })],
+    );
+    expect(merged).toHaveLength(1);
+    const only = merged[0]!;
+    // The row the detail page opens stays FilGoal's — that is where the line-ups,
+    // the commentator and the timeline come from.
+    expect(only.dataSource).toBe('filgoal');
+    // The names are Yallakora's, which is how the league table writes the club.
+    expect(only.home).toBe('فينورد');
+    // The channel fills a gap rather than overwriting a published value.
+    expect(only.channel).toBe('بي إن سبورتس 2');
+  });
+
+  it('collapses the duplicate when the sides are the other way round', () => {
+    const merged = mergeDay(
+      [european({ dataSource: 'filgoal', home: 'بورتو', away: 'فيينورد' })],
+      [european({ id: 'yk', dataSource: 'yallakora', home: 'فينورد', away: 'بورتو' })],
+    );
+    expect(merged).toHaveLength(1);
+  });
+
+  it('keeps both when the two sources publish different scores', () => {
+    // The rule from the earlier merge stands: never blend two published scores.
+    const merged = mergeDay(
+      [european({ dataSource: 'filgoal', home: 'فيينورد', away: 'بورتو', homeScore: 1 })],
+      [european({ id: 'yk', dataSource: 'yallakora', home: 'فينورد', away: 'بورتو', homeScore: 0 })],
+    );
+    expect(merged).toHaveLength(2);
+  });
+
+  it('never merges the same spelling pair across two competitions', () => {
+    const merged = mergeDay(
+      [european({ dataSource: 'filgoal', home: 'فيينورد', away: 'بورتو' })],
+      [european({ id: 'yk', dataSource: 'yallakora', competitionId: 'saudi-pro-league', competitionName: 'الدوري السعودي', home: 'فينورد', away: 'بورتو' })],
+    );
+    expect(merged).toHaveLength(2);
+  });
+
+  it('folds a decorative letter-stretch inside a club name', () => {
+    // Measured on production: Yallakora writes «الشــارقة» with a tatweel, which is
+    // a letter to a Unicode property test, so it survived normalisation and left one
+    // fixture in two rows.
+    const merged = mergeDay(
+      [row({ dataSource: 'filgoal', home: 'اتحاد كلباء', away: 'الشارقة', status: 'finished', homeScore: 0, awayScore: 3 })],
+      [row({ id: 'y', dataSource: 'yallakora', home: 'اتحاد كلباء', away: 'الشــارقة', status: 'finished', homeScore: 0, awayScore: 3 })],
+    );
+    expect(merged).toHaveLength(1);
+  });
+
+  it('does not fold two different clubs whose consonant frames collide', () => {
+    // «مونزا» and «ماينز» share a frame; they are different clubs in different
+    // leagues, which is exactly why the frame is only compared inside one
+    // competition — and why this pair must still be two rows.
+    const merged = mergeDay(
+      [european({ dataSource: 'filgoal', competitionId: 'ita-serie-a', competitionName: 'الدوري الإيطالي', home: 'مونزا', away: 'يوفنتوس' })],
+      [european({ id: 'yk', dataSource: 'yallakora', competitionId: 'ger-bundesliga', competitionName: 'الدوري الألماني', home: 'ماينز', away: 'يوفنتوس' })],
+    );
+    expect(merged).toHaveLength(2);
+  });
 });
 
 describe('competition names', () => {

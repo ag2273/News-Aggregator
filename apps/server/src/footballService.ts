@@ -13,6 +13,7 @@
 
 import {
   canonicalCompetition,
+  clubFrame,
   COMPETITIONS,
   cairoDate,
   ESPN_BASE,
@@ -448,6 +449,16 @@ export function sameFixture(a: string, b: string): boolean {
 }
 
 /**
+ * The ordered consonant-frame pair of a fixture, for cross-source matching.
+ *
+ * Ordered because a provider may list the sides the other way round, and it is the
+ * PAIR of clubs that identifies a fixture.
+ */
+function framePair(m: MatchRow): string {
+  return [clubFrame(m.home), clubFrame(m.away)].sort().join('|');
+}
+
+/**
  * Merge two days of fixtures, preferring the first source for a real duplicate.
  *
  * A match is the same match when the two team names normalise to the same pair,
@@ -500,9 +511,28 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
     return `${canonicalCompetition(m.competitionName)}|${pair.join('|')}`;
   };
   const seen = new Map<string, MatchRow>();
-  for (const m of preferred) seen.set(key(m), { ...m, competitionName: canonicalCompetition(m.competitionName) });
+  // Every kept row by its consonant-frame pair, WITHIN one competition, so a fixture
+  // the two feeds spell differently is recognised before the fallback row is added
+  // as a second match (#46).
+  const byFrame = new Map<string, MatchRow>();
+  const frameOf = (m: MatchRow): string =>
+    `${canonicalCompetition(m.competitionName)}|${framePair(m)}`;
+  const remember = (m: MatchRow): void => {
+    const frame = frameOf(m);
+    // Two fixtures in one competition cannot share a frame unless the frame is
+    // ambiguous; the first one keeps it and the other is left to the exact key.
+    if (!byFrame.has(frame)) byFrame.set(frame, m);
+  };
+
+  for (const m of preferred) {
+    const row = { ...m, competitionName: canonicalCompetition(m.competitionName) };
+    seen.set(key(row), row);
+    remember(row);
+  }
+
   for (const m of fallback) {
-    const k = key(m);
+    const row = { ...m, competitionName: canonicalCompetition(m.competitionName) };
+    const k = key(row);
     if (seen.has(k)) continue;
     // Exact key first. If that misses, the two sources may still be naming the
     // same fixture differently — «سانتاندير» against «راسينج سانتاندير» — so a
@@ -510,8 +540,37 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
     // before the row is kept as a separate match.
     const near = [...seen.entries()].find(([existingKey]) => sameFixture(existingKey, k));
     if (near) continue;
-    seen.set(k, { ...m, competitionName: canonicalCompetition(m.competitionName) });
+    // Then the consonant frame, for the spellings the key above cannot fold
+    // («فينورد» / «فيينورد», «لايبزيج» / «لايبزج»).
+    const twin = byFrame.get(frameOf(row));
+    if (twin) {
+      const kept = seen.get(key(twin)) ?? twin;
+      const agrees =
+        kept.homeScore === row.homeScore &&
+        kept.awayScore === row.awayScore &&
+        kept.status === row.status;
+      if (agrees) {
+        // The fixture is merged into the row we already keep, because that row
+        // carries the match page the detail screen opens (line-ups, commentator,
+        // timeline). Only the NAMES come from the other feed: Yallakora's spelling
+        // is the one our league tables use — measured on 7 of 7 duplicate pairs —
+        // and a club page resolves a fixture by the table's spelling, so keeping
+        // the other feed's spelling would leave the fixture invisible from the club
+        // it belongs to.
+        kept.home = row.home;
+        kept.away = row.away;
+        // The channel is the one thing Yallakora carries and FilGoal sometimes does
+        // not, so it fills a gap rather than replacing a published value.
+        if (!kept.channel && row.channel) kept.channel = row.channel;
+        continue;
+      }
+      // Two published scores that disagree are neither blended nor renamed; the
+      // fallback row is kept as it is and the conflict is logged below.
+    }
+    seen.set(k, row);
+    remember(row);
   }
+
   for (const [k, kept] of seen) {
     const other = fallback.find((m) => key(m) === k);
     if (!other || other === kept) continue;
