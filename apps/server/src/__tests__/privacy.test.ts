@@ -120,4 +120,31 @@ describe('privacy: links elsewhere', () => {
     const html = await (await app.request('/delete-account')).text();
     expect(html).toContain('href="/privacy"');
   });
+
+describe('privacy: the log retention claim is a real number', () => {
+  it('states the byte cap, not a vague "rotated"', async () => {
+    // The policy used to say "Rotated; not used for behavioural analysis", which is
+    // unquantified. docker-compose.yml caps the json-file driver at 10MB x 3 =
+    // 30MB, so the page can and must say 30.
+    const ar = await (await app.request('/privacy')).text();
+    const en = await (await app.request('/privacy?lang=en')).text();
+    expect(ar).toContain('30 ميجابايت');
+    expect(en).toContain('30 MB');
+    // The old unquantified wording must be gone from both languages.
+    expect(ar).not.toContain('بنحدّها (rotated)');
+    expect(en).not.toContain('Rotated; not used for behavioural analysis');
+  });
+
+  it('matches the limit the compose file actually sets', () => {
+    // If someone changes max-size or max-file, this fails and the copy follows.
+    const fs = require('node:fs') as typeof import('node:fs');
+    const yaml = fs.readFileSync(new URL('../../../../docker-compose.yml', import.meta.url), 'utf8');
+    const sizes = [...yaml.matchAll(/max-size: "(\d+)m"/g)].map((m) => Number(m[1]));
+    const files = [...yaml.matchAll(/max-file: "(\d+)"/g)].map((m) => Number(m[1]));
+    expect(sizes.length).toBeGreaterThan(0);
+    expect(files.length).toBe(sizes.length);
+    const total = sizes[0]! * files[0]!;
+    expect(total).toBe(30);
+  });
+});
 });

@@ -28,6 +28,18 @@ services:
       # Missing files disable push / verification email but never crash.
       - ./deploy/secrets:/data/secrets:ro
     restart: unless-stopped
+    # Bounded logs. The host uses Docker's json-file driver, which has NO limit by
+    # default, so an unbounded log is one disk-full away from taking the box down.
+    # 10MB x 3 files = a hard 30MB ceiling for this container.
+    #
+    # Measured 2026-11-24: the server writes about 2.3KB per 10 minutes (~0.3MB/day),
+    # so the ceiling is reached after roughly three months and then the oldest file is
+    # dropped. The privacy page states the cap, not a promise about age.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test:
         - CMD
@@ -46,6 +58,11 @@ services:
       - "443:443"
     env_file:
       - ./deploy/.env
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
