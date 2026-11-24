@@ -24,6 +24,7 @@
 // the European leagues. So standings fall through from one to the other.
 
 import { stripBoilerplate } from './articleText.js';
+import { parseEspnClock, isPlaying, halfText } from './espnClock.js';
 
 /** Competitions the app shows, in the order the spec ranks them. */
 export interface Competition {
@@ -88,6 +89,26 @@ export interface MatchRow {
   url?: string;
   /** Minute for a live match, when the source gives one. */
   minute: number | null;
+  /**
+   * The minute as the source words it, when it is more specific than `minute`.
+   *
+   * ESPN publishes stoppage time as text (`90'+4'`), and that text is the honest
+   * thing to show: reducing it to 94 would be our arithmetic, not their statement.
+   */
+  minuteLabel?: string | null;
+  /**
+   * The half in our own words, when a source states it (`الشوط الأول`, `استراحة`).
+   *
+   * Null when no source says which half it is — a guessed half is worse than none.
+   */
+  half?: string | null;
+  /**
+   * The provider says the match is in its half-time interval.
+   *
+   * Its `state` is still "live" then (measured: 14-15 minutes on ESPN), so every
+   * "is it being played" check must look at this rather than at `status`.
+   */
+  halftime?: boolean;
   /** Which provider this row came from, so the UI can be honest if it matters. */
   dataSource: 'yallakora' | 'filgoal' | 'espn';
   /**
@@ -503,8 +524,12 @@ export function parseEspnScoreboard(json: unknown, competition: Competition): Ma
     const away = competitors.find((c) => c['homeAway'] === 'away');
     if (!home || !away) continue;
     const state = String(block['status']?.['type']?.['state'] ?? '');
-    const clock = block['status']?.['displayClock'];
     const finished = state === 'post';
+    // The live clock, read properly: ESPN sends the minute as text (`"84'"`,
+    // `"90'+4'"`, `"45:00"`) and keeps `state: "in"` through the half-time
+    // interval. See `espnClock.ts` for the measurements behind this.
+    const clock = parseEspnClock(block['status']);
+    const playing = Boolean(clock) && isPlaying(clock);
     // ESPN sends "0" for a match that has not started: report null instead, so
     // the app shows a kickoff time rather than a false 0-0.
     const score = (c: Record<string, any> | undefined): number | null => {
@@ -520,13 +545,28 @@ export function parseEspnScoreboard(json: unknown, competition: Competition): Ma
       away: arabicTeam(String(away['team']?.['displayName'] ?? '')),
       homeScore: score(home),
       awayScore: score(away),
+      // A half-time interval is live coverage but not play. It is reported as live
+      // (the match is on) with `halftime` set, so the strip can say «استراحة»
+      // instead of showing a frozen clock as if the ball were in play.
       status: state === 'in' ? 'live' : state === 'post' ? 'finished' : 'upcoming',
       // Arabic, like every other user-visible string: the app never renders the
       // English "Sun, November 22nd at 9:00 AM EST" ESPN sends.
-      statusText: state === 'in' ? 'مباشر' : state === 'post' ? 'انتهت' : 'لم تبدأ',
+      statusText:
+        state === 'in'
+          ? clock?.halftime
+            ? 'استراحة'
+            : halfText(clock) ?? 'مباشر'
+          : state === 'post'
+            ? 'انتهت'
+            : 'لم تبدأ',
       kickoff: cairoClock(String(event['date'] ?? '')),
       round: null,
-      minute: state === 'in' && typeof clock === 'string' ? Number(clock.replace(/[^\d]/g, '')) || null : null,
+      // No minute during the interval: the clock is frozen at 45, and showing a
+      // stopped 45 next to a live dot would read as a match being played.
+      minute: playing ? clock!.minute : null,
+      minuteLabel: playing ? clock!.label : null,
+      half: state === 'in' ? halfText(clock) : null,
+      halftime: Boolean(clock?.halftime),
       dataSource: 'espn',
       channel: null,
     });
@@ -700,7 +740,9 @@ export function hasLiveForReader(
   matches: MatchRow[],
   followed: string[] = [],
 ): boolean {
-  const live = matches.filter((m) => m.status === 'live');
+  // A match at half-time is live coverage but not a running match: its clock is
+  // frozen, so it must not hold the header dot on for 15 minutes.
+  const live = matches.filter((m) => m.status === 'live' && !m.halftime);
   if (!live.length) return false;
   const followedSet = new Set(followed.map((f) => normalizeTeam(f)));
   return live.some(

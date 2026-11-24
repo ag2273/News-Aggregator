@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { Theme } from '../constants/colors';
 import { TeamCrest } from './TeamCrest';
 import type { FootballMatch } from '../lib/api';
+import { liveText } from '../lib/liveLabel';
 
 /**
  * The football screen pieces shared by matches, competition and team pages, drawn
@@ -173,10 +174,9 @@ export function MatchCard({
 }) {
   const isLive = m.status === 'live';
   const hasScore = m.homeScore !== null && m.awayScore !== null;
-  const half = m.statusText?.trim() || (isLive ? 'مباشر' : '');
-  // The agreed ceiling: score + half for Egyptian coverage, and a minute only
-  // where the provider actually published one.
-  const liveLabel = isLive ? (m.minute ? `الدقيقة ${m.minute}' • ${half}` : half) : '';
+  // Score + half, plus the minute when a source published one (issue #36). The
+  // rule lives in one place so this card and the match page cannot disagree.
+  const liveLabel = isLive ? liveText(m) : '';
 
   const team = (name: string, logo?: string | null) => (
     <TouchableOpacity

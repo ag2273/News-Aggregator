@@ -125,6 +125,7 @@ import { userCounts } from './users.js';
 import { getAllArticles } from './db.js';
 import {
   competitionOf,
+  enrichLiveClocks,
   loadDay,
   loadMatchDetail,
   loadStandings,
@@ -1406,6 +1407,10 @@ app.get('/api/football/matches', async (c) => {
     return c.json({ error: 'date must be YYYY-MM-DD' }, 400);
   }
   const day = await loadDay(date);
+  // The live minute (issue #36). ESPN publishes a real clock; FilGoal does not. The
+  // clock is borrowed here, at the edge, so the cached day stays the fixture list
+  // and nothing about a finished or upcoming row can change.
+  const matches = await enrichLiveClocks(day.matches, date).catch(() => day.matches);
   // A signed-in reader also gets their followed teams marked, so the app can pin
   // them without a second round trip.
   const userId = extractUserId(c.req.header('Authorization'));
@@ -1435,7 +1440,7 @@ app.get('/api/football/matches', async (c) => {
       })),
       // Each row carries its competition's rank, so a screen that groups them can
       // render in served order without holding a copy of the priority map.
-      matches: day.matches.map((m) => {
+      matches: matches.map((m) => {
         // Remember where each crest comes from, so the logo route can fetch and
         // cache the bytes without the app ever knowing a source URL.
         if (m.homeTeamId && m.dataSource === 'filgoal') {
@@ -1462,19 +1467,24 @@ app.get('/api/football/matches', async (c) => {
  * actually playing, because a dot that is always on means nothing.
  */
 app.get('/api/football/live-status', async (c) => {
-  const day = await loadDay(todayCairo());
+  const date = todayCairo();
+  const day = await loadDay(date);
+  // The dot must not stay on through a half-time interval, and only the borrowed
+  // clock says which matches are actually being played (#36).
+  const matches = await enrichLiveClocks(day.matches, date).catch(() => day.matches);
   const userId = extractUserId(c.req.header('Authorization'));
   const followed = userId ? getTeamFollows(userId).map((f) => f.name) : [];
-  const live = hasLiveForReader(day.matches, followed);
+  const live = hasLiveForReader(matches, followed);
   return c.json({
     data: {
       live,
       // What the dot stands for, so the tooltip/label can name it.
       matches: live
-        ? day.matches
+        ? matches
             .filter(
               (m) =>
                 m.status === 'live' &&
+                !m.halftime &&
                 (m.competitionId === 'egyptian-premier' ||
                   followed.includes(m.home) ||
                   followed.includes(m.away)),
@@ -1562,6 +1572,13 @@ app.get('/api/football/matches/:id', async (c) => {
     }
   }
   if (!match) return c.json({ error: 'match not found' }, 404);
+  // The live minute is borrowed at read time (#36): the day cache is the fixture
+  // list, the clock is ESPN's, and a live match opened from a past day gets the
+  // state it had then rather than a minute invented now.
+  if (match.status === 'live') {
+    const [withClock] = await enrichLiveClocks([match], date).catch(() => [match]);
+    if (withClock) match = withClock;
+  }
   // The commentator and coaches live on the provider's match page only, so they
   // are fetched when the reader opens the match, not on every day refresh.
   const detail = await loadMatchDetail(match).catch(() => null);

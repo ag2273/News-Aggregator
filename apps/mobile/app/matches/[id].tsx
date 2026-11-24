@@ -32,6 +32,7 @@ import {
   type MatchDetail,
   type MatchNews,
 } from '../../lib/api';
+import { liveText } from '../../lib/liveLabel';
 
 type NewsItem = MatchNews;
 
@@ -206,11 +207,11 @@ export default function MatchCenterScreen() {
                     >
                       <View style={[styles.liveDot, { backgroundColor: t.liveRed }]} />
                       <Text style={[styles.liveText, { color: t.liveRed }]} numberOfLines={1}>
-                        {/* Score + half. A minute only when the source published
-                            one; the Egyptian ceiling is «بدون دقيقة». */}
-                        {match.minute
-                          ? `${match.minute}' • ${match.statusText || 'مباشر'}`
-                          : match.statusText || 'مباشر'}
+                        {/* The approved design's line: «الدقيقة 74' • الشوط الثاني».
+                            The minute appears only when a source published one, and
+                            published stoppage time is shown as sent — see
+                            `lib/liveLabel.ts` for the rules and their measurements. */}
+                        {liveText(match)}
                       </Text>
                     </View>
                   ) : (

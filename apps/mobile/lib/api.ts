@@ -653,6 +653,15 @@ export interface FootballMatch {
   round: string | null;
   url?: string;
   minute: number | null;
+  /**
+   * The minute as the source words it, when it is more specific than `minute`
+   * (`"90'+4'"`). Published stoppage time is shown as sent, never computed.
+   */
+  minuteLabel?: string | null;
+  /** The half in our words, when a source states it («الشوط الأول», «استراحة»). */
+  half?: string | null;
+  /** The provider says the match is between halves: live, but not being played. */
+  halftime?: boolean;
   dataSource: 'yallakora' | 'filgoal' | 'espn';
   /** The competition's display rank, served by the API (Egypt first). */
   competitionPriority?: number;

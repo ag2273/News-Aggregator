@@ -47,6 +47,9 @@ import { parseMatchEvents, type MatchEvent } from './matchEvents.js';
 import { parseYallakoraGoals, type MatchGoal } from './yallakoraMatch.js';
 import { getAllArticles } from './db.js';
 import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
+import { clockFor, espnCompetitions, fetchEspnLive, fetchEspnLiveDay } from './espnLive.js';
+import type { EspnLive } from './espnLive.js';
+import { halfText } from './espnClock.js';
 
 /**
  * FilGoal's rows as our own shape.
@@ -297,6 +300,73 @@ export async function loadMatchDetail(
         ownGoal: /own|ذاتي/i.test(e.type),
       })),
   };
+}
+
+/** The provider's own live state for one match. */
+export interface LiveState {
+  /** ESPN says it is in its half-time interval. */
+  halftime: boolean;
+  /** Published minute text (`"74'"`, `"90'+4'"`), when there is one. */
+  minuteLabel: string | null;
+  /** The half in our words, when the provider states it. */
+  half: string | null;
+}
+
+/**
+ * Attach ESPN's live clock to our rows, for the fixtures it can prove are the same.
+ *
+ * Why this is not done in the day loader: the clock is the only thing we want from
+ * ESPN, and it changes every minute while the fixture list does not. Doing it here
+ * keeps the borrow to the live rows, and leaves a non-live row untouched no matter
+ * what the scoreboard says.
+ *
+ * A row ESPN cannot pair with confidence is returned unchanged — no minute, no
+ * half — which the screen renders as the state alone.
+ */
+export function applyLiveClocks(rows: MatchRow[], live: EspnLive[]): MatchRow[] {
+  if (!live.length) return rows;
+  return rows.map((row) => {
+    if (row.status !== 'live') return row;
+    const event = clockFor(live, row.home, row.away);
+    if (!event) return row;
+    const clock = event.clock;
+    return {
+      ...row,
+      // The clock is ESPN's; the half is too. Never blended with FilGoal's broken
+      // `TimeElapsed`.
+      minute: clock.halftime ? null : clock.minute,
+      minuteLabel: clock.halftime ? null : clock.label,
+      half: halfText(clock),
+      halftime: clock.halftime,
+      // The state word is ours, so a match ESPN calls a half-time interval reads
+      // «استراحة» instead of a live minute that has stopped.
+      statusText: clock.halftime ? 'استراحة' : row.statusText,
+    };
+  });
+}
+
+/**
+ * The live minute for the matches we serve (issue #36).
+ *
+ * One request per ESPN-covered competition, for the whole day, and only when
+ * something is actually live — a quiet day costs nothing extra. Failures are
+ * swallowed on purpose: a borrowed clock is an improvement, never a dependency.
+ */
+export async function enrichLiveClocks(
+  rows: MatchRow[],
+  date: string,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<MatchRow[]> {
+  const liveRows = rows.filter((r) => r.status === 'live');
+  // Nothing live means nothing to borrow. This is also the reason a normal request
+  // stays at the same number of source calls as before.
+  if (!liveRows.length) return rows;
+  // Fixtures outside ESPN's coverage cannot be paired, so skip the round trips when
+  // no live row could possibly match.
+  const covered = espnCompetitions();
+  if (!covered.some((c) => liveRows.some((r) => r.competitionId === c.id))) return rows;
+  const live = await fetchEspnLiveDay(date, options.fetchImpl).catch(() => []);
+  return applyLiveClocks(rows, live);
 }
 
 /** A competition lookup, exported for the routes. */
