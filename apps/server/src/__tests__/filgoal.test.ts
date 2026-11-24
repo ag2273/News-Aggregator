@@ -274,6 +274,16 @@ describe('merging two sources', () => {
     expect(merged).toHaveLength(1);
   });
 
+  it('treats a trailing FC as the club’s legal form, not its name', () => {
+    // Measured: «لافيينا أف سي» (Yallakora) and «لافيينا» (FilGoal) are one club,
+    // and the fixture was listed twice.
+    const merged = mergeDay(
+      [row({ competitionName: 'دوري القسم الثاني-أ', home: 'لافيينا', away: 'السكة الحديد' })],
+      [row({ id: 'y', competitionName: 'دوري القسم الثاني-أ', home: 'لافيينا أف سي', away: 'السكة الحديد' })],
+    );
+    expect(merged).toHaveLength(1);
+  });
+
   it('does not fold two different clubs whose consonant frames collide', () => {
     // «مونزا» and «ماينز» share a frame; they are different clubs in different
     // leagues, which is exactly why the frame is only compared inside one
@@ -300,6 +310,36 @@ describe('competition names', () => {
     // «الدوري التونسي» and «الرابطة التونسية المحترفة» are one league; two names
     // for it put one fixture on the screen twice.
     expect(canonicalCompetition('الدوري التونسي')).toBe(canonicalCompetition('الرابطة التونسية المحترفة'));
+  });
+
+  it('folds Egypt’s professional league, which the two sources name differently', () => {
+    // FilGoal: «دوري المحترفين المصري». Yallakora: «دوري القسم الثاني-أ».
+    // Evidence they are one competition, not two:
+    //   * Yallakora's 15-club table (tour/267) is a subset of FilGoal's 20-club
+    //     competition page (championships/1668).
+    //   * 7 of 7 fixtures listed under the two names on the same day were the same
+    //     club pair with the identical score.
+    expect(canonicalCompetition('دوري المحترفين المصري')).toBe('دوري القسم الثاني-أ');
+    expect(canonicalCompetition('دوري القسم الثاني-أ')).toBe('دوري القسم الثاني-أ');
+  });
+
+  it('keeps the regional fourth tier a different competition', () => {
+    // Both sources file «دوري القسم الثاني (ب) - المجموعة …» under that name with
+    // entirely different clubs (سوهاج, الأقصر, كيما أسوان). Folding it into the
+    // professional league would put two unrelated tables on one heading.
+    const groupB = 'دوري القسم الثاني (ب) - المجموعة الأولى (أ)';
+    expect(canonicalCompetition(groupB)).toBe(groupB);
+    expect(canonicalCompetition(groupB)).not.toBe(canonicalCompetition('دوري المحترفين المصري'));
+    expect(canonicalCompetition('دوري القسم الثاني (ب) - المجموعة الثالثة')).toBe(
+      'دوري القسم الثاني (ب) - المجموعة الثالثة',
+    );
+  });
+
+  it('does not fold the Saudi professional league with Egypt’s', () => {
+    // «الدوري السعودي للمحترفين» contains «المحترفين», so the Egypt rule must not
+    // swallow it.
+    expect(canonicalCompetition('الدوري السعودي للمحترفين')).toBe('الدوري السعودي');
+    expect(canonicalCompetition('365Sports Cairo')).toBe('365Sports Cairo');
   });
 });
 

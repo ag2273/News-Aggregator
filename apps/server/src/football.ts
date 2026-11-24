@@ -753,6 +753,23 @@ export function canonicalCompetition(name: string): string {
   // still matches /الدوري المصري/, so without this the canonical name rewrote the
   // women's league back to the men's and the id correction was undone at display.
   if (/سيدات/.test(n)) return 'الدوري المصري للسيدات';
+  // Egypt's professional league, which the two sources name differently: FilGoal
+  // calls it «دوري المحترفين المصري» and Yallakora «دوري القسم الثاني-أ». One
+  // competition, two names — verified, not assumed:
+  //   * Yallakora's 15-club table (tour/267) is a SUBSET of FilGoal's 20-club
+  //     competition page (championships/1668): المنصورة, ديروط, مسار, طنطا, بروكسي,
+  //     تيم اف سي all appear on both.
+  //   * 7 of 7 fixtures the two feeds listed under those two names on the same day
+  //     were the same club pair AND published the identical score.
+  //   * They are NOT the same as the fourth tier: both sources file the regional
+  //     «دوري القسم الثاني (ب) - المجموعة …» groups under that name, with entirely
+  //     different clubs (سوهاج, الأقصر, كيما أسوان, سيراميكا …). Measured 0 overlap
+  //     with the professional league.
+  // The name kept is the one our own screens use for a named competition: our
+  // standings for the top flights come from Yallakora, and «القسم الثاني-أ» is
+  // already the label 9 of these rows carry today.
+  if (/القسم الثاني\s*-?\s*ا(?![لب])|القسم الثاني\s*-?\s*أ/.test(n)) return 'دوري القسم الثاني-أ';
+  if (/المحترفين المصري|المحترفين$/.test(n)) return 'دوري القسم الثاني-أ';
   if (/الدوري المصري/.test(n)) return 'الدوري المصري';
   // The two sources name the same league differently («الدوري التونسي» and
   // «الرابطة التونسية المحترفة»). Without folding them, one fixture arrived twice

@@ -491,6 +491,12 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
               // stadium, not part of the name. Without this the fixture appeared
               // twice, once from each source.
               .replace(/^ستاد\s+/, '')
+              // A trailing «FC»/«إف سي» is the club's legal form, not its name:
+              // «لافيينا أف سي» and «لافيينا» are one club, and the fixture was
+              // listed twice. Measured across 538 club names seen on both sources'
+              // pages, this folds exactly one pair (لافيينا / لافيينا أف سي) and
+              // merges nothing else.
+              .replace(/\s+(?:اف|أف|إف)\s+(?:سي|سى)$/, '')
               // Saudi «أهلي جدة» is written «الأهلي» by the other source, and both
               // are the same club — not Egypt's Al Ahly, which never plays Al Nassr
               // in this competition. Normalised to one form so one fixture is one row.
