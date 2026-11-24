@@ -41,6 +41,14 @@ export interface AliasPair {
   official: string;
   /** Where the official name was read, so a future reader can re-check it. */
   source: string;
+  /**
+   * What kind of side this is.
+   *
+   * Recorded rather than inferred: the catch-all competition mixes clubs with
+   * NATIONAL teams, and a reader (or a future maintainer) should not have to guess
+   * which entries are countries.
+   */
+  kind: 'club' | 'national';
 }
 
 /**
@@ -56,60 +64,110 @@ export const CLUB_ALIASES: AliasPair[] = [
     to: 'صباح إف كيه',
     official: 'Sabah FK',
     source: 'ESPN uefa.champions roster, team 21922',
+    kind: 'club',
   },
   {
     from: 'فايكينج',
     to: 'نادى فيكينج',
     official: 'Viking FK',
     source: 'ESPN uefa.champions roster, team 510',
+    kind: 'club',
   },
   {
     from: 'إيبيريا 1999',
     to: 'إيبيريا تبيليسي',
     official: 'Iberia 1999',
     source: 'ESPN uefa.europa.conf roster, team 20025',
+    kind: 'club',
   },
   {
     from: 'ياجيلونيا',
     to: 'نادي ياجييلونيا بياويستوك',
     official: 'Jagiellonia Bialystok',
     source: 'ESPN uefa.europa roster, team 11505',
+    kind: 'club',
   },
   {
     from: 'بوراتس بانيا لوكا',
     to: 'نادي بوراك بانيا',
     official: 'Borac Banja Luka',
     source: 'ESPN uefa.europa.conf roster, team 20710',
+    kind: 'club',
   },
   {
     from: 'هابويل بئر السبع',
     to: 'هابويل بئر سبع',
     official: "Hapoel Be'er",
     source: 'ESPN uefa.europa roster, team 13083',
+    kind: 'club',
   },
   {
     from: 'كاونو زالغيريس',
     to: 'كانو زالجيريس',
     official: 'KuPS Kuopio',
     source: 'ESPN uefa.europa.conf roster, team 8169',
+    kind: 'club',
   },
   {
     from: 'يابلونتس',
     to: 'يابلونك',
     official: 'Jablonec',
     source: 'ESPN uefa.europa roster, team 7922',
+    kind: 'club',
   },
   {
     from: 'جامعة كرايوفا',
     to: 'يونيفيرسيتاتيا كرايوفا',
     official: 'CSU Craiova',
     source: 'ESPN uefa.europa.conf roster, team 8089',
+    kind: 'club',
   },
   {
     from: 'إنتر كلوب ديسكالديس',
     to: 'إنتر ديسكالديس',
     official: "Inter D'Escaldes",
     source: 'ESPN uefa.europa.conf roster, team 20703',
+    kind: 'club',
+  },
+  // National teams. The catch-all competition mixes these with clubs, and the two
+  // feeds write several countries under two names. Same rule as the clubs: only
+  // what an outside source states, never a similarity guess.
+  {
+    from: 'مونتنجرو',
+    to: 'الجبل الأسود',
+    official: 'Montenegro',
+    source: 'ESPN uefa.nations roster, team 6775',
+    kind: 'national',
+  },
+  {
+    from: 'مقدونيا الشمالية',
+    to: 'مقدونيا',
+    official: 'North Macedonia',
+    source: 'ESPN uefa.nations roster, team 463',
+    kind: 'national',
+  },
+  {
+    from: 'لوكسمبورج',
+    to: 'لوكسمبرج',
+    official: 'Luxembourg',
+    source: 'ESPN uefa.nations roster, team 582',
+    kind: 'national',
+  },
+  // Clubs written with a single letter's difference, which the consonant-frame rule
+  // in the merge cannot see.
+  {
+    from: 'فولام',
+    to: 'فولهام',
+    official: 'Fulham',
+    source: 'ESPN eng.1 roster, team 370',
+    kind: 'club',
+  },
+  {
+    from: 'فينيسيا',
+    to: 'فينيزيا',
+    official: 'Venezia',
+    source: 'ESPN ita.1 roster, team 17530',
+    kind: 'club',
   },
 ];
 

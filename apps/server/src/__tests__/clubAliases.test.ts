@@ -113,6 +113,44 @@ describe('the reported fixture is one row', () => {
   });
 });
 
+describe('the remaining verified pairs fold too (#48)', () => {
+  it.each([
+    ['مونتنجرو', 'الجبل الأسود'],
+    ['مقدونيا الشمالية', 'مقدونيا'],
+    ['لوكسمبورج', 'لوكسمبرج'],
+    ['فولام', 'فولهام'],
+    ['فينيسيا', 'فينيزيا'],
+  ])('folds «%s» onto «%s»', (from, to) => {
+    expect(canonicalClub(from)).toBe(to);
+    expect(canonicalClub(to)).toBe(to);
+  });
+
+  it('merges the reported national-team fixture into one row', () => {
+    const merged = mergeDay(
+      [row({ competitionId: 'other', competitionName: 'تصفيات أوروبا', home: 'لاتفيا', away: 'مونتنجرو' })],
+      [row({ id: 'yk', dataSource: 'yallakora', competitionId: 'other', competitionName: 'تصفيات أوروبا', home: 'لاتفيا', away: 'الجبل الأسود' })],
+    );
+    expect(merged).toHaveLength(1);
+  });
+
+  it('merges a one-letter club variant into one row', () => {
+    const merged = mergeDay(
+      [row({ competitionId: 'eng-premier', competitionName: 'الدوري الإنجليزي', home: 'مانشستر سيتي', away: 'فولام' })],
+      [row({ id: 'yk', dataSource: 'yallakora', competitionId: 'eng-premier', competitionName: 'الدوري الإنجليزي', home: 'مانشستر سيتي', away: 'فولهام' })],
+    );
+    expect(merged).toHaveLength(1);
+  });
+
+  it('records which entries are national teams, so a reader need not guess', () => {
+    const national = CLUB_ALIASES.filter((p) => p.kind === 'national').map((p) => p.official).sort();
+    expect(national).toEqual(['Luxembourg', 'Montenegro', 'North Macedonia']);
+    // Everything else in the table is a club.
+    for (const pair of CLUB_ALIASES) {
+      expect(['club', 'national']).toContain(pair.kind);
+    }
+  });
+});
+
 describe('the Saudi club named two ways is one row', () => {
   it('merges «الأهلي» with «أهلي جدة» in the Saudi league', () => {
     // Found while measuring #47: these two rules ran on the RAW name, before
