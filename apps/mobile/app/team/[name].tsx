@@ -79,7 +79,7 @@ export default function TeamScreen() {
   }, [load]);
 
   const openMatch = (m: FootballMatch) =>
-    router.push({ pathname: '/matches/[id]', params: { id: m.id, date: '' } });
+    router.push({ pathname: '/matches/[id]', params: { id: m.id } });
 
   /** One previous result: the two clubs, the score, and the date. */
   const resultRow = (m: FootballMatch) => {

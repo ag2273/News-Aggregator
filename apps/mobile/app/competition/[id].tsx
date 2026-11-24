@@ -78,7 +78,7 @@ export default function CompetitionScreen() {
   }, [load]);
 
   const openMatch = (matchId: string) =>
-    router.push({ pathname: '/matches/[id]', params: { id: matchId, date: '' } });
+    router.push({ pathname: '/matches/[id]', params: { id: matchId } });
 
   /** One fixture: crests, kickoff or score, and the broadcaster when published. */
   const fixture = (m: NonNullable<CompetitionPage['upcoming']>[number]) => {

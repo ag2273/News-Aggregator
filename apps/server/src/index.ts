@@ -1541,9 +1541,26 @@ app.get('/api/football/competitions/:id', async (c) => {
 /** One match, with the news our own corpus holds about its two teams. */
 app.get('/api/football/matches/:id', async (c) => {
   const id = c.req.param('id');
-  const date = (c.req.query('date') ?? todayCairo()).trim();
-  const day = await loadDay(date);
-  const match = day.matches.find((m) => m.id === id);
+  // An EMPTY date is not "today": it asked the day loader for a day called "", which
+  // has no matches, so every match opened from a page that did not know the date
+  // 404'd (`#44`: the club page passed `date: ''` and the match screen said
+  // «تعذّر التحميل»). A missing or blank date now means today.
+  const requested = (c.req.query('date') ?? '').trim();
+  const date = requested || todayCairo();
+  let day = await loadDay(date);
+  let match = day.matches.find((m) => m.id === id);
+  if (!match) {
+    // The id is the stable handle; the date is only how we find it. A club page links
+    // a match from a day it no longer has cached, so fall back to the days around
+    // today before giving up — that is a lookup, not a guess: the id must match.
+    for (const offset of [-1, 1, -2, 2, 0]) {
+      const other = todayCairo(Date.now() + offset * 86_400_000);
+      if (other === date) continue;
+      day = await loadDay(other);
+      match = day.matches.find((m) => m.id === id);
+      if (match) break;
+    }
+  }
   if (!match) return c.json({ error: 'match not found' }, 404);
   // The commentator and coaches live on the provider's match page only, so they
   // are fetched when the reader opens the match, not on every day refresh.
