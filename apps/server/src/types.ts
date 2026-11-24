@@ -197,7 +197,12 @@ export const SOURCES: Source[] = [
       'https://news.google.com/rss/search?q=site:alkhaleej.ae+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'AE',
     intervalMinutes: 10,
-    breaking: false,
+    // Enabled 2026-11-24 after the hold-out label audit (TASK 1b): its two
+    // incident headlines in the sample were both genuine («11 قتيلاً في هجوم
+    // روسي», «60 قتيلاً بهجمات انتقامية في نيجيريا»). 2/2 correct = 100% on the
+    // 85% gate. Every other candidate source produced zero flags, or only a
+    // label-tier false positive, and stays off.
+    breaking: true,
     type: 'google-news',
   },
   // --- Added 2026-11-21, batch 1. Polled at its own measured interval, and

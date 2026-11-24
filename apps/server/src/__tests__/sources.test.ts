@@ -59,13 +59,18 @@ describe('sources: registry', () => {
   });
 
   it('starts every NEW source with breaking disabled, and keeps the original ten on', () => {
+    // A new outlet is off until someone hand-labels it against the 85% gate.
+    // الخليج is the ONE exception, enabled 2026-11-24 by the hold-out audit: its
+    // two incident headlines in the sample were both genuine.
     for (const id of NEW_IDS) {
+      if (id === 'alkhaleej') continue;
       expect(SOURCES.find((s) => s.id === id)?.breaking).toBe(false);
     }
+    expect(SOURCES.find((s) => s.id === 'alkhaleej')?.breaking).toBe(true);
     // The ten that rule G was measured on keep working as before.
     expect(SOURCES.find((s) => s.id === 'aljazeera')?.breaking).toBe(true);
     expect(SOURCES.find((s) => s.id === 'almasry')?.breaking).toBe(true);
-    expect(SOURCES.filter((s) => s.breaking)).toHaveLength(10);
+    expect(SOURCES.filter((s) => s.breaking)).toHaveLength(11);
   });
 
   it('polls a high-volume outlet more often than a quiet one', () => {
@@ -189,7 +194,8 @@ describe('sources: breaking stays off for new outlets', () => {
       expect(s.rssUrl).toContain('news.google.com/rss/search?q=site:');
     }
     // Still exactly the original ten may raise breaking.
-    expect(SOURCES.filter((x) => x.breaking)).toHaveLength(10);
+    // 11, not 10: الخليج was enabled by the hold-out audit (TASK 1b).
+    expect(SOURCES.filter((x) => x.breaking)).toHaveLength(11);
   });
 
   it('rejects section fronts, which are not stories', () => {
@@ -269,7 +275,8 @@ describe('sources: breaking stays off for new outlets', () => {
       expect(s).toBeTruthy();
       expect(s?.breaking).toBe(false);
     }
-    expect(SOURCES.filter((x) => x.breaking)).toHaveLength(10);
+    // 11, not 10: الخليج was enabled by the hold-out audit (TASK 1b).
+    expect(SOURCES.filter((x) => x.breaking)).toHaveLength(11);
   });
 
   it('adds the business/TV trio with breaking disabled', () => {
@@ -278,7 +285,8 @@ describe('sources: breaking stays off for new outlets', () => {
       expect(s).toBeTruthy();
       expect(s?.breaking).toBe(false);
     }
-    expect(SOURCES.filter((x) => x.breaking)).toHaveLength(10);
+    // 11, not 10: الخليج was enabled by the hold-out audit (TASK 1b).
+    expect(SOURCES.filter((x) => x.breaking)).toHaveLength(11);
   });
 
   it('scopes Euronews to its Arabic section, not the whole site', () => {

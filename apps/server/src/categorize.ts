@@ -287,6 +287,26 @@ const NON_EVENT_ALERT = [
   'تهمة',
   'محكمة العدل',
   'سئم الحرب',
+  // Added 2026-11-24 from the hold-out label audit (TASK 1b): an outlet that
+  // prefixes EVERY headline with «عاجل|» or a red bullet still marks ordinary
+  // copy that way. Measured on real headlines: a weather warning, a currency
+  // price move, and three market-update posts all fired purely on the label.
+  // These are not events an editor interrupts for.
+  'حالة الطقس',
+  'الطقس اليوم',
+  'الأرصاد',
+  'سعر الدولار',
+  'الأسواق',
+  'أسواق الخليج',
+  'البورصة',
+  'تحديثات مباشرة',
+  'جلسة اليوم',
+  // A labelled announcement of a visit or a date is not an event: measured on a
+  // real «عاجل.. أمير قطر في القاهرة خلال الساعات القادمة», which carries no
+  // casualty and no toll at all.
+  'في القاهرة خلال',
+  'خلال الساعات القادمة',
+  'زيارة رسمية',
 ] as const;
 
 /**
