@@ -49,6 +49,7 @@ import { parseYallakoraGoals, type MatchGoal } from './yallakoraMatch.js';
 import { getAllArticles } from './db.js';
 import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
 import { clockFor, espnCompetitions, fetchEspnLive, fetchEspnLiveDay } from './espnLive.js';
+import { canonicalClub } from './clubAliases.js';
 import type { EspnLive } from './espnLive.js';
 import { halfText } from './espnClock.js';
 
@@ -481,7 +482,12 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
       squashSpacing(
         dropInitials(
           normalizeTeam(
-            name
+            // A club the two feeds name differently in a way no character rule can
+            // see: FilGoal calls Sabah «صباح باكو» (its city) where Yallakora calls
+            // it «صباح إف كيه». The alias table resolves both to one name, so the
+            // fixture becomes one row (#47). Every entry is anchored on the club's
+            // official name from an outside source, not on similarity.
+            canonicalClub(name)
               .replace(/\s*\|\s*تحت\s*\d+\s*$/, '')
               .replace(/\s*تحت\s*\d+\s*$/, '')
               // A trailing founding-year suffix («05», «04») is part of the club's
@@ -497,14 +503,20 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
               // pages, this folds exactly one pair (لافيينا / لافيينا أف سي) and
               // merges nothing else.
               .replace(/\s+(?:اف|أف|إف)\s+(?:سي|سى)$/, '')
-              // Saudi «أهلي جدة» is written «الأهلي» by the other source, and both
-              // are the same club — not Egypt's Al Ahly, which never plays Al Nassr
-              // in this competition. Normalised to one form so one fixture is one row.
-              .replace(/^الاهلي$/, 'اهلي')
-              .replace(/^اهلي جده$/, 'اهلي')
               .replace(/\s+/g, ' ')
               .trim(),
-          ),
+          )
+            // These two run AFTER normalisation, because they are written against
+            // the FOLDED spelling (ة→ه, أ→ا). Applied to the raw name they never
+            // matched — «أهلي جدة» stayed «أهلي جدة» while «الأهلي» stayed
+            // «الأهلي», so the Saudi fixture was listed twice, once per source.
+            //
+            // Saudi «أهلي جدة» is written «الأهلي» by the other source, and both are
+            // the same club — not Egypt's Al Ahly, which never plays Al Nassr in
+            // this competition. One form, so one fixture is one row.
+            .replace(/^الاهلي$/, 'اهلي')
+            .replace(/^اهلي جده$/, 'اهلي')
+            .trim(),
         ),
       );
     // Home and away are meaningful for the fixture, but a provider can list them
@@ -592,6 +604,14 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
       );
     }
   }
+  // A club the feeds name differently is shown under one name everywhere, even
+  // when only one row exists that day: «صباح باكو» is not a club a reader can
+  // recognise, and the app should never print it (#47).
+  for (const row of seen.values()) {
+    row.home = canonicalClub(row.home);
+    row.away = canonicalClub(row.away);
+  }
+
   // The competition's own priority decides the order (Egypt first), so the app
   // renders what it is served and every screen agrees. Unknown competitions sort
   // last, then by name and kickoff time.
