@@ -24,6 +24,7 @@ import { HeroDeck } from '../components/HeroDeck';
 import { CategoryPills } from '../components/Pills';
 import { FloatingDock } from '../components/FloatingDock';
 import { VerifyBanner } from '../components/VerifyBanner';
+import { FirstRunPrivacyNotice } from '../components/FirstRunPrivacyNotice';
 import { useArticleSheet } from '../components/ArticleSheet';
 
 const PAGE_SIZE = 30;
@@ -258,6 +259,8 @@ export default function FeedScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        <FirstRunPrivacyNotice t={t} />
 
         <VerifyBanner t={t} />
 
