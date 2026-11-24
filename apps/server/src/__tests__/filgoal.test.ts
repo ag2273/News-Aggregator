@@ -297,6 +297,50 @@ describe('merging two sources', () => {
 });
 
 describe('competition names', () => {
+  it('folds a competition’s tier and season, which is not a different tournament', () => {
+    // Measured 2026-11-13: 20 fixtures listed twice under exactly these pairs, with
+    // identical team names and kickoffs. The tier is how the source files a group
+    // inside one tournament, not a separate competition.
+    expect(canonicalCompetition('دوري الأمم الأوروبية - المستوى الثالث')).toBe('دوري الأمم الأوروبية');
+    expect(canonicalCompetition('دوري الأمم الأوروبية - المستوى الأول')).toBe('دوري الأمم الأوروبية');
+    expect(canonicalCompetition('تصفيات كأس الأمم الإفريقية 2027')).toBe('تصفيات كأس الأمم الإفريقية');
+    expect(canonicalCompetition('مباريات ودية - منتخبات')).toBe('مباريات ودية دولية');
+    // …and the plain names stay themselves.
+    expect(canonicalCompetition('دوري الأمم الأوروبية')).toBe('دوري الأمم الأوروبية');
+  });
+
+  it('merges a friendly listed under two competition names into one row', () => {
+    // The shape measured on 2026-11-13: identical team names and kickoff, one feed
+    // adding the tier to the competition name.
+    const base: MatchRow = {
+      id: 'x',
+      competitionId: 'other',
+      competitionName: 'دوري الأمم الأوروبية',
+      home: 'مولدوفا',
+      away: 'كازاخستان',
+      homeScore: 1,
+      awayScore: 1,
+      status: 'finished',
+      statusText: 'انتهت',
+      kickoff: '19:00',
+      round: null,
+      minute: null,
+      dataSource: 'filgoal',
+    };
+    const merged = mergeDay(
+      [base],
+      [{ ...base, id: 'yk', dataSource: 'yallakora', competitionName: 'دوري الأمم الأوروبية - المستوى الثالث' }],
+    );
+    expect(merged).toHaveLength(1);
+  });
+
+  it('does not fold two different competitions that share a word', () => {
+    // «الدوري المصري» and the professional league below it are different
+    // competitions; the tier rule must not swallow one into the other.
+    expect(canonicalCompetition('الدوري المصري')).toBe('الدوري المصري');
+    expect(canonicalCompetition('دوري المحترفين المصري')).toBe('دوري القسم الثاني-أ');
+  });
+
   it('names the same tournament the same way from both sources', () => {
     // «كأس العالم تحت 17 عاما» and «كأس العالم تحت 17» are one tournament.
     expect(canonicalCompetition('كأس العالم تحت 17 عاما')).toBe('كأس العالم تحت 17');

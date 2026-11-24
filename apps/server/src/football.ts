@@ -743,6 +743,16 @@ export function canonicalCompetition(name: string): string {
   // is optional in the pattern.
   if (/كونفي?درالي/.test(n)) return 'كأس الكونفدرالية';
   if (/ابطال اوروبا/.test(n)) return 'دوري أبطال أوروبا';
+  // The same tournament, with one feed adding its tier or season:
+  // «دوري الأمم الأوروبية» vs «دوري الأمم الأوروبية - المستوى الثالث», and
+  // «تصفيات أمم أفريقيا» vs «تصفيات كأس الأمم الإفريقية 2027». The tier and the
+  // year are how the source files a group inside one tournament, not a different
+  // competition — measured on 2026-11-13, where 20 fixtures were listed twice under
+  // exactly these pairs, with IDENTICAL team names and kickoffs.
+  if (/دوري الامم الاوروبيه|دوري الامم الاوروبي/.test(n)) return 'دوري الأمم الأوروبية';
+  if (/تصفيات.*(امم|كاس الامم).*(افريقي|افريقيا)/.test(n)) return 'تصفيات كأس الأمم الإفريقية';
+  // «مباريات ودية - منتخبات» and «مباريات ودية دولية» are the same friendly.
+  if (/وديه.*(منتخبات|دوليه)/.test(n)) return 'مباريات ودية دولية';
   if (/^الدوري الانجليزي|الدوري الانجليزي الممتاز/.test(n)) return 'الدوري الإنجليزي';
   if (/الدوري الاسباني/.test(n)) return 'الدوري الإسباني';
   if (/الدوري الايطالي/.test(n)) return 'الدوري الإيطالي';
