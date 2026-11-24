@@ -330,4 +330,23 @@ describe('full team name only (user rule, #43)', () => {
       mentionsTeam('حمزة الجمل يعلن قائمة الاتحاد السكندري لمواجهة وادي دجلة', 'الاتحاد السكندري'),
     ).toBe(true);
   });
+
+  it('rejects every «أبو» headline the user was shown for زد × أبو قير (#43)', () => {
+    // Recorded from the user's screenshot: all ten related articles for ZED FC vs
+    // Abu Qir Fertilizers were non-sport stories that merely contained «أبو» —
+    // a hospital, a politician, the Sudan war, a bay, a sheikh. Verified against the
+    // previous matcher: every one of these matched then and none may match now.
+    const junk = [
+      'مستشفى أبو الريش للأطفال يستقبل حالات جديدة',
+      'أبو الغيط يلتقي وزير الخارجية السوداني',
+      'اشتباكات في أبو جبيهة بجنوب السودان',
+      'شرم الشيخ.. خليج أبو نهاس يجذب السياح',
+      'الشيخ أبو بكر يلقي خطبة الجمعة',
+    ];
+    for (const title of junk) {
+      expect(mentionsTeam(title, 'أبو قير للأسمدة')).toBe(false);
+    }
+    // The club's real coverage still matches, on the full name.
+    expect(mentionsTeam('أبو قير للأسمدة يهزم زد في الدوري', 'أبو قير للأسمدة')).toBe(true);
+  });
 });
