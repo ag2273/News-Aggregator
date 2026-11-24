@@ -95,7 +95,7 @@ export const ESPN_CLUB_NAMES: Record<string, ClubNames> = {
   "FC Cologne": { ar: "كولن" },
   "FC Porto": { ar: "بورتو" },
   "Fenerbahce": { ar: "فنربخشة" },
-  "Feyenoord Rotterdam": { ar: "فينورد" },
+  "Feyenoord Rotterdam": { ar: "فينورد", seen: ["فيينورد"] },
   "Fiorentina": { ar: "فيورنتينا" },
   "Frosinone": { ar: "فروزينوني" },
   "Fulham": { ar: "فولهام", seen: ["فولام"] },
