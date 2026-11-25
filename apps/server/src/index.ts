@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import { serve } from '@hono/node-server';
+import { installPublisherErrorGuard } from './netGuard.js';
+import { singleFlight, shouldRefresh } from './serveFast.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import {
@@ -230,14 +232,52 @@ if (loadResendKey()) {
   console.log('[email] Resend API key loaded — verification emails enabled');
 }
 
+// A publisher that closes an HTTP/2 stream mid-page must not take the process down
+// (#58): measured, one broken stream was an uncaught exception, the container
+// restarted, and the loop repeated until the app could not load news at all.
+installPublisherErrorGuard();
+
+/**
+ * The one place a feed refresh may start (#58).
+ *
+ * Every caller goes through this, so a request and the timer can never run two
+ * sweeps of 29 feeds at once. On production hardware a sweep also costs ~4.3s of
+ * BLOCKING CPU re-serialising the 20MB store, which is why this is not called on a
+ * per-request basis any more.
+ */
+const refreshState: { running: Promise<void> | null } = { running: null };
+let lastRefreshAt = 0;
+
+export function startRefresh(): { joined: boolean } {
+  const { joined } = singleFlight(
+    async () => {
+      try {
+        await refreshAll();
+      } finally {
+        lastRefreshAt = Date.now();
+      }
+    },
+    refreshState,
+  );
+  return { joined };
+}
+
+/** Kick a refresh only when the stored data is past its window and none is running. */
+function refreshInBackgroundIfDue(intervalMs: number): void {
+  if (!shouldRefresh({ now: Date.now(), lastRefreshAt, intervalMs, running: refreshState.running !== null })) {
+    return;
+  }
+  startRefresh();
+}
+
 // Trigger a refresh on startup, then every 10 minutes.
 //
 // NOT in a test process: importing this module for its routes would otherwise
 // fetch all 29 live feeds and keep timers running, which made the suite hang
 // intermittently once the corpus grew.
 if (process.env['NODE_ENV'] !== 'test') {
-  refreshAll().catch(console.error);
-  setInterval(() => refreshAll().catch(console.error), 10 * 60 * 1000);
+  startRefresh();
+  setInterval(() => startRefresh(), 10 * 60 * 1000);
   // Football scores: polled separately from the news feeds, because a score has its
   // own cadence and its own (much smaller) budget on the source.
   //
@@ -820,7 +860,11 @@ app.delete('/api/push/register', async (c) => {
 // --- News & Feed routes ---
 
 app.get('/api/feed', async (c) => {
-  await refreshAll();
+  // NEVER wait on the network here (#58). This route used to block on the feed
+  // sweep, so every reader waited for 29 feeds — up to 25s each — and the app looked
+  // like it had opened but would not load. Stored data is served immediately; a
+  // refresh starts in the background only when it is genuinely due.
+  refreshInBackgroundIfDue(5 * 60 * 1000);
   const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
   const offset = Number(c.req.query('offset') ?? 0);
   // Balanced across sources: one high-volume outlet could otherwise fill the

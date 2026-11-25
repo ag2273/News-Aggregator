@@ -161,3 +161,73 @@ describe('GET /api/feed: source balance', () => {
     expect(json.total).toBe(64);
   });
 });
+
+/**
+ * The production hang of 2026-11-25 (#58).
+ *
+ * Symptom the user felt: the app opened but the news never loaded. Cause measured:
+ * `GET /api/feed` began with `await refreshAll()`, a sweep of 29 feeds (up to 25s
+ * each), with no in-flight guard — so every reader waited on the internet and each
+ * extra reader started another sweep on a 1GB/2-vCPU box.
+ *
+ * These pin the rule where it is enforced: the route must answer from the store, and
+ * a refresh must never run twice at once.
+ */
+describe('GET /api/feed serves stored news without waiting for the network (#58)', () => {
+  it('answers promptly from the store rather than after a sweep of 29 feeds', async () => {
+    insertArticles([makeArticle('masrawy', 900, 60_000)]);
+    _resetDbCache();
+
+    const started = Date.now();
+    const res = await app.request('/api/feed?limit=5');
+    const elapsed = Date.now() - started;
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: unknown[] };
+    expect(json.data.length).toBeGreaterThan(0);
+    // A real sweep cannot finish this fast; serving from the store can.
+    expect(elapsed).toBeLessThan(2000);
+  });
+
+  it('does not read the route as awaiting a refresh', async () => {
+    // The regression was one line: `await refreshAll()`. Read the source so a future
+    // edit cannot quietly put it back — the runtime symptom is a hang, which a plain
+    // assertion on latency cannot catch on a test box with fast DNS.
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../index.ts'),
+      'utf8',
+    );
+    const feedRoute = src.slice(src.indexOf("app.get('/api/feed'"));
+    // Up to the next top-level route registration.
+    const nextRoute = feedRoute.indexOf("\napp.", 10);
+    const routeBody = nextRoute > 0 ? feedRoute.slice(0, nextRoute) : feedRoute;
+    expect(routeBody).not.toMatch(/await\s+refreshAll\s*\(/);
+    // And it must ask for a background refresh instead.
+    expect(routeBody).toMatch(/refreshInBackgroundIfDue\(/);
+  });
+});
+
+describe('a refresh sweeps the feeds once, even under many readers (#58)', () => {
+  it('joins the running refresh instead of starting another', async () => {
+    const { singleFlight } = await import('../serveFast.js');
+    const state: { running: Promise<void> | null } = { running: null };
+    let sweeps = 0;
+    let release: () => void = () => {};
+    const sweep = () => {
+      sweeps += 1;
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    };
+
+    const first = singleFlight(sweep, state);
+    const second = singleFlight(sweep, state);
+    const third = singleFlight(sweep, state);
+    expect(sweeps).toBe(1);
+    expect(second.joined && third.joined).toBe(true);
+
+    release();
+    await Promise.all([first.promise, second.promise, third.promise]);
+    expect(sweeps).toBe(1);
+  });
+});
