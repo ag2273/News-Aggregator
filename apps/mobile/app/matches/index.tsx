@@ -26,6 +26,7 @@ import {
   type MatchesDay,
 } from '../../lib/api';
 import { cairoDay, ribbonLabel } from '../../lib/dates';
+import { useMatchesDay } from '../../lib/useMatchesDay';
 import { LeagueStrip, MatchCard, matchCountLabel } from '../../components/FootballCard';
 
 type Filter = 'all' | 'live' | 'followed' | 'finished' | 'upcoming';
@@ -77,27 +78,21 @@ export default function MatchesScreen() {
   const gate = useAccountGate();
   const [offset, setOffset] = useState(0);
   const [filter, setFilter] = useState<Filter>('all');
-  const [day, setDay] = useState<MatchesDay | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const date = cairoDay(offset);
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setDay(await fetchMatches(date, token));
-    } catch (err) {
-      setError(isNetworkFailure(err) ? 'تعذّر الاتصال. حاول مرة أخرى.' : 'تعذّر تحميل المباريات.');
-    } finally {
-      setLoading(false);
-    }
-  }, [date, token]);
-
+  // Cache-first (#59): the last copy for this day is drawn immediately, the network
+  // refreshes behind it, and the screen swaps when the fresh answer lands.
+  const matchesState = useMatchesDay({ date, token });
+  const loading = matchesState.loading;
+  const error = matchesState.error;
+  const load = matchesState.reload;
+  // The page owns its copy of the day: a follow toggle edits it locally, and a fresh
+  // network answer replaces it.
+  const [day, setDay] = useState<MatchesDay | null>(null);
   useEffect(() => {
-    load();
-  }, [load]);
+    if (matchesState.day) setDay(matchesState.day);
+  }, [matchesState.day]);
 
   const followed = useMemo(() => new Set(day?.followedTeams ?? []), [day]);
   const followedLeagues = useMemo(() => new Set(day?.followedLeagues ?? []), [day]);
@@ -351,7 +346,22 @@ export default function MatchesScreen() {
           <View style={styles.stateWrap}>
             <ActivityIndicator color={t.accent} />
           </View>
-        ) : error ? (
+        ) : matchesState.staleNotice || matchesState.updatingLabel ? (
+          // The list below is real data, but it is not being sold as current (#59):
+          // either a refresh is in flight over it, or the last refresh failed.
+          <View style={[styles.updateBar, { borderBottomColor: t.borderLight }]}>
+            {matchesState.staleNotice ? (
+              <Ionicons name="cloud-offline-outline" size={13} color={t.textMuted} />
+            ) : (
+              <ActivityIndicator size="small" color={t.accent} />
+            )}
+            <Text style={[styles.updateText, { color: t.textSecondary }]}>
+              {matchesState.staleNotice ?? matchesState.updatingLabel}
+            </Text>
+          </View>
+        ) : null}
+
+        {loading ? null : error ? (
           <ScrollView contentContainerStyle={styles.stateScroll}>
             <Ionicons name="cloud-offline-outline" size={30} color={t.textMuted} />
             <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>{error}</Text>
@@ -509,6 +519,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     paddingVertical: 36,
   },
+  updateBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  updateText: { fontFamily: 'Cairo_400Regular', fontSize: 11 },
   stateWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontFamily: 'Cairo_700Bold', fontSize: 15, textAlign: 'center', flexShrink: 1, lineHeight: 24 },
   emptyBody: { fontFamily: 'Cairo_400Regular', fontSize: 12, textAlign: 'center', flexShrink: 1, lineHeight: 20 },

@@ -5,6 +5,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ArticleSheetProvider } from '../components/ArticleSheet';
 import { AuthProvider, useAuth } from '../lib/auth';
+import { cairoDay } from '../lib/dates';
+import { prefetchTodayMatches } from '../lib/useMatchesDay';
 import { initCrashReporting } from '../lib/crash';
 import { beaconPing } from '../lib/analytics';
 import {
@@ -36,6 +38,13 @@ function PushTokenSync() {
     beaconPing();
   }, []);
   useEffect(() => addPushTokenRefreshListener(() => token), [token]);
+
+  // Warm today's matches so opening that page is instant (#59). ONE request, at the
+  // reader's own rate, and a no-op when a fresh copy is already stored — the server is
+  // small (see #58) and the phone must not look like a scraper.
+  useEffect(() => {
+    prefetchTodayMatches({ date: cairoDay(0), token }).catch(() => {});
+  }, [token]);
 
   // Verification happens in the browser, so re-read the session whenever the
   // app comes back to the foreground: the user taps the link, returns, and the
