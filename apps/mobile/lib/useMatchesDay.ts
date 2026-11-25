@@ -92,13 +92,20 @@ export function useMatchesDay(args: {
 
     // 2. The network, always — the copy is a starting point, not a final answer.
     setRefreshing(true);
+    // Assigned BEFORE the await, so the catch can still attach to it when the screen
+    // gives up first (#60).
+    let lateSettled: Promise<MatchesDay> | null = null;
     logEvent('state', 'matches-refresh-start', { date, fromCache: cachedUsable && !!cached });
     const startedAt = Date.now();
     try {
       // A hard deadline on the whole attempt (#60). `apiFetch` already times out the
       // HTTP call, but this also covers a promise that never settles for any other
       // reason: the badge must ALWAYS clear, success or failure.
-      const fresh = await withDeadline(fetchMatches(date, token), MATCHES_FETCH_DEADLINE_MS);
+      // Keep the bare promise too: if it lands AFTER the screen gave up, its data is
+      // still real and should replace the copy silently — no second spinner (#60).
+      const bare = fetchMatches(date, token);
+      lateSettled = bare;
+      const fresh = await withDeadline(bare, MATCHES_FETCH_DEADLINE_MS);
       if (!stillCurrent()) return;
       setDay(fresh);
       setFreshness('fresh');
@@ -113,6 +120,21 @@ export function useMatchesDay(args: {
       // A failure with a copy on screen keeps the copy and admits it is old. A
       // failure with nothing to show is the old error state.
       const kind = classifyFailure(err, isNetworkFailure);
+      if (kind === 'timeout' && lateSettled) {
+        // The screen already said "slow". If the answer arrives later, show it
+        // quietly: no spinner, no second message (#60).
+        void lateSettled
+          .then((late) => {
+            // Only apply if the reader has not moved to another day in the meantime.
+            if (!stillCurrent()) return;
+            setDay(late);
+            setFreshness('fresh');
+            setStaleNotice(null);
+            logEvent('state', 'matches-late-arrival', { date, ms: Date.now() - startedAt });
+            void store.write(date, token, late);
+          })
+          .catch(() => {});
+      }
       // Why the updating state ended: failure or timeout (#60).
       logEvent('state', 'matches-refresh-end', {
         why: kind,

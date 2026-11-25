@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { Theme } from '../constants/colors';
 import { fetchReaderArticle, type ReaderArticle, type ReaderBlock } from '../lib/api';
 import { isDeviceFirstUrl } from '../lib/adBlockHosts';
+import { fetchReaderWithRetry } from '../lib/readerResilience';
 import { useArticleSpeech } from '../lib/articleSpeech';
 import { ListenButton, SpeechNotice } from './ListenButton';
 import { DeviceArticlePane } from './DeviceArticlePane';
@@ -78,7 +79,10 @@ export function ArticleReadPane({
 
   useEffect(() => {
     let cancelled = false;
-    fetchReaderArticle(articleId ?? null, url)
+    // One bounded retry (#60). The user's own log showed the same article attempted
+    // three times, each dying at the 20s deadline — the reader tapped again and paid
+    // another 20s. A blip is worth one retry; a dead server is not worth a loop.
+    fetchReaderWithRetry(articleId ?? null, url, { fetchReader: fetchReaderArticle })
       .then((article) => {
         if (cancelled) return;
         // `readable` is the server's verdict that it produced a body worth showing.
