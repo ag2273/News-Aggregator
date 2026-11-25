@@ -222,7 +222,88 @@ export function matchesForTeams(matches: MatchRow[], teams: string[]): MatchRow[
  * of the day refresh. Cached in the day store's neighbourhood: a commentator does
  * not change once announced.
  */
+/**
+ * The detail cache (#60).
+ *
+ * Measured before this: the match centre took 1.5-2.1s on EVERY open, because
+ * `loadMatchDetail` fetched the provider's page each time with no cache at all — a
+ * reader who opened the same match twice paid twice.
+ *
+ * Kept deliberately small and honest:
+ *   * keyed per provider match, so two matches never share an entry;
+ *   * 60s, the same window as the day cache, because a LIVE match's timeline grows;
+ *   * the small result is stored, not the HTML, so the memory cost is a few KB;
+ *   * one in-flight fetch per key, so a double tap does not hit the provider twice.
+ *
+ * A finished match is immutable, so its entry lives longer — there is nothing that
+ * can change after the final whistle.
+ */
+const DETAIL_TTL_LIVE_MS = 60 * 1000;
+const DETAIL_TTL_FINAL_MS = 24 * 60 * 60 * 1000;
+export type MatchDetailData = {
+  commentator: string | null;
+  channel: string | null;
+  homeCoach: string | null;
+  awayCoach: string | null;
+  lineups: FilGoalLineups | null;
+  events: MatchEvent[];
+  goals: MatchGoal[];
+};
+const detailCache = new Map<string, { at: number; finished: boolean; data: MatchDetailData }>();
+const detailInFlight = new Map<string, Promise<MatchDetailData | null>>();
+
+/** Test seam: forget every cached match detail. */
+export function _resetMatchDetailCache(): void {
+  detailCache.clear();
+  detailInFlight.clear();
+}
+
+/** The cache key: the provider's own id, so two fixtures can never collide. */
+function detailKey(match: MatchRow): string {
+  return `${match.dataSource}:${match.providerMatchId ?? match.url ?? match.id}:${match.status === 'finished' ? 'final' : 'live'}`;
+}
+
 export async function loadMatchDetail(
+  match: MatchRow,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<{
+  commentator: string | null;
+  channel: string | null;
+  homeCoach: string | null;
+  awayCoach: string | null;
+  lineups: FilGoalLineups | null;
+  events: MatchEvent[];
+  goals: MatchGoal[];
+} | null> {
+  const key = detailKey(match);
+  const hit = detailCache.get(key);
+  if (hit) {
+    const ttl = hit.finished ? DETAIL_TTL_FINAL_MS : DETAIL_TTL_LIVE_MS;
+    if (Date.now() - hit.at < ttl) return hit.data;
+    detailCache.delete(key);
+  }
+  const running = detailInFlight.get(key);
+  if (running) return running;
+  const job = fetchMatchDetail(match, options).then((data) => {
+    if (data) {
+      detailCache.set(key, {
+        at: Date.now(),
+        finished: match.status === 'finished',
+        data,
+      });
+    }
+    return data;
+  });
+  detailInFlight.set(key, job);
+  try {
+    return await job;
+  } finally {
+    detailInFlight.delete(key);
+  }
+}
+
+/** The uncached fetch. Split out so the cache above stays readable. */
+async function fetchMatchDetail(
   match: MatchRow,
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<{

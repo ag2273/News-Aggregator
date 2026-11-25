@@ -139,6 +139,31 @@ export function getCachedDay(date: string, now: number = Date.now()): DayCache |
   return day;
 }
 
+/**
+ * A day for a screen that must answer NOW, even when the fresh copy is overdue (#60).
+ *
+ * `getCachedDay` is the LIVE contract: nothing older than 60s, because a score can
+ * change. But the match centre spent 1.5-2.1s on every open because it re-entered the
+ * day loader each time, and a reader opening a match is not asking for a live minute —
+ * they get that separately from the clock at read time. So this returns the last known
+ * fixtures even when they are past the live window, and the route says how old they
+ * are (`fetchedAt`) rather than pretending they are current.
+ *
+ * Bounded to the same Cairo day: yesterday's fixtures under today's date would be a
+ * different set of matches, which is not a staleness the reader can interpret.
+ */
+export function getDayForMatchDetail(
+  date: string,
+  now: number = Date.now(),
+  maxAgeMs: number = 3 * 60 * 60 * 1000,
+): DayCache | null {
+  const day = load().days[date];
+  if (!day) return null;
+  if (day.date !== date) return null;
+  if (now - day.fetchedAt > maxAgeMs) return null;
+  return day;
+}
+
 export function storeDay(date: string, matches: MatchRow[], unavailable = false): DayCache {
   const store = load();
   const day = { date, fetchedAt: Date.now(), unavailable, matches };

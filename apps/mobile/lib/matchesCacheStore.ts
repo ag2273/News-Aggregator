@@ -11,6 +11,7 @@
 
 import { Directory, File, Paths } from 'expo-file-system';
 import { cacheKey } from './matchesCache';
+import { logEvent } from './perfLog';
 import type { CachedMatches } from './matchesCache';
 import type { MatchesDay } from './api';
 
@@ -46,9 +47,13 @@ export interface MatchesCacheStore {
 /** The real store. */
 export const matchesCacheStore: MatchesCacheStore = {
   async read(date, token) {
+    const started = Date.now();
     try {
       const file = fileFor(date, token);
-      if (!file.exists) return null;
+      if (!file.exists) {
+        logEvent('cache', 'matches-read', { date, hit: false, ms: Date.now() - started });
+        return null;
+      }
       const parsed = JSON.parse(await file.text()) as unknown;
       if (!parsed || typeof parsed !== 'object') return null;
       const candidate = parsed as Partial<CachedMatches>;
@@ -63,6 +68,12 @@ export const matchesCacheStore: MatchesCacheStore = {
       ) {
         return null;
       }
+      logEvent('cache', 'matches-read', {
+        date,
+        hit: true,
+        bytes: JSON.stringify(candidate).length,
+        ms: Date.now() - started,
+      });
       return { day: candidate.day as MatchesDay, storedAt: candidate.storedAt };
     } catch {
       return null;
@@ -70,11 +81,14 @@ export const matchesCacheStore: MatchesCacheStore = {
   },
 
   async write(date, token, day) {
+    const started = Date.now();
     try {
       const folder = dir();
       if (!folder.exists) folder.create({ idempotent: true });
       const payload: CachedMatches = { day, storedAt: Date.now() };
-      await fileFor(date, token).write(JSON.stringify(payload));
+      const body = JSON.stringify(payload);
+      await fileFor(date, token).write(body);
+      logEvent('cache', 'matches-write', { date, bytes: body.length, ms: Date.now() - started });
     } catch {
       // A full disk or a read-only cache dir must not break the screen.
     }

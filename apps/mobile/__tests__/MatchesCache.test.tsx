@@ -186,6 +186,9 @@ describe('the page opens from the cache, then refresh makes it true', () => {
     // …and the reader is told it is not current.
     expect(state.staleNotice).toBe(STALE_FAILED_LABEL);
     expect(state.error).toBeNull();
+    // And the spinner text is gone: one honest message, not a spinner plus a message.
+    expect(state.updatingLabel).toBeNull();
+    expect(state.refreshing).toBe(false);
   });
 
   it('shows the honest error when the refresh fails and there is no copy', async () => {

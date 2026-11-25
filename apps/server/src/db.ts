@@ -109,9 +109,72 @@ function load(): StoredArticle[] {
   return cache;
 }
 
-function save(): void {
+/**
+ * Persist the store in the background (#60).
+ *
+ * Measured on the production store (20,155,190 bytes / 21,409 rows): one
+ * stringify + writeFileSync costs ~173ms of BLOCKING work. `refreshAll` inserts per
+ * source, so one sweep of 29 feeds blocked the event loop for ~4.3s — and every
+ * route, including the match centre, queued behind it. That is the user's "match
+ * centre almost never opened" and "the app is slow after the cache", with no route
+ * of theirs actually slow.
+ *
+ * The write is now asynchronous and coalesced: many inserts in one sweep produce ONE
+ * write of the latest state, not 29. A crash between insert and flush can lose the
+ * newest rows (they would simply be fetched again), which is the trade this makes on
+ * purpose: serving readers beats fsync honesty for a news cache.
+ */
+let saveInFlight: Promise<void> | null = null;
+let saveQueued = false;
+
+/**
+ * Whether writes must land before `save()` returns.
+ *
+ * True in a test or a one-shot script: a caller that inserts and then re-reads the
+ * file expects its rows to be there. False in the server, where blocking the event
+ * loop per insert is the whole problem this fixes (#60).
+ */
+const SYNC_SAVE = process.env['NODE_ENV'] === 'test' || process.env['DB_SYNC_SAVE'] === '1';
+
+function saveSync(): void {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  fs.writeFileSync(DB_PATH, JSON.stringify(cache));
+  fs.writeFileSync(DB_PATH, JSON.stringify(cache ?? []));
+}
+
+function save(): void {
+  if (SYNC_SAVE) {
+    saveSync();
+    return;
+  }
+  // Coalesce: if a write is already running, remember that another is needed and
+  // let the running one pick the newest state when it finishes.
+  if (saveInFlight) {
+    saveQueued = true;
+    return;
+  }
+  const write = async (): Promise<void> => {
+    do {
+      saveQueued = false;
+      const snapshot = JSON.stringify(cache ?? []);
+      await fs.promises.mkdir(path.dirname(DB_PATH), { recursive: true });
+      await fs.promises.writeFile(DB_PATH, snapshot);
+    } while (saveQueued);
+  };
+  saveInFlight = write()
+    .catch((err) => {
+      console.error('[db] save failed:', err);
+    })
+    .finally(() => {
+      saveInFlight = null;
+    });
+}
+
+/**
+ * Wait for the pending write to land. For tests and for a graceful shutdown; the
+ * servers route never awaits this.
+ */
+export async function flushDb(): Promise<void> {
+  while (saveInFlight) await saveInFlight;
 }
 
 export function insertArticles(articles: Article[]): number {

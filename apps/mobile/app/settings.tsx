@@ -39,6 +39,7 @@ type DeviceState =
 
 export default function SettingsScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
+
   const { user, token, loading: authLoading, emailVerified } = useAuth();
 
   const [enabled, setEnabled] = useState(false);

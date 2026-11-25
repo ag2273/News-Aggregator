@@ -33,6 +33,7 @@ import {
   type MatchNews,
 } from '../../lib/api';
 import { liveText } from '../../lib/liveLabel';
+import { logEvent } from '../../lib/perfLog';
 
 type NewsItem = MatchNews;
 
@@ -93,7 +94,10 @@ export default function MatchCenterScreen() {
     // good match with «تعذّر تحميل المباراة» — the screen the user photographed.
     let loaded: FootballMatch | null = null;
     try {
+      const started = Date.now();
+      logEvent('screen', 'match-open-start', { id });
       const data = await fetchMatch(id, date ?? '');
+      logEvent('screen', 'match-open-response', { id, ms: Date.now() - started });
       loaded = data.match;
       setMatch(data.match);
       setDetail(data.detail ?? null);

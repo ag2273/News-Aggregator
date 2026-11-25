@@ -17,13 +17,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchMatches, isNetworkFailure } from './api';
 import type { MatchesDay } from './api';
 import {
-  STALE_FAILED_LABEL,
   freshnessOf,
   shouldShowUpdating,
   usableForDay,
 } from './matchesCache';
 import type { Freshness } from './matchesCache';
 import { matchesCacheStore } from './matchesCacheStore';
+import { logEvent } from './perfLog';
+import {
+  MATCHES_FETCH_DEADLINE_MS,
+  classifyFailure,
+  failureMessage,
+  staleFailureMessage,
+  withDeadline,
+} from './matchesState';
 import type { MatchesCacheStore } from './matchesCacheStore';
 
 export interface MatchesState {
@@ -85,26 +92,39 @@ export function useMatchesDay(args: {
 
     // 2. The network, always — the copy is a starting point, not a final answer.
     setRefreshing(true);
+    logEvent('state', 'matches-refresh-start', { date, fromCache: cachedUsable && !!cached });
+    const startedAt = Date.now();
     try {
-      const fresh = await fetchMatches(date, token);
+      // A hard deadline on the whole attempt (#60). `apiFetch` already times out the
+      // HTTP call, but this also covers a promise that never settles for any other
+      // reason: the badge must ALWAYS clear, success or failure.
+      const fresh = await withDeadline(fetchMatches(date, token), MATCHES_FETCH_DEADLINE_MS);
       if (!stillCurrent()) return;
       setDay(fresh);
       setFreshness('fresh');
       setLoading(false);
       setStaleNotice(null);
+      // Why the updating state ended: success (#60).
+      logEvent('state', 'matches-refresh-end', { why: 'ok', ms: Date.now() - startedAt });
       // 3. Store it for the next open.
       void store.write(date, token, fresh);
     } catch (err) {
       if (!stillCurrent()) return;
       // A failure with a copy on screen keeps the copy and admits it is old. A
       // failure with nothing to show is the old error state.
+      const kind = classifyFailure(err, isNetworkFailure);
+      // Why the updating state ended: failure or timeout (#60).
+      logEvent('state', 'matches-refresh-end', {
+        why: kind,
+        ms: Date.now() - startedAt,
+        hadCopy: cachedUsable && !!cached,
+      });
       if (cachedUsable && cached) {
-        setStaleNotice(STALE_FAILED_LABEL);
+        // Keep the copy, but say plainly why it is not being replaced (#60).
+        setStaleNotice(staleFailureMessage(kind));
         setFreshness(freshnessOf(cached, Date.now()));
       } else {
-        setError(
-          isNetworkFailure(err) ? 'تعذّر الاتصال. حاول مرة أخرى.' : 'تعذّر تحميل المباريات.',
-        );
+        setError(failureMessage(kind));
       }
       setLoading(false);
     } finally {
@@ -128,7 +148,10 @@ export function useMatchesDay(args: {
     error,
     staleNotice,
     freshness,
-    updatingLabel: shouldShowUpdating({ freshness, refreshing }) ? 'جاري التحديث…' : null,
+    // A failed refresh is not "updating": the honest message replaces the spinner text
+    // instead of sitting next to it (#60).
+    updatingLabel:
+      staleNotice === null && shouldShowUpdating({ freshness, refreshing }) ? 'جاري التحديث…' : null,
     reload: () => {
       void run();
     },
@@ -146,6 +169,8 @@ export function useMatchesDay(args: {
  * A no-op when a usable copy already exists — re-warming a fresh cache would be a
  * request for nothing.
  */
+const prefetchInFlight = new Map<string, Promise<boolean>>();
+
 export async function prefetchTodayMatches(args: {
   date: string;
   token?: string | null;
@@ -153,14 +178,28 @@ export async function prefetchTodayMatches(args: {
   now?: number;
 }): Promise<boolean> {
   const { date, token, store = matchesCacheStore, now = Date.now() } = args;
-  try {
-    const cached = await store.read(date, token);
-    if (usableForDay(cached, date, now) && freshnessOf(cached, now) === 'fresh') return false;
-    const fresh = await fetchMatches(date, token);
-    await store.write(date, token, fresh);
-    return true;
-  } catch {
-    // A prefetch that fails is not an error the reader should ever see.
-    return false;
-  }
+  // One prefetch per day+identity at a time (#60). The prefetch effect re-runs
+  // whenever the auth token settles, which fired a SECOND full request during
+  // start-up on the user's phone — measured locally as two calls where one belongs.
+  const key = `${date}:${token ? 'signed' : 'guest'}`;
+  const running = prefetchInFlight.get(key);
+  if (running) return running;
+
+  const job = (async (): Promise<boolean> => {
+    try {
+      const cached = await store.read(date, token);
+      if (usableForDay(cached, date, now) && freshnessOf(cached, now) === 'fresh') return false;
+      const fresh = await fetchMatches(date, token);
+      await store.write(date, token, fresh);
+      return true;
+    } catch {
+      // A prefetch that fails is not an error the reader should ever see.
+      return false;
+    } finally {
+      prefetchInFlight.delete(key);
+    }
+  })();
+
+  prefetchInFlight.set(key, job);
+  return job;
 }

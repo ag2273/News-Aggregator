@@ -138,13 +138,14 @@ import {
 } from './footballService.js';
 import { COMPETITIONS, hasLiveForReader } from './football.js';
 import {
+  clearCompetitionOrder,
   followLeague,
   followTeam,
   getCachedStandings,
+  getCompetitionOrder,
+  getDayForMatchDetail,
   getLeagueFollows,
   getTeamFollows,
-  clearCompetitionOrder,
-  getCompetitionOrder,
   setCompetitionOrder,
   setLeagueNotify,
   setTeamNotify,
@@ -1681,7 +1682,10 @@ app.get('/api/football/matches/:id', async (c) => {
   // «تعذّر التحميل»). A missing or blank date now means today.
   const requested = (c.req.query('date') ?? '').trim();
   const date = requested || todayCairo();
-  let day = await loadDay(date);
+  // Serve the day we already hold when it is from this Cairo day (#60). Measured:
+  // the old code re-entered the day loader on every open, and its 60s live window
+  // meant a reader paid the upstream fetch nearly every time.
+  let day = getDayForMatchDetail(date) ?? (await loadDay(date));
   let match = day.matches.find((m) => m.id === id);
   if (!match) {
     // The id is the stable handle; the date is only how we find it. A club page links
@@ -1690,7 +1694,7 @@ app.get('/api/football/matches/:id', async (c) => {
     for (const offset of [-1, 1, -2, 2, 0]) {
       const other = todayCairo(Date.now() + offset * 86_400_000);
       if (other === date) continue;
-      day = await loadDay(other);
+      day = getDayForMatchDetail(other) ?? (await loadDay(other));
       match = day.matches.find((m) => m.id === id);
       if (match) break;
     }

@@ -1,3 +1,4 @@
+
 export const API_BASE = process.env['EXPO_PUBLIC_API_URL'] ?? 'https://news.nileorbit.com';
 
 /** The server's 403 for "signed in but email not proven yet". */
@@ -17,6 +18,82 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+  }
+}
+
+
+// --- request deadline (#60) -------------------------------------------------------
+// Inlined rather than imported: this file is also loaded by plain node in the repo's
+// own check scripts, which need an explicit extension that the app's tsconfig rejects.
+
+/** How long any single API request may take. Measured endpoints answer in ~2s. */
+export const REQUEST_TIMEOUT_MS = 20_000;
+
+/** `signal` for a request, or undefined where the platform has no AbortSignal.timeout. */
+export function requestSignal(ms: number = REQUEST_TIMEOUT_MS): AbortSignal | undefined {
+  const factory = (AbortSignal as unknown as { timeout?: (n: number) => AbortSignal }).timeout;
+  if (typeof factory !== 'function') return undefined;
+  try {
+    return factory(ms);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Did the failure come from the deadline rather than the server? */
+export function isTimeoutFailure(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: unknown }).name;
+  return name === 'TimeoutError' || name === 'AbortError';
+}
+
+/**
+ * A performance line. Local only, never uploaded (#60).
+ *
+ * `perfLog` is imported lazily through a try/catch because the repo's own check
+ * scripts load this file with plain node, where the logger's `expo-file-system`
+ * dependency is not resolvable — a failure there must not break the API module.
+ */
+function logPerf(kind: string, name: string, detail?: Record<string, string | number | boolean>): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    (require('./perfLog') as typeof import('./perfLog')).logEvent(kind, name, detail);
+  } catch {
+    /* a diagnostic must never break a request */
+  }
+}
+
+/**
+ * `fetch` with a deadline (#60).
+ *
+ * Every API call goes through this, so no screen can be left with a request that never
+ * settles — the failure mode that kept «جاري التحديث…» on the matches page forever.
+ * The signal is merged into whatever the caller passed, so an existing abort still
+ * works.
+ */
+async function apiFetch(url: string, init: RequestInit & { signal?: AbortSignal | null } = {}): Promise<Response> {
+  const deadline = requestSignal();
+  const signal = init.signal ?? deadline;
+  // Only the route is logged, never the query — it can carry an article id or a search
+  // term the reader typed (#60). The route is enough to find a slow endpoint.
+  const route = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0] || url;
+  const started = Date.now();
+  try {
+    const res = await fetch(url, { ...init, signal });
+    logPerf('net', route, { ms: Date.now() - started, status: res.status, ok: res.ok });
+    return res;
+  } catch (err) {
+    const timedOut = isTimeoutFailure(err);
+    logPerf('net', route, {
+      ms: Date.now() - started,
+      ok: false,
+      err: timedOut ? 'timeout' : err instanceof Error ? err.name : 'unknown',
+    });
+    if (timedOut) {
+      // Normalised so `isNetworkFailure` sees a plain network failure.
+      throw new TypeError('Network request failed: timeout');
+    }
+    throw err;
   }
 }
 
@@ -104,7 +181,7 @@ export interface Article {
  */
 export async function fetchFeed(limit = 50, offset = 0, token?: string | null): Promise<Article[]> {
   const url = `${API_BASE}/api/feed?limit=${limit}&offset=${offset}`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw await apiError(res);
@@ -113,7 +190,7 @@ export async function fetchFeed(limit = 50, offset = 0, token?: string | null): 
 }
 
 export async function fetchArticle(id: string): Promise<Article> {
-  const res = await fetch(`${API_BASE}/api/articles/${encodeURIComponent(id)}`);
+  const res = await apiFetch(`${API_BASE}/api/articles/${encodeURIComponent(id)}`);
   if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Article };
   return json.data;
@@ -161,7 +238,7 @@ export async function fetchReaderArticle(
   url: string,
 ): Promise<ReaderArticle> {
   const query = id ? `?id=${encodeURIComponent(id)}` : `?url=${encodeURIComponent(url)}`;
-  const res = await fetch(`${API_BASE}/api/articles/reader${query}`);
+  const res = await apiFetch(`${API_BASE}/api/articles/reader${query}`);
   if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: ReaderArticle };
   return json.data;
@@ -191,7 +268,7 @@ export interface ResendResult {
  * Throws ResendRateLimited when the cooldown or the daily cap applies.
  */
 export async function resendVerification(token: string): Promise<ResendResult> {
-  const res = await fetch(`${API_BASE}/api/auth/resend-verification`, {
+  const res = await apiFetch(`${API_BASE}/api/auth/resend-verification`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -226,14 +303,14 @@ export interface SourceMeta {
 }
 
 export async function fetchCategories(): Promise<Category[]> {
-  const res = await fetch(`${API_BASE}/api/categories`);
+  const res = await apiFetch(`${API_BASE}/api/categories`);
   if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Category[] };
   return json.data;
 }
 
 export async function fetchTrending(limit = 20, token?: string | null): Promise<Article[]> {
-  const res = await fetch(`${API_BASE}/api/trending?limit=${limit}`, {
+  const res = await apiFetch(`${API_BASE}/api/trending?limit=${limit}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw await apiError(res);
@@ -247,7 +324,7 @@ export async function fetchSourceArticles(
   offset = 0,
   token?: string | null,
 ): Promise<{ source: SourceMeta; articles: Article[] }> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_BASE}/api/sources/${encodeURIComponent(sourceId)}/articles?limit=${limit}&offset=${offset}`,
     { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
   );
@@ -263,14 +340,14 @@ export interface Source {
 }
 
 export async function fetchSources(): Promise<Source[]> {
-  const res = await fetch(`${API_BASE}/api/sources`);
+  const res = await apiFetch(`${API_BASE}/api/sources`);
   if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: Source[] };
   return json.data;
 }
 
 export async function fetchFollows(token: string): Promise<string[]> {
-  const res = await fetch(`${API_BASE}/api/follows`, {
+  const res = await apiFetch(`${API_BASE}/api/follows`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw await apiError(res);
@@ -279,7 +356,7 @@ export async function fetchFollows(token: string): Promise<string[]> {
 }
 
 export async function followSource(sourceId: string, token: string): Promise<string[]> {
-  const res = await fetch(`${API_BASE}/api/follows/${encodeURIComponent(sourceId)}`, {
+  const res = await apiFetch(`${API_BASE}/api/follows/${encodeURIComponent(sourceId)}`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -289,7 +366,7 @@ export async function followSource(sourceId: string, token: string): Promise<str
 }
 
 export async function unfollowSource(sourceId: string, token: string): Promise<string[]> {
-  const res = await fetch(`${API_BASE}/api/follows/${encodeURIComponent(sourceId)}`, {
+  const res = await apiFetch(`${API_BASE}/api/follows/${encodeURIComponent(sourceId)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -299,7 +376,7 @@ export async function unfollowSource(sourceId: string, token: string): Promise<s
 }
 
 export async function fetchFollowingFeed(token: string, limit = 50, offset = 0): Promise<Article[]> {
-  const res = await fetch(`${API_BASE}/api/feed/following?limit=${limit}&offset=${offset}`, {
+  const res = await apiFetch(`${API_BASE}/api/feed/following?limit=${limit}&offset=${offset}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw await apiError(res);
@@ -308,7 +385,7 @@ export async function fetchFollowingFeed(token: string, limit = 50, offset = 0):
 }
 
 export async function fetchSavedArticles(token: string, limit = 50, offset = 0): Promise<Article[]> {
-  const res = await fetch(`${API_BASE}/api/saved?limit=${limit}&offset=${offset}`, {
+  const res = await apiFetch(`${API_BASE}/api/saved?limit=${limit}&offset=${offset}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw await apiError(res);
@@ -326,7 +403,7 @@ export async function searchArticles(
   offset = 0,
   token?: string | null,
 ): Promise<{ articles: Article[]; total: number }> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_BASE}/api/search?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`,
     { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
   );
@@ -336,7 +413,7 @@ export async function searchArticles(
 }
 
 export async function fetchIsArticleSaved(articleId: string, token: string): Promise<boolean> {
-  const res = await fetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
+  const res = await apiFetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw await apiError(res);
@@ -345,7 +422,7 @@ export async function fetchIsArticleSaved(articleId: string, token: string): Pro
 }
 
 export async function saveArticle(articleId: string, token: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
+  const res = await apiFetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -353,7 +430,7 @@ export async function saveArticle(articleId: string, token: string): Promise<voi
 }
 
 export async function unsaveArticle(articleId: string, token: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
+  const res = await apiFetch(`${API_BASE}/api/saved/${encodeURIComponent(articleId)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -409,7 +486,7 @@ export async function putReaction(
   type: ReactionType,
   token: string,
 ): Promise<{ counts: ReactionCounts; myReaction: ReactionType }> {
-  const res = await fetch(`${API_BASE}/api/articles/${encodeURIComponent(articleId)}/reaction`, {
+  const res = await apiFetch(`${API_BASE}/api/articles/${encodeURIComponent(articleId)}/reaction`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ type }),
@@ -426,7 +503,7 @@ export async function deleteReaction(
   articleId: string,
   token: string,
 ): Promise<{ counts: ReactionCounts; myReaction: null }> {
-  const res = await fetch(`${API_BASE}/api/articles/${encodeURIComponent(articleId)}/reaction`, {
+  const res = await apiFetch(`${API_BASE}/api/articles/${encodeURIComponent(articleId)}/reaction`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -497,7 +574,7 @@ export async function fetchGroupedFeed(
   offset = 0,
   token?: string | null,
 ): Promise<{ rows: FeedRow[]; total: number; totalRows: number }> {
-  const res = await fetch(`${API_BASE}/api/feed?grouped=1&limit=${limit}&offset=${offset}`, {
+  const res = await apiFetch(`${API_BASE}/api/feed?grouped=1&limit=${limit}&offset=${offset}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw await apiError(res);
@@ -526,7 +603,7 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 export async function fetchPreferences(token: string): Promise<KeywordPrefs> {
-  const res = await fetch(`${API_BASE}/api/preferences`, { headers: authHeaders(token) });
+  const res = await apiFetch(`${API_BASE}/api/preferences`, { headers: authHeaders(token) });
   if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: KeywordPrefs };
   return json.data;
@@ -537,7 +614,7 @@ export async function addFollowedKeyword(
   keyword: string,
   notify = true,
 ): Promise<{ keyword: string; label: string; notify: boolean }[]> {
-  const res = await fetch(`${API_BASE}/api/keywords`, {
+  const res = await apiFetch(`${API_BASE}/api/keywords`, {
     method: 'POST',
     headers: authHeaders(token),
     body: JSON.stringify({ keyword, notify }),
@@ -548,7 +625,7 @@ export async function addFollowedKeyword(
 }
 
 export async function removeFollowedKeyword(token: string, keyword: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/keywords/${encodeURIComponent(keyword)}`, {
+  const res = await apiFetch(`${API_BASE}/api/keywords/${encodeURIComponent(keyword)}`, {
     method: 'DELETE',
     headers: authHeaders(token),
   });
@@ -560,7 +637,7 @@ export async function setKeywordNotify(
   keyword: string,
   notify: boolean,
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/keywords/${encodeURIComponent(keyword)}/notify`, {
+  const res = await apiFetch(`${API_BASE}/api/keywords/${encodeURIComponent(keyword)}/notify`, {
     method: 'PUT',
     headers: authHeaders(token),
     body: JSON.stringify({ notify }),
@@ -569,7 +646,7 @@ export async function setKeywordNotify(
 }
 
 export async function mute(token: string, body: { keyword?: string; sourceId?: string }): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/mutes`, {
+  const res = await apiFetch(`${API_BASE}/api/mutes`, {
     method: 'POST',
     headers: authHeaders(token),
     body: JSON.stringify(body),
@@ -584,7 +661,7 @@ export async function unmute(
   const q = params.keyword
     ? `keyword=${encodeURIComponent(params.keyword)}`
     : `sourceId=${encodeURIComponent(params.sourceId ?? '')}`;
-  const res = await fetch(`${API_BASE}/api/mutes?${q}`, {
+  const res = await apiFetch(`${API_BASE}/api/mutes?${q}`, {
     method: 'DELETE',
     headers: authHeaders(token),
   });
@@ -597,7 +674,7 @@ export async function fetchReactions(
   articleId: string,
   token?: string | null,
 ): Promise<{ counts: ReactionCounts; myReaction: ReactionType | null }> {
-  const res = await fetch(`${API_BASE}/api/articles/${encodeURIComponent(articleId)}/reactions`, {
+  const res = await apiFetch(`${API_BASE}/api/articles/${encodeURIComponent(articleId)}/reactions`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw await apiError(res);
@@ -648,7 +725,7 @@ export interface DigestResponse {
 
 /** The digest for this reader (or the default topic mix for a guest). */
 export async function fetchDigest(token?: string | null): Promise<DigestResponse> {
-  const res = await fetch(`${API_BASE}/api/digest`, {
+  const res = await apiFetch(`${API_BASE}/api/digest`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw await apiError(res);
@@ -663,7 +740,7 @@ export interface DigestPrefs {
 }
 
 export async function fetchDigestPrefs(token: string): Promise<DigestPrefs> {
-  const res = await fetch(`${API_BASE}/api/digest/topics`, {
+  const res = await apiFetch(`${API_BASE}/api/digest/topics`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw await apiError(res);
@@ -673,7 +750,7 @@ export async function fetchDigestPrefs(token: string): Promise<DigestPrefs> {
 
 /** Save the chosen topics. An empty list is respected, not replaced by defaults. */
 export async function saveDigestTopics(token: string, topics: DigestTopic[]): Promise<DigestTopic[]> {
-  const res = await fetch(`${API_BASE}/api/digest/topics`, {
+  const res = await apiFetch(`${API_BASE}/api/digest/topics`, {
     method: 'PUT',
     headers: authHeaders(token),
     body: JSON.stringify({ topics }),
@@ -773,7 +850,7 @@ export interface TeamFollow {
 }
 
 export async function fetchMatches(date: string, token?: string | null): Promise<MatchesDay> {
-  const res = await fetch(`${API_BASE}/api/football/matches?date=${encodeURIComponent(date)}`, {
+  const res = await apiFetch(`${API_BASE}/api/football/matches?date=${encodeURIComponent(date)}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw await apiError(res);
@@ -875,7 +952,7 @@ export async function fetchMatch(
   news: MatchNews[];
   unavailable: boolean;
 }> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_BASE}/api/football/matches/${encodeURIComponent(id)}?date=${encodeURIComponent(date)}`,
   );
   if (!res.ok) throw await apiError(res);
@@ -887,14 +964,14 @@ export async function fetchMatch(
 }
 
 export async function fetchStandings(competitionId: string): Promise<{ unavailable: boolean; tables: StandingsTable[] }> {
-  const res = await fetch(`${API_BASE}/api/football/standings?competition=${encodeURIComponent(competitionId)}`);
+  const res = await apiFetch(`${API_BASE}/api/football/standings?competition=${encodeURIComponent(competitionId)}`);
   if (!res.ok) throw await apiError(res);
   const json = (await res.json()) as { data: { unavailable: boolean; tables: StandingsTable[] } };
   return { unavailable: json.data.unavailable, tables: json.data.tables };
 }
 
 export async function fetchTeamFollows(token: string): Promise<TeamFollow[]> {
-  const res = await fetch(`${API_BASE}/api/football/follows`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await apiFetch(`${API_BASE}/api/football/follows`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw await apiError(res);
   return ((await res.json()) as { data: { teams: TeamFollow[] } }).data.teams;
 }
@@ -904,7 +981,7 @@ export async function followFootballTeam(
   team: string,
   competitionId = 'egyptian-premier',
 ): Promise<TeamFollow[]> {
-  const res = await fetch(`${API_BASE}/api/football/follows`, {
+  const res = await apiFetch(`${API_BASE}/api/football/follows`, {
     method: 'PUT',
     headers: authHeaders(token),
     body: JSON.stringify({ team, competitionId }),
@@ -914,7 +991,7 @@ export async function followFootballTeam(
 }
 
 export async function unfollowFootballTeam(token: string, team: string): Promise<TeamFollow[]> {
-  const res = await fetch(`${API_BASE}/api/football/follows/${encodeURIComponent(team)}`, {
+  const res = await apiFetch(`${API_BASE}/api/football/follows/${encodeURIComponent(team)}`, {
     method: 'DELETE',
     headers: authHeaders(token),
   });
@@ -927,7 +1004,7 @@ export async function setFootballTeamNotify(
   team: string,
   prefs: { notifyKickoff?: boolean; notifyGoals?: boolean; notifyFinal?: boolean },
 ): Promise<TeamFollow> {
-  const res = await fetch(`${API_BASE}/api/football/follows/${encodeURIComponent(team)}/notify`, {
+  const res = await apiFetch(`${API_BASE}/api/football/follows/${encodeURIComponent(team)}/notify`, {
     method: 'PUT',
     headers: authHeaders(token),
     body: JSON.stringify(prefs),
@@ -977,7 +1054,7 @@ export interface FollowCatalog {
  * costs the reader one request and the sources nothing.
  */
 export async function fetchFollowCatalog(): Promise<FollowCatalog> {
-  const res = await fetch(`${API_BASE}/api/football/follow-catalog`);
+  const res = await apiFetch(`${API_BASE}/api/football/follow-catalog`);
   if (!res.ok) throw await apiError(res);
   return ((await res.json()) as { data: FollowCatalog }).data;
 }
@@ -992,7 +1069,7 @@ export async function fetchFollowCatalog(): Promise<FollowCatalog> {
 export async function fetchLiveStatus(
   token?: string | null,
 ): Promise<{ live: boolean; matches: Array<{ home: string; away: string; homeScore: number | null; awayScore: number | null }> }> {
-  const res = await fetch(`${API_BASE}/api/football/live-status`, {
+  const res = await apiFetch(`${API_BASE}/api/football/live-status`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw await apiError(res);
@@ -1024,7 +1101,7 @@ export const FALLBACK_COMPETITIONS: FootballCompetition[] = [
  * default, which is also what a reader sees before rearranging anything.
  */
 export async function fetchCompetitions(token?: string | null): Promise<FootballCompetition[]> {
-  const res = await fetch(`${API_BASE}/api/football/competitions`, {
+  const res = await apiFetch(`${API_BASE}/api/football/competitions`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw await apiError(res);
@@ -1042,7 +1119,7 @@ export interface CompetitionOrder {
 }
 
 export async function fetchCompetitionOrder(token?: string | null): Promise<CompetitionOrder> {
-  const res = await fetch(`${API_BASE}/api/football/competition-order`, {
+  const res = await apiFetch(`${API_BASE}/api/football/competition-order`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!res.ok) throw await apiError(res);
@@ -1054,7 +1131,7 @@ export async function saveCompetitionOrder(
   token: string,
   order: string[],
 ): Promise<{ order: string[]; personalised: boolean }> {
-  const res = await fetch(`${API_BASE}/api/football/competition-order`, {
+  const res = await apiFetch(`${API_BASE}/api/football/competition-order`, {
     method: 'PUT',
     headers: authHeaders(token),
     body: JSON.stringify({ order }),
@@ -1067,7 +1144,7 @@ export async function saveCompetitionOrder(
 export async function resetCompetitionOrder(
   token: string,
 ): Promise<{ order: string[]; personalised: boolean }> {
-  const res = await fetch(`${API_BASE}/api/football/competition-order`, {
+  const res = await apiFetch(`${API_BASE}/api/football/competition-order`, {
     method: 'DELETE',
     headers: authHeaders(token),
   });
@@ -1078,7 +1155,7 @@ export async function resetCompetitionOrder(
 // --- followed leagues ---
 
 export async function fetchLeagueFollows(token: string): Promise<LeagueFollow[]> {
-  const res = await fetch(`${API_BASE}/api/football/league-follows`, {
+  const res = await apiFetch(`${API_BASE}/api/football/league-follows`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw await apiError(res);
@@ -1086,7 +1163,7 @@ export async function fetchLeagueFollows(token: string): Promise<LeagueFollow[]>
 }
 
 export async function followLeague(token: string, competitionId: string): Promise<LeagueFollow[]> {
-  const res = await fetch(`${API_BASE}/api/football/league-follows`, {
+  const res = await apiFetch(`${API_BASE}/api/football/league-follows`, {
     method: 'PUT',
     headers: authHeaders(token),
     body: JSON.stringify({ competitionId }),
@@ -1096,7 +1173,7 @@ export async function followLeague(token: string, competitionId: string): Promis
 }
 
 export async function unfollowLeague(token: string, competitionId: string): Promise<LeagueFollow[]> {
-  const res = await fetch(`${API_BASE}/api/football/league-follows/${encodeURIComponent(competitionId)}`, {
+  const res = await apiFetch(`${API_BASE}/api/football/league-follows/${encodeURIComponent(competitionId)}`, {
     method: 'DELETE',
     headers: authHeaders(token),
   });
@@ -1109,7 +1186,7 @@ export async function setLeagueNotify(
   competitionId: string,
   prefs: { notifyKickoff?: boolean; notifyFinal?: boolean },
 ): Promise<LeagueFollow> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_BASE}/api/football/league-follows/${encodeURIComponent(competitionId)}/notify`,
     { method: 'PUT', headers: authHeaders(token), body: JSON.stringify(prefs) },
   );
@@ -1150,7 +1227,7 @@ export interface TeamPage {
 }
 
 export async function fetchTeamPage(name: string): Promise<TeamPage> {
-  const res = await fetch(`${API_BASE}/api/football/teams/${encodeURIComponent(name)}`);
+  const res = await apiFetch(`${API_BASE}/api/football/teams/${encodeURIComponent(name)}`);
   if (!res.ok) throw await apiError(res);
   return ((await res.json()) as { data: TeamPage }).data;
 }
@@ -1170,7 +1247,7 @@ export interface CompetitionPage {
 }
 
 export async function fetchCompetitionPage(id: string): Promise<CompetitionPage> {
-  const res = await fetch(`${API_BASE}/api/football/competitions/${encodeURIComponent(id)}`);
+  const res = await apiFetch(`${API_BASE}/api/football/competitions/${encodeURIComponent(id)}`);
   if (!res.ok) throw await apiError(res);
   return ((await res.json()) as { data: CompetitionPage }).data;
 }

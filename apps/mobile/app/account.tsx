@@ -1,5 +1,6 @@
 import React, { useCallback, useRef } from 'react';
 import {
+  Share,
   ActivityIndicator,
   StyleSheet,
   Text,
@@ -21,8 +22,15 @@ import appConfig from '../app.json';
 /** Amber for "waiting on you" states; the palette has no warning token. */
 const AMBER = '#F59E0B';
 import { useVerificationActions } from '../components/VerificationGate';
+import { readLog } from '../lib/perfLog';
 
 export default function AccountScreen() {
+  /** Hand the performance log over as text — timed routes only, never uploaded (#60). */
+  const sharePerfLog = useCallback(async () => {
+    const log = await readLog();
+    await Share.share({ message: log }).catch(() => {});
+  }, []);
+
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
   const { user, loading, signOut, emailVerified } = useAuth();
   const verify = useVerificationActions();
@@ -179,6 +187,23 @@ export default function AccountScreen() {
                 <Ionicons name="notifications-outline" size={18} color={t.textPrimary} />
                 <Text style={[styles.settingsRowText, { color: t.textPrimary }]}>
                   الإشعارات
+                </Text>
+                <Ionicons name="chevron-back" size={16} color={t.textMuted} />
+              </TouchableOpacity>
+
+              <View style={[styles.divider, { backgroundColor: t.borderLight }]} />
+
+              {/* Diagnostics the user asked for (#60): local-only, never uploaded. */}
+              <TouchableOpacity
+                style={styles.settingsRow}
+                onPress={sharePerfLog}
+                accessibilityRole="button"
+                accessibilityLabel="نسخ سجل الأداء"
+                testID="share-perf-log"
+              >
+                <Ionicons name="pulse-outline" size={18} color={t.textPrimary} />
+                <Text style={[styles.settingsRowText, { color: t.textPrimary }]}>
+                  نسخ سجل الأداء
                 </Text>
                 <Ionicons name="chevron-back" size={16} color={t.textMuted} />
               </TouchableOpacity>
