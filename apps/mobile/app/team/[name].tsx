@@ -16,9 +16,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { TeamCrest } from '../../components/TeamCrest';
+import { MatchNewsCard } from '../../components/MatchNewsCard';
+import { useArticleSheet } from '../../components/ArticleSheet';
 import { competitionName } from '../../lib/competitions';
 import { relativeTime } from '../../lib/api';
-import { logoUrl } from '../../lib/api';
 import {
   fetchTeamPage,
   isNetworkFailure,
@@ -56,6 +57,7 @@ const FORM_COLOR: Record<'W' | 'D' | 'L', string> = {
 
 export default function TeamScreen() {
   const t: Theme = useColorScheme() === 'dark' ? palette.dark : palette.light;
+  const sheet = useArticleSheet();
   const { name } = useLocalSearchParams<{ name: string }>();
   const [page, setPage] = useState<TeamPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -280,39 +282,41 @@ export default function TeamScreen() {
               <Text style={[styles.empty, { color: t.textMuted }]}>لا توجد نتائج مسجّلة لهذا الفريق.</Text>
             )}
 
-            {/* Coverage. The preview's editorial wire: text-first cards with the
-                outlet's mark, because nine articles in ten carry no image. */}
+            {/* Coverage. Same card and same open flow as the match centre's news
+                tab (issue #50): one card to learn, and a tap always opens the
+                article. The old wire card was display-only — it had no onPress at
+                all, so a reader could not reach the story. */}
             <Text style={[styles.section, { color: t.textMuted }]}>📰 الأخبار والتغطية</Text>
             {page?.news?.length ? (
-              page.news.map((n) => {
-                const uri = logoUrl(n.imageUrl ?? null);
-                return (
-                  <View
-                    key={n.id}
-                    style={[styles.wireCard, { backgroundColor: t.surface, borderColor: t.borderLight }]}
-                  >
-                    {uri ? (
-                      <Image source={{ uri }} style={styles.wireThumb} resizeMode="cover" />
-                    ) : null}
-                    <View style={styles.wireTopRow}>
-                      <View style={[styles.sourcePlate, { backgroundColor: t.badgePlate }]}>
-                        <Text style={[styles.sourceInitial, { color: t.textSecondary }]}>
-                          {n.sourceName.trim().charAt(0)}
-                        </Text>
-                      </View>
-                      <Text style={[styles.wireSource, { color: t.textSecondary }]} numberOfLines={1}>
-                        {n.sourceName}
-                      </Text>
-                      <Text style={[styles.wireTime, { color: t.textDim }]} numberOfLines={1}>
-                        {`• ${relativeTime(n.publishedAt)}`}
-                      </Text>
-                    </View>
-                    <Text style={[styles.wireHeadline, { color: t.textPrimary }]} numberOfLines={3}>
-                      {n.title}
-                    </Text>
-                  </View>
-                );
-              })
+              page.news.map((n) => (
+                <MatchNewsCard
+                  key={n.id}
+                  t={t}
+                  title={n.title}
+                  sourceName={n.sourceName}
+                  publishedAt={n.publishedAt}
+                  imageUrl={n.imageUrl ?? null}
+                  both={n.team === 'both'}
+                  onPress={() =>
+                    // The same hand-off the match centre uses: a card-shaped
+                    // article into the existing reader, so the club page opens the
+                    // article exactly like every other list in the app.
+                    sheet.open({
+                      id: n.id,
+                      title: n.title,
+                      summary: null,
+                      imageUrl: n.imageUrl ?? null,
+                      url: n.url,
+                      sourceId: '',
+                      sourceName: n.sourceName,
+                      category: 'sports',
+                      country: 'EG',
+                      publishedAt: n.publishedAt,
+                      isBreaking: false,
+                    })
+                  }
+                />
+              ))
             ) : (
               <Text style={[styles.empty, { color: t.textMuted }]}>
                 لا توجد تغطية صحفية لهذا الفريق في مصادرنا حتى الآن.

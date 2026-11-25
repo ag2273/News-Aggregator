@@ -115,7 +115,7 @@ describe('reading an article at its source', () => {
   });
 
   it('sends the reader to the source when they ask for it', async () => {
-    const spy = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    const spy = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as any);
     mockReader.mockResolvedValue(readerBody);
     renderPane();
     await waitFor(() => expect(screen.getByText('الأهلي يحسم القمة')).toBeTruthy());
