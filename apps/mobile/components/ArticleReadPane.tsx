@@ -1,0 +1,228 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { Theme } from '../constants/colors';
+import { fetchReaderArticle, type ReaderArticle, type ReaderBlock } from '../lib/api';
+import { WebViewPane } from './WebViewPane';
+
+/**
+ * Reading an article at its source, without the source's ads (#51).
+ *
+ * Order of attempts, and why:
+ *
+ *   1. **Reader view.** The server extracts the article (Mozilla Readability — the
+ *      same extractor the digest has used in production) and sends it as blocks, so
+ *      the body is drawn in the app's own design with no ad slot anywhere.
+ *   2. **The source page, with ads blocked.** Extraction genuinely fails on some
+ *      pages — a paywall, a bot wall, a gallery with no body. Then the page itself
+ *      is the honest fallback, opened in the in-app WebView with a request filter
+ *      and a hide-ads stylesheet, so the reader still sees the story.
+ *
+ * The rule the user set: reader first, blocked browser second. Nothing here
+ * fabricates a body — an unreadable article goes to the browser rather than showing
+ * a half-empty page dressed up as the story.
+ */
+export function ArticleReadPane({
+  url,
+  articleId,
+  title,
+  t,
+  onClose,
+}: {
+  url: string;
+  articleId?: string;
+  title: string;
+  t: Theme;
+  onClose: () => void;
+}) {
+  const [state, setState] = useState<{ phase: 'loading' } | { phase: 'reader'; article: ReaderArticle } | { phase: 'web' }>(
+    { phase: 'loading' },
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchReaderArticle(articleId ?? null, url)
+      .then((article) => {
+        if (cancelled) return;
+        // `readable` is the server's verdict that it produced a body worth showing.
+        setState(article && article.readable && article.blocks.length
+          ? { phase: 'reader', article }
+          : { phase: 'web' });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ phase: 'web' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [articleId, url]);
+
+  const openExternally = useCallback(() => {
+    // The one action the app cannot do for the reader: leave for their browser.
+    Linking.openURL(url).catch(() => {});
+  }, [url]);
+
+  if (state.phase === 'loading') {
+    return (
+      <View style={[styles.center, { backgroundColor: t.surface }]}>
+        <ActivityIndicator size="large" color={t.accent} />
+      </View>
+    );
+  }
+
+  if (state.phase === 'web') {
+    // Fallback: the source page itself, with the ad filter and the hide-ads CSS
+    // applied by WebViewPane. No rank change, no rewriting of the page's own text.
+    return (
+      <WebViewPane
+        url={url}
+        title={title}
+        t={t}
+        onClose={onClose}
+        blockAds
+        fallbackNote="وضع القراءة مش متاح للخبر ده، فبنعرض الصفحة الأصلية بدون إعلانات."
+      />
+    );
+  }
+
+  const { article } = state;
+  return (
+    <View style={[styles.root, { backgroundColor: t.surface }]}>
+      <View style={[styles.header, { borderBottomColor: t.borderLight }]}>
+        <TouchableOpacity
+          onPress={onClose}
+          style={styles.back}
+          accessibilityRole="button"
+          accessibilityLabel="رجوع"
+        >
+          <Ionicons name="chevron-forward" size={22} color={t.textPrimary} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: t.textPrimary }]} numberOfLines={1}>
+          وضع القراءة
+        </Text>
+        <TouchableOpacity
+          onPress={openExternally}
+          style={styles.back}
+          accessibilityRole="button"
+          accessibilityLabel="فتح في المتصفح"
+        >
+          <Ionicons name="open-outline" size={19} color={t.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollBody}>
+        <Text style={[styles.source, { color: t.textSecondary }]} numberOfLines={1}>
+          {title}
+        </Text>
+        {article.title ? (
+          <Text style={[styles.title, { color: t.textPrimary }]}>{article.title}</Text>
+        ) : null}
+        {article.blocks.map((block, i) => (
+          <Block key={`${block.type}-${i}`} block={block} t={t} />
+        ))}
+        <TouchableOpacity
+          style={[styles.sourceLink, { borderColor: t.borderLight }]}
+          onPress={openExternally}
+          accessibilityRole="button"
+        >
+          <Ionicons name="open-outline" size={15} color={t.accent} />
+          <Text style={[styles.sourceLinkText, { color: t.accent }]}>اقرا الخبر على موقع المصدر</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * One block of the article.
+ *
+ * A video is offered as a link, not an embedded player: the app has no video
+ * player dependency, and an embedded `<iframe>` player would need the source page's
+ * scripts — which is the thing the reader view exists to avoid. A link opens it
+ * where it actually plays.
+ */
+function Block({ block, t }: { block: ReaderBlock; t: Theme }) {
+  if (block.type === 'heading') {
+    return <Text style={[styles.heading, { color: t.textPrimary }]}>{block.text}</Text>;
+  }
+  if (block.type === 'image') {
+    return (
+      <View style={styles.imageWrap}>
+        <Image source={{ uri: block.url }} style={styles.image} resizeMode="cover" />
+        {block.caption ? (
+          <Text style={[styles.caption, { color: t.textDim }]}>{block.caption}</Text>
+        ) : null}
+      </View>
+    );
+  }
+  if (block.type === 'video') {
+    return (
+      <TouchableOpacity
+        style={[styles.videoRow, { borderColor: t.borderLight, backgroundColor: t.badgePlate }]}
+        onPress={() => Linking.openURL(block.url).catch(() => {})}
+        accessibilityRole="button"
+        accessibilityLabel="فتح الفيديو"
+      >
+        <Ionicons name="play-circle-outline" size={22} color={t.accent} />
+        <Text style={[styles.videoText, { color: t.textPrimary }]}>فيديو داخل الخبر — افتحه للمشاهدة</Text>
+      </TouchableOpacity>
+    );
+  }
+  return <Text style={[styles.paragraph, { color: t.textPrimary }]}>{block.text}</Text>;
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  back: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { flex: 1, textAlign: 'center', fontFamily: 'Cairo_700Bold', fontSize: 14 },
+  scrollBody: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 32 },
+  source: { fontFamily: 'Cairo_400Regular', fontSize: 11, marginBottom: 10 },
+  title: { fontFamily: 'Cairo_700Bold', fontSize: 21, lineHeight: 33, marginBottom: 14 },
+  heading: { fontFamily: 'Cairo_700Bold', fontSize: 17, lineHeight: 27, marginTop: 14, marginBottom: 6 },
+  // 1.85 line height is the readable value for Arabic at this size: the script's
+  // ascenders and descenders collide below about 1.7.
+  paragraph: { fontFamily: 'Cairo_400Regular', fontSize: 15, lineHeight: 27, marginBottom: 12 },
+  imageWrap: { marginVertical: 10 },
+  image: { width: '100%', height: 190, borderRadius: 12 },
+  caption: { fontFamily: 'Cairo_400Regular', fontSize: 11, marginTop: 6 },
+  videoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginVertical: 10,
+  },
+  videoText: { flex: 1, fontFamily: 'Cairo_600SemiBold', fontSize: 13 },
+  sourceLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginTop: 18,
+  },
+  sourceLinkText: { fontFamily: 'Cairo_600SemiBold', fontSize: 13 },
+});

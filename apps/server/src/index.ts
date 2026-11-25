@@ -123,6 +123,7 @@ import {
 } from './adminStats.js';
 import { userCounts } from './users.js';
 import { getAllArticles } from './db.js';
+import { readerArticle } from './readerService.js';
 import {
   competitionOf,
   enrichLiveClocks,
@@ -899,11 +900,49 @@ app.get('/api/sources/:id/articles', (c) => {
 });
 
 // Search across title, summary and source name (Arabic-normalized).
+/**
+ * The same reader extract, addressed by an article's URL.
+ *
+ * Surfaces that hold a URL but no stored id (a club-page news card built from the
+ * corpus, a shared link) still need reader mode. The URL is not trusted for
+ * anything but fetching: it is not echoed back, and only http(s) is accepted so the
+ * route cannot be pointed at a local file or another scheme.
+ */
+app.get('/api/articles/reader', async (c) => {
+  const raw = (c.req.query('url') ?? '').trim();
+  if (!/^https?:\/\//i.test(raw)) return c.json({ error: 'url must be http(s)' }, 400);
+  const reader = await readerArticle(raw, { title: null });
+  return c.json({ data: reader }, 200);
+});
+
 app.get('/api/articles/:id', (c) => {
   const article = getArticleById(c.req.param('id'));
   if (!article) return c.json({ error: 'article not found' }, 404);
   const viewerId = extractUserId(c.req.header('Authorization'));
   return c.json({ data: withReactions(article, viewerId) });
+});
+
+/**
+ * The article as reader blocks (#51).
+ *
+ * The app tries this first and renders the body in its own design, so the reader
+ * sees the story and no ads. When the answer is `readable: false` the app falls
+ * back to the source page in its WebView with ads blocked — that is why the reason
+ * is a machine-readable code and not prose.
+ *
+ * Deliberately not cacheable at the edge beyond the short in-process cache: a
+ * publisher that refused us once must be allowed to recover.
+ */
+app.get('/api/articles/:id/reader', async (c) => {
+  const article = getArticleById(c.req.param('id'));
+  if (!article) return c.json({ error: 'article not found' }, 404);
+  const reader = await readerArticle(article.url, { title: article.title });
+  return c.json(
+    { data: reader },
+    // A refused or empty extraction is a real answer, not a server error: the app
+    // must be able to read it and fall back.
+    200,
+  );
 });
 
 /**

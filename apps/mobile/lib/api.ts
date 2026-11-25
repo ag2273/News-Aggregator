@@ -119,6 +119,47 @@ export async function fetchArticle(id: string): Promise<Article> {
   return json.data;
 }
 
+/**
+ * One block of an article's body, as the server extracted it (#51).
+ *
+ * Text is the publisher's own extracted text; the app never re-words it. `video` is
+ * a single URL the app links out to rather than a player it embeds — an embedded
+ * player would need the source page's scripts, which is what reader mode avoids.
+ */
+export type ReaderBlock =
+  | { type: 'heading'; text: string }
+  | { type: 'paragraph'; text: string }
+  | { type: 'image'; url: string; caption: string | null }
+  | { type: 'video'; url: string };
+
+export interface ReaderArticle {
+  title: string | null;
+  blocks: ReaderBlock[];
+  /** The server produced a body worth rendering natively. */
+  readable: boolean;
+  /** Why not, when `readable` is false: the app then falls back to the source page. */
+  reason?: 'unreachable' | 'blocked' | 'thin';
+}
+
+/**
+ * The article as reader blocks.
+ *
+ * `id` is preferred so the server can read the stored row; `url` is the fallback when
+ * a surface (a club-page card) holds a URL but no id. A network failure is NOT a
+ * verdict on the article: the caller falls back to the source page, exactly as it
+ * does when the server says the extraction was thin.
+ */
+export async function fetchReaderArticle(
+  id: string | null,
+  url: string,
+): Promise<ReaderArticle> {
+  const query = id ? `?id=${encodeURIComponent(id)}` : `?url=${encodeURIComponent(url)}`;
+  const res = await fetch(`${API_BASE}/api/articles/reader${query}`);
+  if (!res.ok) throw await apiError(res);
+  const json = (await res.json()) as { data: ReaderArticle };
+  return json.data;
+}
+
 /** Raised when the server refuses a resend because of the cooldown/daily cap. */
 export class ResendRateLimited extends Error {
   retryAfterSeconds: number;

@@ -23,7 +23,7 @@ import type { Theme } from '../constants/colors';
 import type { Article } from '../lib/api';
 import { sheetDismissOutcome } from '../lib/swipe';
 import { ArticleReader } from './ArticleReader';
-import { WebViewPane } from './WebViewPane';
+import { ArticleReadPane } from './ArticleReadPane';
 import { beaconOpen } from '../lib/analytics';
 
 const SPRING = { damping: 20, stiffness: 200 };
@@ -175,8 +175,10 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
               ]}
             >
               {article && showWeb ? (
-                <WebViewPane
+                // Reader view first, ad-blocked source page as the fallback (#51).
+                <ArticleReadPane
                   url={article.url}
+                  articleId={article.id}
                   title={article.sourceName}
                   t={t}
                   onClose={() => setShowWeb(false)}
