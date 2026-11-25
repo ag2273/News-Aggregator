@@ -1,5 +1,5 @@
 diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-index 80c68034b193a47bedb56ca527352de9548e8ac6..dbab32cca4ee6a1d3eba586f4db57b22d111c63a 100644
+index 80c68034b193a47bedb56ca527352de9548e8ac6..08debcca92c16603b2ee16506b7864759fcc88fe 100644
 --- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
 +++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
 @@ -28,6 +28,7 @@ import com.facebook.react.bridge.CatalystInstance;
@@ -10,7 +10,7 @@ index 80c68034b193a47bedb56ca527352de9548e8ac6..dbab32cca4ee6a1d3eba586f4db57b22
  import com.facebook.react.bridge.WritableMap;
  import com.facebook.react.bridge.WritableNativeArray;
  import com.facebook.react.bridge.WritableNativeMap;
-@@ -247,6 +248,37 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+@@ -247,6 +248,34 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
          return this.messagingEnabled;
      }
  
@@ -21,11 +21,8 @@ index 80c68034b193a47bedb56ca527352de9548e8ac6..dbab32cca4ee6a1d3eba586f4db57b22
 +     * after the client is attached: the first page load would otherwise run with an
 +     * empty denylist and the very page the user complained about would load its ads.
 +     */
-+    // Volatile: written on the JS thread when the prop changes, read on the WebView's
-+    // background thread for every sub-resource request. Without it a page loading
-+    // immediately after mount can see the empty value.
 +    @Nullable
-+    private volatile RNCWebViewAdBlocker mAdBlocker = null;
++    private RNCWebViewAdBlocker mAdBlocker = null;
 +
 +    /** The prop setter behind `blockAdHosts`. An empty list turns blocking off. */
 +    public void setBlockAdHosts(@Nullable ReadableArray hosts) {
@@ -224,21 +221,21 @@ index f83033b3597a425da159555233bacce250ccfce0..7cecd3c83720faf0c778b0da7b48fb5c
          val view = viewWrapper.webView
          view.injectedJavaScriptForMainFrameOnly = value
 diff --git a/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewManager.java b/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewManager.java
-index fa8efb88e2b7c09afbfe473363cdb29af964563c..83c011953a9cd54a6a6850239ce2329633025353 100644
+index fa8efb88e2b7c09afbfe473363cdb29af964563c..9c401460c26001b124e2baa472eaf84c340f5e3a 100644
 --- a/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewManager.java
 +++ b/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewManager.java
-@@ -119,6 +119,11 @@ public class RNCWebViewManager extends ViewGroupManager<RNCWebViewWrapper>
+@@ -118,6 +118,11 @@ public class RNCWebViewManager extends ViewGroupManager<RNCWebViewWrapper>
+         mRNCWebViewManagerImpl.setCacheEnabled(view, value);
      }
  
-     @Override
 +    @ReactProp(name = "blockAdHosts")
 +    public void setBlockAdHosts(RNCWebViewWrapper view, @Nullable ReadableArray hosts) {
 +        mRNCWebViewManagerImpl.setBlockAdHosts(view, hosts);
 +    }
 +
+     @Override
      @ReactProp(name = "cacheMode")
      public void setCacheMode(RNCWebViewWrapper view, @Nullable String value) {
-         mRNCWebViewManagerImpl.setCacheMode(view, value);
 diff --git a/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewManager.java b/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewManager.java
 index 974337f41ce01a5102eeafa6e54fbb3b949c48d7..7126670fdecec35e711c8014b166973ba06f8f02 100644
 --- a/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewManager.java
