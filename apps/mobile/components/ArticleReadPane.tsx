@@ -12,6 +12,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import type { Theme } from '../constants/colors';
 import { fetchReaderArticle, type ReaderArticle, type ReaderBlock } from '../lib/api';
+import { isDeviceFirstUrl } from '../lib/adBlockHosts';
+import { DeviceArticlePane } from './DeviceArticlePane';
 import { WebViewPane } from './WebViewPane';
 
 /**
@@ -140,9 +142,22 @@ export function ArticleReadPane({
   }
 
   if (state.phase === 'web') {
-    // Fallback: the server-side cleaned page, loaded by WebViewPane. When the server
-    // cannot reach the publisher at all we say so in the note instead of pretending
-    // the page is clean — measured: dostor.org refuses this host's TLS handshake.
+    // The three publishers our server cannot reach at all (#55). Their page is read
+    // on the DEVICE: extracted into the reader design, or — when that is thin —
+    // shown in the WebView with its ad requests refused natively. Measured: a plain
+    // `fetch` from the device is refused by all three, a navigation is not.
+    if (isDeviceFirstUrl(target)) {
+      return (
+        <DeviceArticlePane
+          url={target}
+          title={title}
+          t={t}
+          onClose={onClose}
+          onExternal={openExternally}
+        />
+      );
+    }
+    // Every other publisher: the server-side cleaned page, loaded by WebViewPane.
     return (
       <WebViewPane
         url={state.target ?? publisherUrl(null, url)}

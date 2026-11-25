@@ -1,8 +1,9 @@
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { WebView } from 'react-native-webview';
+
 import type { WebViewNavigation } from 'react-native-webview';
+import { AdBlockingWebView } from '../lib/nativeAdBlock';
 import type { Theme } from '../constants/colors';
 import { HIDE_ADS_JS, cleanPageUrl, isBlockedRequest } from '../lib/adBlock';
 
@@ -64,7 +65,7 @@ export function WebViewPane({
         </Text>
       ) : null}
       <View style={styles.webviewWrap}>
-        <WebView
+        <AdBlockingWebView
           // With ads blocked, the CLEANED page is loaded instead of the live one:
           // the ad scripts are already gone from the document, so they never run.
           // Measured: hiding them with injected CSS left "almost all the ads"
@@ -88,16 +89,16 @@ export function WebViewPane({
             }
           }}
           // This callback sees TOP-LEVEL navigations only, so it stops a tap that
-          // would open an ad landing page, and nothing more. It cannot stop an ad
-          // script the page itself loads. Honest limit: react-native-webview exposes
-          // no sub-resource interception point on either platform, so the ad scripts
-          // themselves are not dropped here. What removes the ads the reader sees is
-          // the injected CSS below, which hides the slots and the sticky overlays the
-          // scripts fill — the reason the list above exists as a second guard.
+          // would open an ad landing page, and nothing more.
           onShouldStartLoadWithRequest={onShouldStart}
           {...(blockAds
             ? {
-                // Hides the ad containers, including the ones injected after load.
+                // Request-level blocking: the ad payloads are refused before the
+                // network, by the patched native client (#55). This is the layer that
+                // actually removes them.
+                blockAds: true,
+                // Second layer: hides any slot whose container still appears, and the
+                // sticky overlays the remaining scripts fill.
                 injectedJavaScript: HIDE_ADS_JS,
                 javaScriptEnabled: true,
               }

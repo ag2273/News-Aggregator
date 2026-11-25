@@ -1,0 +1,257 @@
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+index 80c68034b193a47bedb56ca527352de9548e8ac6..dbab32cca4ee6a1d3eba586f4db57b22d111c63a 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+@@ -28,6 +28,7 @@ import com.facebook.react.bridge.CatalystInstance;
+ import com.facebook.react.bridge.JavaScriptModule;
+ import com.facebook.react.bridge.LifecycleEventListener;
+ import com.facebook.react.bridge.ReactApplicationContext;
++import com.facebook.react.bridge.ReadableArray;
+ import com.facebook.react.bridge.WritableMap;
+ import com.facebook.react.bridge.WritableNativeArray;
+ import com.facebook.react.bridge.WritableNativeMap;
+@@ -247,6 +248,37 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+         return this.messagingEnabled;
+     }
+ 
++    /**
++     * Request-level ad blocking for this WebView (#55).
++     *
++     * Held on the WebView, not on the client, because React Native applies props
++     * after the client is attached: the first page load would otherwise run with an
++     * empty denylist and the very page the user complained about would load its ads.
++     */
++    // Volatile: written on the JS thread when the prop changes, read on the WebView's
++    // background thread for every sub-resource request. Without it a page loading
++    // immediately after mount can see the empty value.
++    @Nullable
++    private volatile RNCWebViewAdBlocker mAdBlocker = null;
++
++    /** The prop setter behind `blockAdHosts`. An empty list turns blocking off. */
++    public void setBlockAdHosts(@Nullable ReadableArray hosts) {
++        if (hosts == null || hosts.size() == 0) {
++            mAdBlocker = null;
++            return;
++        }
++        String[] list = new String[hosts.size()];
++        for (int i = 0; i < hosts.size(); i++) {
++            list[i] = hosts.getString(i);
++        }
++        mAdBlocker = new RNCWebViewAdBlocker(list);
++    }
++
++    @Nullable
++    public RNCWebViewAdBlocker getAdBlocker() {
++        return mAdBlocker;
++    }
++
+     protected void createRNCWebViewBridge(RNCWebView webView) {
+         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)){
+           if (this.bridgeListener == null) {
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewAdBlocker.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewAdBlocker.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..49532cfd75249f8c5e71ee3fd6d5dc2eaa8556d4
+--- /dev/null
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewAdBlocker.java
+@@ -0,0 +1,101 @@
++package com.reactnativecommunity.webview;
++
++import android.webkit.WebResourceRequest;
++import android.webkit.WebResourceResponse;
++
++import androidx.annotation.Nullable;
++
++import java.io.ByteArrayInputStream;
++import java.util.Arrays;
++
++/**
++ * Request-level ad blocking inside the Android WebView (#55).
++ *
++ * WHY THIS HAS TO BE NATIVE
++ * -------------------------
++ * `react-native-webview` hands JavaScript only TOP-LEVEL navigations
++ * (`onShouldStartLoadWithRequest`); a page's own ad scripts and iframes are
++ * sub-resource requests that never reach that callback. Hiding their containers with
++ * CSS leaves the payload paid for and the slots still rendering, which is what the
++ * user reported on a real phone. `WebViewClient.shouldInterceptRequest` is the one
++ * hook that runs BEFORE the network, so it is the only real fix. This class is that
++ * hook; the manager enables it per-WebView so the rest of the app is untouched.
++ *
++ * WHAT IT DOES NOT DO
++ * -------------------
++ * It never touches the page's own document. Only requests whose HOST is on the
++ * denylist are answered with an empty 200; stylesheets, fonts and images from the
++ * publisher itself pass straight through, so the article still renders as designed.
++ *
++ * Matching is exact host or subdomain, never a substring, so
++ * `doubleclick.net.attacker.example` is a different host and stays loadable.
++ */
++public class RNCWebViewAdBlocker {
++
++    /**
++     * The hosts to refuse. Kept in step with `apps/mobile/lib/adBlockHosts.ts`
++     * (AD_BLOCK_HOSTS) — that module is the source of truth and the manager passes
++     * its list here at runtime, so the two cannot drift apart.
++     */
++    private final String[] hosts;
++
++    public RNCWebViewAdBlocker(@Nullable String[] hosts) {
++        this.hosts = hosts == null ? new String[0] : hosts;
++    }
++
++    public boolean isEnabled() {
++        return hosts.length > 0;
++    }
++
++    /** Is this request an ad or tracker? Exact host or a subdomain of one. */
++    public boolean shouldBlock(@Nullable String url) {
++        if (url == null || hosts.length == 0) return false;
++        String host;
++        try {
++            host = new java.net.URL(url).getHost();
++        } catch (Exception e) {
++            return false;
++        }
++        if (host == null) return false;
++        host = host.toLowerCase(java.util.Locale.ROOT);
++        for (String blocked : hosts) {
++            if (blocked == null || blocked.isEmpty()) continue;
++            String b = blocked.toLowerCase(java.util.Locale.ROOT);
++            if (host.equals(b) || host.endsWith("." + b)) return true;
++        }
++        return false;
++    }
++
++    /**
++     * The response to hand the WebView instead of making the request.
++     *
++     * An empty 200, not a network error: a failed request makes some ad scripts retry
++     * or show their own error slot, while an empty body simply renders nothing. No
++     * cache headers, so nothing is remembered across page loads.
++     */
++    public WebResourceResponse emptyResponse() {
++        WebResourceResponse response = new WebResourceResponse(
++            "text/plain", "utf-8", new ByteArrayInputStream(new byte[0]));
++        java.util.Map<String, String> headers = new java.util.HashMap<>();
++        headers.put("Cache-Control", "no-store");
++        headers.put("Access-Control-Allow-Origin", "*");
++        response.setResponseHeaders(headers);
++        return response;
++    }
++
++    /**
++     * The interception itself. Returns null to let the request proceed, which is the
++     * contract `shouldInterceptRequest` expects.
++     */
++    @Nullable
++    public WebResourceResponse intercept(@Nullable WebResourceRequest request) {
++        if (request == null) return null;
++        String url = request.getUrl() == null ? null : request.getUrl().toString();
++        return shouldBlock(url) ? emptyResponse() : null;
++    }
++
++    @Override
++    public String toString() {
++        return "RNCWebViewAdBlocker{hosts=" + Arrays.toString(hosts) + "}";
++    }
++}
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+index 209b85525f0ceadae168b7575de00eafe4dba1d0..d1152179a50de7e4d378d45a7faba93a74070b25 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+@@ -38,6 +38,44 @@ public class RNCWebViewClient extends WebViewClient {
+     private static String TAG = "RNCWebViewClient";
+     protected static final int SHOULD_OVERRIDE_URL_LOADING_TIMEOUT = 250;
+ 
++    /**
++     * The one hook that runs BEFORE the network for every sub-resource.
++     *
++     * `react-native-webview` exposes no JavaScript equivalent: the page's ad scripts
++     * and iframes are sub-resource requests, and only top-level navigations reach the
++     * `onShouldStartLoadWithRequest` callback. Blocking here means the payload is
++     * never downloaded, which is the difference the user asked for.
++     *
++     * The denylist lives on the WebView, not on this client: props are applied after
++     * the client is created, so reading it per request avoids an ordering bug where
++     * the first page load would still see an empty list.
++     */
++    @Override
++    @Nullable
++    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
++        if (view instanceof RNCWebView) {
++            RNCWebViewAdBlocker blocker = ((RNCWebView) view).getAdBlocker();
++            if (blocker != null && blocker.isEnabled()) {
++                WebResourceResponse blocked = blocker.intercept(request);
++                if (blocked != null) return blocked;
++            }
++        }
++        return super.shouldInterceptRequest(view, request);
++    }
++
++    /** The pre-Lollipop overload, kept consistent for older devices. */
++    @Override
++    @Nullable
++    public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
++        if (view instanceof RNCWebView) {
++            RNCWebViewAdBlocker blocker = ((RNCWebView) view).getAdBlocker();
++            if (blocker != null && blocker.isEnabled() && blocker.shouldBlock(url)) {
++                return blocker.emptyResponse();
++            }
++        }
++        return super.shouldInterceptRequest(view, url);
++    }
++
+     protected boolean mLastLoadFailed = false;
+     protected RNCWebView.ProgressChangedFilter progressChangedFilter = null;
+     protected @Nullable RNCBasicAuthCredential basicAuthCredential = null;
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+index f83033b3597a425da159555233bacce250ccfce0..7cecd3c83720faf0c778b0da7b48fb5c3e4fc111 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+@@ -497,6 +497,14 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+         view.injectedJSBeforeContentLoaded = value
+     }
+ 
++    /**
++     * Request-level ad blocking (#55). An empty array turns it off, which is the
++     * default for every WebView in the app except the reader's fallback page.
++     */
++    fun setBlockAdHosts(viewWrapper: RNCWebViewWrapper, hosts: ReadableArray?) {
++        viewWrapper.webView.setBlockAdHosts(hosts)
++    }
++
+     fun setInjectedJavaScriptForMainFrameOnly(viewWrapper: RNCWebViewWrapper, value: Boolean) {
+         val view = viewWrapper.webView
+         view.injectedJavaScriptForMainFrameOnly = value
+diff --git a/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewManager.java b/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewManager.java
+index fa8efb88e2b7c09afbfe473363cdb29af964563c..83c011953a9cd54a6a6850239ce2329633025353 100644
+--- a/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewManager.java
++++ b/android/src/newarch/com/reactnativecommunity/webview/RNCWebViewManager.java
+@@ -119,6 +119,11 @@ public class RNCWebViewManager extends ViewGroupManager<RNCWebViewWrapper>
+     }
+ 
+     @Override
++    @ReactProp(name = "blockAdHosts")
++    public void setBlockAdHosts(RNCWebViewWrapper view, @Nullable ReadableArray hosts) {
++        mRNCWebViewManagerImpl.setBlockAdHosts(view, hosts);
++    }
++
+     @ReactProp(name = "cacheMode")
+     public void setCacheMode(RNCWebViewWrapper view, @Nullable String value) {
+         mRNCWebViewManagerImpl.setCacheMode(view, value);
+diff --git a/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewManager.java b/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewManager.java
+index 974337f41ce01a5102eeafa6e54fbb3b949c48d7..7126670fdecec35e711c8014b166973ba06f8f02 100644
+--- a/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewManager.java
++++ b/android/src/oldarch/com/reactnativecommunity/webview/RNCWebViewManager.java
+@@ -92,6 +92,11 @@ public class RNCWebViewManager extends ViewGroupManager<RNCWebViewWrapper> {
+         mRNCWebViewManagerImpl.setCacheEnabled(view, value);
+     }
+ 
++    @ReactProp(name = "blockAdHosts")
++    public void setBlockAdHosts(RNCWebViewWrapper view, @Nullable ReadableArray hosts) {
++        mRNCWebViewManagerImpl.setBlockAdHosts(view, hosts);
++    }
++
+     @ReactProp(name = "cacheMode")
+     public void setCacheMode(RNCWebViewWrapper view, @Nullable String value) {
+         mRNCWebViewManagerImpl.setCacheMode(view, value);

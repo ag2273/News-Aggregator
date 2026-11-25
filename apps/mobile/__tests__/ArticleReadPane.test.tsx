@@ -214,10 +214,10 @@ describe('the browser fallback opens the publisher, never the Google-News link',
       renderFallback(gnews, 'x1');
       await waitFor(() => expect(screen.getByTestId('webview')).toBeTruthy());
       const props = (WebView as unknown as { lastProps: any }).lastProps;
-      // The cleaned endpoint receives the PUBLISHER url, not the Google link.
-      expect(props.source.uri).toBe(
-        `https://news.nileorbit.com/api/articles/clean?url=${encodeURIComponent(publisher)}`,
-      );
+      // Since #55 these three are read ON THE DEVICE, so the WebView opens the
+      // publisher page itself rather than our cleaned copy — the server cannot reach
+      // them at all. The #54 guarantee still holds: never a Google-News link.
+      expect(props.source.uri).toBe(publisher);
       expect(props.source.uri).not.toContain('news.google.com');
     },
   );
@@ -234,19 +234,14 @@ describe('the browser fallback opens the publisher, never the Google-News link',
       });
       renderFallback(gnews, 'x2');
       await waitFor(() => expect(screen.getByTestId('webview')).toBeTruthy());
-      const first = (WebView as unknown as { lastProps: any }).lastProps;
-      await act(async () => {
-        first.onHttpError({ nativeEvent: { statusCode: 502 } });
-      });
-      await waitFor(() => {
-        const after = (WebView as unknown as { lastProps: any }).lastProps;
-        expect(after.source.uri).toBe(publisher);
-      });
       const after = (WebView as unknown as { lastProps: any }).lastProps;
-      // The exact bug: this used to be the `news.google.com` link.
+      // The page is the publisher's own, opened from the device, with its ad requests
+      // refused natively (#55). The #54 bug was handing Google's shell to the WebView.
+      expect(after.source.uri).toBe(publisher);
       expect(after.source.uri).not.toContain('news.google.com');
+      expect(after.blockAdHosts).toBeTruthy();
+      // The injection is the second layer behind the native gate.
       expect(after.injectedJavaScript).toContain('adfull');
-      expect(screen.getByText(/ممكن تظهر إعلانات/)).toBeTruthy();
     },
   );
 

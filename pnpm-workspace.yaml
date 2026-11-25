@@ -6,3 +6,5 @@ allowBuilds:
   protobufjs: true
   '@parcel/watcher': true
 nodeLinker: hoisted
+patchedDependencies:
+  react-native-webview@14.0.1: patches/react-native-webview@14.0.1.patch
