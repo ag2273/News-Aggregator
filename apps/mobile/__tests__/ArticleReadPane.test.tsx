@@ -77,11 +77,17 @@ describe('reading an article at its source', () => {
     expect(screen.queryByTestId('webview')).toBeNull();
   });
 
-  it('falls back to the source page when extraction is thin', async () => {
+  it('falls back to the CLEANED page when extraction is thin', async () => {
+    // The browser must load the server-cleaned copy, not the live page: hiding ads
+    // with CSS left almost all of them visible once their scripts had run (#52).
     mockReader.mockResolvedValue({ title: null, blocks: [], readable: false, reason: 'thin' });
     renderPane();
     await waitFor(() => expect(screen.getByTestId('webview')).toBeTruthy());
-    expect(screen.getByText('src:https://www.youm7.com/story/1')).toBeTruthy();
+    expect(
+      screen.getByText(
+        `src:https://news.nileorbit.com/api/articles/clean?url=${encodeURIComponent('https://www.youm7.com/story/1')}`,
+      ),
+    ).toBeTruthy();
   });
 
   it('falls back when the publisher refused us', async () => {

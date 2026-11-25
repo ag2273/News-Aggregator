@@ -44,9 +44,11 @@ export function ArticleReadPane({
   t: Theme;
   onClose: () => void;
 }) {
-  const [state, setState] = useState<{ phase: 'loading' } | { phase: 'reader'; article: ReaderArticle } | { phase: 'web' }>(
-    { phase: 'loading' },
-  );
+  const [state, setState] = useState<
+    | { phase: 'loading' }
+    | { phase: 'reader'; article: ReaderArticle }
+    | { phase: 'web'; cleaned: boolean; reason?: string }
+  >({ phase: 'loading' });
 
   useEffect(() => {
     let cancelled = false;
@@ -54,12 +56,16 @@ export function ArticleReadPane({
       .then((article) => {
         if (cancelled) return;
         // `readable` is the server's verdict that it produced a body worth showing.
-        setState(article && article.readable && article.blocks.length
-          ? { phase: 'reader', article }
-          : { phase: 'web' });
+        if (article && article.readable && article.blocks.length) {
+          setState({ phase: 'reader', article });
+          return;
+        }
+        setState({ phase: 'web', cleaned: true });
       })
       .catch(() => {
-        if (!cancelled) setState({ phase: 'web' });
+        // The extract request itself failed. Still try the cleaned page: the two
+        // come from the same server, but a failure here may be this request only.
+        if (!cancelled) setState({ phase: 'web', cleaned: true });
       });
     return () => {
       cancelled = true;
@@ -80,8 +86,9 @@ export function ArticleReadPane({
   }
 
   if (state.phase === 'web') {
-    // Fallback: the source page itself, with the ad filter and the hide-ads CSS
-    // applied by WebViewPane. No rank change, no rewriting of the page's own text.
+    // Fallback: the server-side cleaned page, loaded by WebViewPane. When the server
+    // cannot reach the publisher at all we say so in the note instead of pretending
+    // the page is clean — measured: dostor.org refuses this host's TLS handshake.
     return (
       <WebViewPane
         url={url}
@@ -89,7 +96,8 @@ export function ArticleReadPane({
         t={t}
         onClose={onClose}
         blockAds
-        fallbackNote="وضع القراءة مش متاح للخبر ده، فبنعرض الصفحة الأصلية بدون إعلانات."
+        fallbackNote="وضع القراءة مش متاح للخبر ده، فبنعرض الصفحة من غير إعلانات."
+        unreachableNote="السيرفر مش قادر يوصل لموقع المصدر، فالمتصفح بيحمّل الصفحة الأصلية بإعلاناتها."
       />
     );
   }

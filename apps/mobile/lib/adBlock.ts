@@ -13,6 +13,20 @@
 // In a plain module rather than inside the component, so the rules can be tested
 // without a React runtime.
 
+import { API_BASE } from './api';
+
+/**
+ * The URL the WebView loads for an article when ads must be blocked.
+ *
+ * The SERVER fetches the page and removes the ad scripts, then sends the cleaned
+ * HTML — so the ads are never loaded at all. Hiding them with CSS inside the WebView
+ * was measured to leave "almost all the ads" visible, because the ad scripts had
+ * already run and built their containers (issue #52).
+ */
+export function cleanPageUrl(articleUrl: string): string {
+  return `${API_BASE}/api/articles/clean?url=${encodeURIComponent(articleUrl)}`;
+}
+
 export const AD_HOSTS = [
   // Google's ad stack and its measurement pixels.
   'doubleclick.net',

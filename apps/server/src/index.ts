@@ -124,6 +124,7 @@ import {
 import { userCounts } from './users.js';
 import { getAllArticles } from './db.js';
 import { readerArticle } from './readerService.js';
+import { cleanPage } from './cleanPageService.js';
 import {
   competitionOf,
   enrichLiveClocks,
@@ -909,10 +910,49 @@ app.get('/api/sources/:id/articles', (c) => {
  * route cannot be pointed at a local file or another scheme.
  */
 app.get('/api/articles/reader', async (c) => {
+  // The app sends `?id=` for an article it holds, and `?url=` for a surface that
+  // only has the address. Only `url` was accepted at first, so every id-carrying
+  // request answered 400 and the app fell back to the browser for EVERY article
+  // — which is exactly the report that reader mode never opens (issue #52).
+  const id = (c.req.query('id') ?? '').trim();
+  if (id) {
+    const article = getArticleById(id);
+    // An unknown id is not a client error worth failing on: fall through to a
+    // truthful "unreachable" so the app opens the browser instead of a blank sheet.
+    if (!article) {
+      return c.json({ data: { title: null, blocks: [], readable: false, reason: 'unreachable' } }, 200);
+    }
+    const reader = await readerArticle(article.url, { title: article.title });
+    return c.json({ data: reader }, 200);
+  }
   const raw = (c.req.query('url') ?? '').trim();
-  if (!/^https?:\/\//i.test(raw)) return c.json({ error: 'url must be http(s)' }, 400);
+  if (!/^https?:\/\//i.test(raw)) return c.json({ error: 'id or http(s) url required' }, 400);
   const reader = await readerArticle(raw, { title: null });
   return c.json({ data: reader }, 200);
+});
+
+/**
+ * A cleaned copy of a publisher page, for the in-app browser (#52).
+ *
+ * The WebView shows this instead of the live page, so the ads are absent from the
+ * document rather than merely hidden. Returns 502 with a clear code when the
+ * publisher refuses our server — the app then says so instead of showing a page full
+ * of ads and calling it cleaned (measured: dostor.org resets TLS from this host).
+ */
+app.get('/api/articles/clean', async (c) => {
+  const raw = (c.req.query('url') ?? '').trim();
+  if (!/^https?:\/\//i.test(raw)) return c.json({ error: 'url must be http(s)' }, 400);
+  const html = await cleanPage(raw);
+  if (!html) {
+    return c.json(
+      { error: 'publisher not reachable from the server', code: 'NOT_REACHABLE' },
+      502,
+    );
+  }
+  // Served as HTML the WebView renders. A strict CSP is not added here because the
+  // page's own inline styles and images are part of what makes it readable, and the
+  // ad scripts have already been removed from the document.
+  return c.html(html, 200);
 });
 
 app.get('/api/articles/:id', (c) => {
@@ -944,6 +984,7 @@ app.get('/api/articles/:id/reader', async (c) => {
     200,
   );
 });
+
 
 /**
  * PUT /api/articles/:id/reaction — set or replace the caller's reaction.

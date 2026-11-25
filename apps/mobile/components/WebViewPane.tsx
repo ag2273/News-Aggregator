@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import type { WebViewNavigation } from 'react-native-webview';
 import type { Theme } from '../constants/colors';
-import { HIDE_ADS_JS, isBlockedRequest } from '../lib/adBlock';
+import { HIDE_ADS_JS, cleanPageUrl, isBlockedRequest } from '../lib/adBlock';
 
 /** In-app WebView pane with its own header. Used by the /webview route and the article sheet. */
 export function WebViewPane({
@@ -14,6 +14,7 @@ export function WebViewPane({
   onClose,
   blockAds = false,
   fallbackNote,
+  unreachableNote,
 }: {
   url: string;
   title: string;
@@ -23,8 +24,13 @@ export function WebViewPane({
   blockAds?: boolean;
   /** Shown once above the page, so the reader knows why they are not in reader view. */
   fallbackNote?: string;
+  /** Shown instead when the cleaned page could not be produced at all. */
+  unreachableNote?: string;
 }) {
   const [loading, setLoading] = useState(true);
+  // If the cleaned page is genuinely unavailable the WebView shows its own error;
+  // the header note must then say the truth rather than claim the ads are gone.
+  const [failed, setFailed] = useState(false);
 
   const onShouldStart = useCallback(
     (req: WebViewNavigation) => (blockAds ? !isBlockedRequest(req.url) : true),
@@ -49,13 +55,28 @@ export function WebViewPane({
       </View>
       {fallbackNote ? (
         <Text style={[styles.note, { color: t.textSecondary, backgroundColor: t.badgePlate }]}>
-          {fallbackNote}
+          {failed && unreachableNote ? unreachableNote : fallbackNote}
         </Text>
       ) : null}
       <View style={styles.webviewWrap}>
         <WebView
-          source={{ uri: url }}
+          // With ads blocked, the CLEANED page is loaded instead of the live one:
+          // the ad scripts are already gone from the document, so they never run.
+          // Measured: hiding them with injected CSS left "almost all the ads"
+          // visible, because the scripts had already built their containers (#52).
+          source={{ uri: blockAds ? cleanPageUrl(url) : url }}
           onLoadEnd={() => setLoading(false)}
+          onError={() => {
+            setLoading(false);
+            setFailed(true);
+          }}
+          onHttpError={(e) => {
+            // 502 from our cleaner means "publisher not reachable from the server".
+            if ((e.nativeEvent as { statusCode?: number }).statusCode === 502) {
+              setLoading(false);
+              setFailed(true);
+            }
+          }}
           // This callback sees TOP-LEVEL navigations only, so it stops a tap that
           // would open an ad landing page, and nothing more. It cannot stop an ad
           // script the page itself loads. Honest limit: react-native-webview exposes
