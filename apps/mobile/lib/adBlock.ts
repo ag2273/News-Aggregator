@@ -93,45 +93,105 @@ export function isBlockedRequest(url: string): boolean {
 }
 
 /**
- * CSS that removes the ad SLOTS the page reserved for the scripts we blocked.
+ * Selectors that hide an ad slot.
  *
- * Blocking a request alone leaves an empty 300×250 hole and, worse, often a sticky
- * overlay covering the text. Hiding the usual container names is what makes the
- * page readable rather than merely lighter.
+ * Measured against a real dostor.org page (224KB, 42 ad references) rather than
+ * guessed: its slots are `.adfull`, `.reponsiveAd` and `.ad-now`, none of which the
+ * first build matched — which is why the user still saw "almost all the ads". The
+ * list below covers those three by NAME plus the generic vocabulary every ad stack
+ * uses, so a page from any of our outlets is caught.
+ *
+ * Deliberately attribute-based (`class*=`) rather than exact class names: these
+ * outlets swap the surrounding classes per template, but the ad slot keeps its
+ * identity.
+ */
+export const AD_SLOT_SELECTORS = [
+  // The three real dostor.org slots, measured.
+  '.adfull', '.reponsiveAd', '.ad-now',
+  // Google's stack.
+  'ins.adsbygoogle', '.adsbygoogle', '[id^="google_ads"]', '[id*="div-gpt-ad"]',
+  '[data-ad-slot]', '[data-google-query-id]', '[id^="aswift"]', '[id^="google_ads_iframe"]',
+  // Recommendation widgets.
+  '[id*="taboola"]', '[class*="taboola"]', '[id*="outbrain"]', '[class*="outbrain"]',
+  '[class*="mgid"]', '[id*="mgid"]', '[class*="revcontent"]',
+  // Generic slot vocabulary.
+  '[class*="ad-slot"]', '[class*="adslot"]', '[class*="ad_slot"]', '[class*="advert"]',
+  '[class*="ad-unit"]', '[class*="adunit"]', '[class*="ad-banner"]', '[class*="adbanner"]',
+  '[class*="ad-container"]', '[class*="adcontainer"]', '[class*="banner-ad"]',
+  '[class*="sponsored"]', '[class*="ad-label"]', '[class*="adlabel"]',
+  '[id*="ad-slot"]', '[id*="adslot"]', '[id*="advert"]', '[id^="ad-"]', '[id^="ad_"]',
+  // Overlays and sticky bars, which are what actually cover the article text.
+  '[class*="sticky-ad"]', '[id*="sticky-ad"]', '[class*="ad-overlay"]', '[class*="adsticky"]',
+  '[class*="interstitial"]', '[class*="popup-ad"]', '[class*="ad-modal"]',
+  // Iframes pointing at an ad network.
+  'iframe[src*="doubleclick"]', 'iframe[src*="googlesyndication"]',
+  'iframe[src*="taboola"]', 'iframe[src*="outbrain"]', 'iframe[src*="adnxs"]',
+];
+
+/**
+ * CSS that removes the ad slots.
+ *
+ * `display:none` alone leaves the page's own spacing in some layouts, so the box is
+ * collapsed too — an empty 300×250 hole in the middle of an article is not "no ads".
  */
 export const HIDE_ADS_CSS = `
-  [id*="ad-"], [id*="ad_"], [id^="ad"], [class*="ad-slot"], [class*="adslot"],
-  [class*="advert"], [class*="ad-unit"], [class*="adsbygoogle"],
-  [class*="taboola"], [class*="outbrain"], [class*="mgid"],
-  [class*="sponsored"], [class*="promo-box"], [class*="sticky-ad"],
-  iframe[src*="doubleclick"], iframe[src*="googlesyndication"],
-  iframe[src*="taboola"], iframe[src*="outbrain"],
-  ins.adsbygoogle, .adsbygoogle, #div-gpt-ad, [data-ad-slot] {
+  ${AD_SLOT_SELECTORS.join(',\n  ')} {
     display: none !important;
+    visibility: hidden !important;
     height: 0 !important;
     min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
   }
   body { overflow-x: hidden !important; }
 `;
 
-/** Runs the hide-ads CSS after each load, and again when the page mutates. */
+/**
+ * The script injected into the page.
+ *
+ * Three passes, because the ad scripts run AFTER our script does:
+ *   1. the stylesheet above, so slots are hidden the moment they appear;
+ *   2. a MutationObserver that removes new ad nodes as they are inserted;
+ *   3. an attribute watcher for the `style` the scripts set inline, which would
+ *      otherwise override our `display:none`.
+ */
 export const HIDE_ADS_JS = `
 (function () {
   if (window.__noAdsInstalled) return true;
   window.__noAdsInstalled = true;
+  var SELECTORS = ${JSON.stringify(AD_SLOT_SELECTORS)};
   var style = document.createElement('style');
   style.type = 'text/css';
   style.appendChild(document.createTextNode(${JSON.stringify(HIDE_ADS_CSS)}));
   (document.head || document.documentElement).appendChild(style);
-  // Sticky ad bars are injected after load; strip them as they appear.
-  var kill = function () {
-    var nodes = document.querySelectorAll('[class*="sticky-ad"],[id*="sticky-ad"],[class*="ad-overlay"]');
-    for (var i = 0; i < nodes.length; i++) nodes[i].style.display = 'none';
+
+  var sweep = function () {
+    for (var i = 0; i < SELECTORS.length; i++) {
+      var nodes;
+      try { nodes = document.querySelectorAll(SELECTORS[i]); } catch (e) { continue; }
+      for (var j = 0; j < nodes.length; j++) {
+        var n = nodes[j];
+        if (n.__noAds) continue;
+        n.__noAds = true;
+        // Override the inline style the ad script may have set on the same node.
+        n.style.setProperty('display', 'none', 'important');
+        n.style.setProperty('height', '0', 'important');
+      }
+    }
   };
-  kill();
+  sweep();
   try {
-    new MutationObserver(kill).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(sweep).observe(document.documentElement || document.body, {
+      childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'],
+    });
   } catch (e) {}
+  // The ad scripts on these pages load late; a slow sweep catches what the
+  // observer's first pass missed without polling forever.
+  var rounds = 0;
+  var timer = setInterval(function () { sweep(); if (++rounds > 20) clearInterval(timer); }, 500);
   true;
 })();
 true;

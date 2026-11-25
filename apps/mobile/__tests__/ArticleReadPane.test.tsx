@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react-native';
+import { render, screen, waitFor, fireEvent, act, cleanup } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 import { palette } from '../constants/colors';
 
@@ -59,6 +59,12 @@ const readerBody = {
 
 const renderPane = () =>
   render(<ArticleReadPane url="https://www.youm7.com/story/1" articleId="a1" title="اليوم السابع" t={t} onClose={() => {}} />);
+
+afterEach(() => {
+  // Each test renders a fresh pane; a WebView left mounted from the previous one
+  // would otherwise be the element the queries find.
+  cleanup();
+});
 
 describe('reading an article at its source', () => {
   beforeEach(() => {
@@ -118,6 +124,34 @@ describe('reading an article at its source', () => {
     // The injected script is what removes the ad slots the blocked scripts leave.
     expect(typeof props.injectedJavaScript).toBe('string');
     expect(props.injectedJavaScript).toContain('adsbygoogle');
+  });
+
+  it('loads the page from the device when the server cannot reach the publisher', async () => {
+    // Measured: dostor.org, ahram.org.eg and alarabiya.net refuse our server's TLS
+    // handshake. The 502 from the cleaner must switch the WebView to the LIVE url
+    // (from this device) with the injection still on — not stop the reader.
+    mockReader.mockResolvedValue({ title: null, blocks: [], readable: false, reason: 'unreachable' });
+    renderPane();
+    await waitFor(() => expect(screen.getByTestId('webview')).toBeTruthy());
+    // It starts on the cleaned endpoint…
+    const cleaned = screen.getByText(
+      `src:https://news.nileorbit.com/api/articles/clean?url=${encodeURIComponent('https://www.youm7.com/story/1')}`,
+    );
+    expect(cleaned).toBeTruthy();
+
+    // …then a 502 makes it load the live page, with the ad injection still applied.
+    const props = (WebView as unknown as { lastProps: any }).lastProps;
+    await act(async () => {
+      props.onHttpError({ nativeEvent: { statusCode: 502 } });
+    });
+    await waitFor(() =>
+      expect(screen.getByText('src:https://www.youm7.com/story/1')).toBeTruthy(),
+    );
+    const after = (WebView as unknown as { lastProps: any }).lastProps;
+    expect(typeof after.injectedJavaScript).toBe('string');
+    expect(after.injectedJavaScript).toContain('adfull');
+    // And the reader is told the truth about what they are looking at.
+    expect(screen.getByText(/ممكن تظهر إعلانات/)).toBeTruthy();
   });
 
   it('sends the reader to the source when they ask for it', async () => {

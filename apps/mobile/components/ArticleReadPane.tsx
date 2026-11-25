@@ -97,7 +97,7 @@ export function ArticleReadPane({
         onClose={onClose}
         blockAds
         fallbackNote="وضع القراءة مش متاح للخبر ده، فبنعرض الصفحة من غير إعلانات."
-        unreachableNote="السيرفر مش قادر يوصل لموقع المصدر، فالمتصفح بيحمّل الصفحة الأصلية بإعلاناتها."
+        unreachableNote="الصفحة بتفتح من المصدر مباشرة، فممكن تظهر إعلانات."
       />
     );
   }

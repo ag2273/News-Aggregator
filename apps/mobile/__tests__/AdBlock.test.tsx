@@ -6,7 +6,7 @@
  * not be — a "clean" page that cannot load its images is not a working fallback.
  */
 
-import { isBlockedRequest, AD_HOSTS, HIDE_ADS_CSS } from '../lib/adBlock';
+import { isBlockedRequest, AD_HOSTS, HIDE_ADS_CSS, AD_SLOT_SELECTORS } from '../lib/adBlock';
 
 describe('what the fallback browser blocks', () => {
   it('blocks the ad and tracker hosts these outlets load', () => {
@@ -26,6 +26,16 @@ describe('what the fallback browser blocks', () => {
     // A host merely CONTAINING the name is not the ad network's host.
     expect(isBlockedRequest('https://not-doubleclick.net.example.com/x')).toBe(false);
     expect(isBlockedRequest('https://doubleclick.net.attacker.example/x')).toBe(false);
+  });
+
+  it('covers the slot names the reported page actually uses', () => {
+    // Measured on a real dostor.org page (224KB, 42 ad references): its slots are
+    // `.adfull`, `.reponsiveAd` and `.ad-now`. The first build matched NONE of them,
+    // which is why the user still saw the ads.
+    expect(AD_SLOT_SELECTORS).toContain('.adfull');
+    expect(AD_SLOT_SELECTORS).toContain('.reponsiveAd');
+    expect(AD_SLOT_SELECTORS).toContain('.ad-now');
+    expect(HIDE_ADS_CSS).toContain('.adfull');
   });
 
   it('ships a stylesheet that hides the empty ad slots', () => {

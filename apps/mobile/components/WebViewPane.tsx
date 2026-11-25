@@ -31,6 +31,11 @@ export function WebViewPane({
   // If the cleaned page is genuinely unavailable the WebView shows its own error;
   // the header note must then say the truth rather than claim the ads are gone.
   const [failed, setFailed] = useState(false);
+  // The server could not fetch the publisher (measured: dostor.org, ahram.org.eg and
+  // alarabiya.net reset its TLS handshake). The user's decision: load the page
+  // DIRECTLY from the device instead, with the injection doing what it can. The ads
+  // then do load — that is the accepted trade, so the note says so.
+  const [direct, setDirect] = useState(false);
 
   const onShouldStart = useCallback(
     (req: WebViewNavigation) => (blockAds ? !isBlockedRequest(req.url) : true),
@@ -55,7 +60,7 @@ export function WebViewPane({
       </View>
       {fallbackNote ? (
         <Text style={[styles.note, { color: t.textSecondary, backgroundColor: t.badgePlate }]}>
-          {failed && unreachableNote ? unreachableNote : fallbackNote}
+          {direct && unreachableNote ? unreachableNote : failed && unreachableNote ? unreachableNote : fallbackNote}
         </Text>
       ) : null}
       <View style={styles.webviewWrap}>
@@ -64,7 +69,7 @@ export function WebViewPane({
           // the ad scripts are already gone from the document, so they never run.
           // Measured: hiding them with injected CSS left "almost all the ads"
           // visible, because the scripts had already built their containers (#52).
-          source={{ uri: blockAds ? cleanPageUrl(url) : url }}
+          source={{ uri: blockAds && !direct ? cleanPageUrl(url) : url }}
           onLoadEnd={() => setLoading(false)}
           onError={() => {
             setLoading(false);
@@ -72,9 +77,14 @@ export function WebViewPane({
           }}
           onHttpError={(e) => {
             // 502 from our cleaner means "publisher not reachable from the server".
+            // Rather than stopping, load the page from THIS device. The user chose
+            // this and accepts that the ads then load, because the alternative is no
+            // page at all; the injection still hides what it can on the screen.
+            // NOT verified: whether every phone's own network can reach these hosts —
+            // only the user's device can answer that.
             if ((e.nativeEvent as { statusCode?: number }).statusCode === 502) {
-              setLoading(false);
-              setFailed(true);
+              setDirect(true);
+              setLoading(true);
             }
           }}
           // This callback sees TOP-LEVEL navigations only, so it stops a tap that
