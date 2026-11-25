@@ -12,6 +12,10 @@ WORKDIR /app
 
 # Copy root workspace manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# The lockfile declares a pnpm patch for react-native-webview (#55), and a frozen
+# install fails with ERR_PNPM_PATCH_NOT_FOUND if the file it points at is absent.
+# The server image does not use that package, but it must be present to install.
+COPY patches ./patches
 COPY apps/server/package.json ./apps/server/
 
 # Install server dependencies (including devDependencies for build)
@@ -38,6 +42,8 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # Copy workspace manifests for production install
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Same reason as the builder stage: the declared patch must exist on disk.
+COPY patches ./patches
 COPY apps/server/package.json ./apps/server/
 
 # Install only production dependencies
