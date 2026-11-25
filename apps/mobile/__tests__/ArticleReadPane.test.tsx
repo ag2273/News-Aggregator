@@ -13,6 +13,13 @@ import { Linking } from 'react-native';
 import { palette } from '../constants/colors';
 
 jest.mock('@react-native-firebase/crashlytics', () => ({ __esModule: true, default: () => null }));
+
+// The speech engine is native; the button only needs to exist here.
+jest.mock('expo-speech', () => ({
+  speak: jest.fn(),
+  stop: jest.fn(async () => {}),
+  getAvailableVoicesAsync: jest.fn(async () => [{ language: 'ar-EG', identifier: 'ar-eg-local' }]),
+}));
 jest.mock('@react-native-firebase/app', () => ({ __esModule: true, default: () => null }));
 
 // The fallback renders a real WebView, which needs a native module. Assert on its
@@ -277,5 +284,39 @@ describe('the browser fallback opens the publisher, never the Google-News link',
     renderFallback(gnews, 'x4');
     await waitFor(() => expect(screen.queryByTestId('webview')).toBeNull());
     expect(screen.getByText(/مش قادرين نفتح الخبر ده/)).toBeTruthy();
+  });
+});
+
+
+/**
+ * The listen control (#56).
+ *
+ * The user marked its place in a screenshot: in the reader header, immediately beside
+ * the open-in-browser icon. A test that only checked "a button exists somewhere" would
+ * pass with it on any other screen, so this one asserts the header it lives in.
+ */
+describe('the reader header offers a listen control', () => {
+  const body = {
+    title: 'الأهلي يحسم القمة',
+    readable: true,
+    blocks: [{ type: 'paragraph', text: 'سجل الأهلي هدف الفوز في الدقيقة 88 من عمر المباراة.' }],
+  };
+
+  it('shows the listen button next to open-in-browser, and starts idle', async () => {
+    mockReader.mockResolvedValue(body);
+    renderPane();
+    await waitFor(() => expect(screen.getByText('وضع القراءة')).toBeTruthy());
+
+    // Both controls are in the header, and the arrow back is the third.
+    expect(screen.getByLabelText('استماع للخبر')).toBeTruthy();
+    expect(screen.getByLabelText('فتح في المتصفح')).toBeTruthy();
+    expect(screen.getByLabelText('رجوع')).toBeTruthy();
+  });
+
+  it('is NOT offered on the fallback browser, where there is no reader text', async () => {
+    mockReader.mockResolvedValue({ title: null, blocks: [], readable: false, reason: 'thin' });
+    renderPane();
+    await waitFor(() => expect(screen.getByTestId('webview')).toBeTruthy());
+    expect(screen.queryByLabelText('استماع للخبر')).toBeNull();
   });
 });

@@ -13,6 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import type { Theme } from '../constants/colors';
 import { fetchReaderArticle, type ReaderArticle, type ReaderBlock } from '../lib/api';
 import { isDeviceFirstUrl } from '../lib/adBlockHosts';
+import { useArticleSpeech } from '../lib/articleSpeech';
+import { ListenButton, SpeechNotice } from './ListenButton';
 import { DeviceArticlePane } from './DeviceArticlePane';
 import { WebViewPane } from './WebViewPane';
 
@@ -33,6 +35,9 @@ import { WebViewPane } from './WebViewPane';
  * fabricates a body — an unreadable article goes to the browser rather than showing
  * a half-empty page dressed up as the story.
  */
+/** Stable empty body, so the speech hook is not re-declared every render. */
+const EMPTY_BLOCKS: never[] = [];
+
 /**
  * The URL the browser fallback should open.
  *
@@ -97,6 +102,14 @@ export function ArticleReadPane({
   }, [articleId, url]);
 
   const target = state.phase === 'web' ? state.target ?? publisherUrl(null, url) : url;
+
+  // Read-aloud on this device (#56). Declared before the early returns because hooks
+  // cannot be conditional; `enabled` keeps it inert on every phase but the reader.
+  const speech = useArticleSpeech({
+    title: state.phase === 'reader' ? state.article.title : null,
+    blocks: state.phase === 'reader' ? state.article.blocks : EMPTY_BLOCKS,
+    enabled: state.phase === 'reader',
+  });
 
   const openExternally = useCallback(() => {
     // The one action the app cannot do for the reader: leave for their browser.
@@ -186,15 +199,20 @@ export function ArticleReadPane({
         <Text style={[styles.headerTitle, { color: t.textPrimary }]} numberOfLines={1}>
           وضع القراءة
         </Text>
-        <TouchableOpacity
-          onPress={openExternally}
-          style={styles.back}
-          accessibilityRole="button"
-          accessibilityLabel="فتح في المتصفح"
-        >
-          <Ionicons name="open-outline" size={19} color={t.textSecondary} />
-        </TouchableOpacity>
+        {/* Listen sits beside open-in-browser, where the user marked it (#56). */}
+        <View style={styles.headerActions}>
+          <ListenButton speech={speech} t={t} />
+          <TouchableOpacity
+            onPress={openExternally}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="فتح في المتصفح"
+          >
+            <Ionicons name="open-outline" size={19} color={t.textSecondary} />
+          </TouchableOpacity>
+        </View>
       </View>
+      <SpeechNotice speech={speech} t={t} />
 
       <ScrollView contentContainerStyle={styles.scrollBody}>
         <Text style={[styles.source, { color: t.textSecondary }]} numberOfLines={1}>
@@ -270,6 +288,7 @@ const styles = StyleSheet.create({
   },
   back: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, textAlign: 'center', fontFamily: 'Cairo_700Bold', fontSize: 14 },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
   scrollBody: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 32 },
   source: { fontFamily: 'Cairo_400Regular', fontSize: 11, marginBottom: 10 },
   title: { fontFamily: 'Cairo_700Bold', fontSize: 21, lineHeight: 33, marginBottom: 14 },

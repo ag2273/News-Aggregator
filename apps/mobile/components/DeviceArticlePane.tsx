@@ -39,6 +39,8 @@ import type { DeviceArticle } from '../lib/deviceReader';
 import { extractDeviceArticle } from '../lib/deviceReader';
 import { AdBlockingWebView } from '../lib/nativeAdBlock';
 import { HIDE_ADS_JS } from '../lib/adBlock';
+import { useArticleSpeech } from '../lib/articleSpeech';
+import { ListenButton, SpeechNotice } from './ListenButton';
 
 /**
  * How long to wait for the page before showing it as-is.
@@ -80,6 +82,9 @@ export const EXTRACT_PAGE_JS = `
 true;
 `;
 
+/** Stable empty body, so the speech hook is not re-declared every render. */
+const EMPTY_BLOCKS: never[] = [];
+
 export type DevicePhase =
   | { phase: 'extracting' }
   | { phase: 'reader'; article: DeviceArticle }
@@ -100,6 +105,13 @@ export function DeviceArticlePane({
 }) {
   const [state, setState] = useState<DevicePhase>({ phase: 'extracting' });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Read-aloud for a page read on the device (#56).
+  const speech = useArticleSpeech({
+    title: state.phase === 'reader' ? state.article.title : null,
+    blocks: state.phase === 'reader' ? state.article.blocks : EMPTY_BLOCKS,
+    enabled: state.phase === 'reader',
+  });
 
   const clearTimer = useCallback(() => {
     if (timer.current) {
@@ -160,6 +172,7 @@ export function DeviceArticlePane({
         t={t}
         onClose={onClose}
         onExternal={onExternal}
+        speech={speech}
       />
     );
   }
@@ -186,16 +199,26 @@ function ReaderView({
   t,
   onClose,
   onExternal,
+  speech,
 }: {
   article: DeviceArticle;
   title: string;
   t: Theme;
   onClose: () => void;
   onExternal?: () => void;
+  speech: ReturnType<typeof useArticleSpeech>;
 }) {
   return (
     <View style={[styles.root, { backgroundColor: t.surface }]}>
-      <Header title={title} t={t} onClose={onClose} onExternal={onExternal} reader />
+      <Header
+        title={title}
+        t={t}
+        onClose={onClose}
+        onExternal={onExternal}
+        reader
+        speech={speech}
+      />
+      <SpeechNotice speech={speech} t={t} />
       <ScrollView contentContainerStyle={styles.scrollBody}>
         {article.title ? (
           <Text style={[styles.title, { color: t.textPrimary }]}>{article.title}</Text>
@@ -235,12 +258,15 @@ function Header({
   onClose,
   onExternal,
   reader = false,
+  speech,
 }: {
   title: string;
   t: Theme;
   onClose: () => void;
   onExternal?: () => void;
   reader?: boolean;
+  /** Present only on the reader view, where there is text to read aloud. */
+  speech?: ReturnType<typeof useArticleSpeech>;
 }) {
   return (
     <View style={[styles.header, { borderBottomColor: t.borderLight }]}>
@@ -256,14 +282,18 @@ function Header({
         {reader ? 'وضع القراءة' : title}
       </Text>
       {onExternal ? (
-        <TouchableOpacity
-          onPress={onExternal}
-          style={styles.back}
-          accessibilityRole="button"
-          accessibilityLabel="فتح في المتصفح"
-        >
-          <Ionicons name="open-outline" size={19} color={t.textSecondary} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          {/* Listen sits beside open-in-browser, where the user marked it (#56). */}
+          {reader && speech ? <ListenButton speech={speech} t={t} /> : null}
+          <TouchableOpacity
+            onPress={onExternal}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="فتح في المتصفح"
+          >
+            <Ionicons name="open-outline" size={19} color={t.textSecondary} />
+          </TouchableOpacity>
+        </View>
       ) : (
         <View style={styles.back} />
       )}
@@ -283,6 +313,7 @@ const styles = StyleSheet.create({
   },
   back: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, textAlign: 'center', fontFamily: 'Cairo_700Bold', fontSize: 14 },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
   webviewWrap: { flex: 1 },
   webview: { flex: 1 },
   cover: { alignItems: 'center', justifyContent: 'center' },
