@@ -34,6 +34,14 @@ export interface ReaderArticle {
   /** True when the extraction produced a body worth reading. */
   readable: boolean;
   /**
+   * The PUBLISHER url this article actually lives at, after a Google-News link was
+   * resolved. The app needs it even when nothing is readable: its browser fallback
+   * must load the publisher's page, and handing it the `news.google.com` redirect
+   * link instead renders Google's shell — an "invalid redirect" error, not the story
+   * (issue #54). Null when we could not resolve it.
+   */
+  resolvedUrl?: string | null;
+  /**
    * Why a reader view is not offered, so the app knows to fall back.
    *
    * Machine-readable on purpose: the fallback decision is a rule, not a message.

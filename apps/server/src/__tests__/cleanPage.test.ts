@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { stripAdMarkup, isAdUrl } from '../cleanPage.js';
 import { readerArticle, resetReaderCache } from '../readerService.js';
+import { cleanPage, resetCleanCache } from '../cleanPageService.js';
 import { readerFromHtml } from '../reader.js';
 
 /** A page shaped like the outlets we measured, ad markup included. */
@@ -122,5 +123,105 @@ describe('one article failing does not poison the next', () => {
     // Both failed, but independently — each got its own verdict.
     expect(a.readable).toBe(false);
     expect(b.readable).toBe(false);
+  });
+});
+
+/**
+ * The user's report on apk-74 (#54): a real phone opened a العربية and a الدستور
+ * article and got «إشعار إعادة التوجيه — … عنوان ويب غير صالح» instead of the story.
+ *
+ * Measured cause: every stored article URL from our feeds is a `news.google.com`
+ * link, not the publisher's own. The cleaner fetched THAT link, so it returned
+ * Google's own shell page with a 200 — never the 502 that switches the reader to the
+ * live page. The WebView then rendered Google's shell, whose redirect is invalid
+ * under our host, as that error.
+ *
+ * These pin the resolution on the server, for the exact publishers the user named.
+ */
+describe('a Google-News article link is resolved before anything is fetched (#54)', () => {
+  const gnews =
+    'https://news.google.com/rss/articles/CBMiS0FVX3lxTE41M3ExY3A3UFJOS05hcXl2ejBQdEsybG5vUHZHTjlfWXVWS3Z5QzVpaVlrVTVPSHlmTnlZQ01PMHZuN1VKNGR1Mk9Gcw?oc=5';
+  const GOOGLE_SHELL = '<!doctype html><html><head><meta name="application-name" content="أخبار"></head><body>Google News</body></html>';
+  const GOOGLE_SHELL_R = GOOGLE_SHELL;
+
+  it('fetches the resolved publisher page and cleans THAT', async () => {
+    resetCleanCache();
+    const seen: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      seen.push(url);
+      return new Response(dostorLike, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const html = await cleanPage(gnews, Date.now(), {
+      fetchImpl,
+      resolve: async () => 'https://elcaptain.dostor.org/231448',
+    });
+
+    expect(seen).toStrictEqual(['https://elcaptain.dostor.org/231448']);
+    expect(html).not.toBeNull();
+    // The base is the publisher's page, so its own assets still resolve.
+    expect(html).toContain('<base href="https://elcaptain.dostor.org/231448">');
+    // And the ads are gone, as before.
+    expect(html).not.toContain('doubleclick');
+  });
+
+  it('never serves Google’s own document, which is the invalid-redirect page', async () => {
+    resetCleanCache();
+    // Resolution failed: the honest answer is "not reachable", which the route turns
+    // into a 502 — that is what makes the app open the publisher from the device.
+    const html = await cleanPage(gnews, Date.now(), {
+      fetchImpl: (async () => new Response(GOOGLE_SHELL, { status: 200 })) as unknown as typeof fetch,
+      resolve: async () => null,
+    });
+    expect(html).toBeNull();
+  });
+
+  it('refuses a resolver that hands back another Google link', async () => {
+    resetCleanCache();
+    const html = await cleanPage(gnews, Date.now(), {
+      fetchImpl: (async () => new Response(GOOGLE_SHELL, { status: 200 })) as unknown as typeof fetch,
+      resolve: async () => gnews,
+    });
+    expect(html).toBeNull();
+  });
+});
+
+describe('the reader tells the app the publisher url even when extraction fails (#54)', () => {
+  const gnews =
+    'https://news.google.com/rss/articles/CBMiS0FVX3lxTE41M3ExY3A3UFJOS05hcXl2ejBQdEsybG5vUHZHTjlfWXVWS3Z5QzVpaVlrVTVPSHlmTnlZQ01PMHZuN1VKNGR1Mk9Gcw?oc=5';
+
+  it('carries the resolved publisher url on a blocked publisher', async () => {
+    resetReaderCache();
+    const res = await readerArticle(gnews, {
+      fetchImpl: (async () => new Response('no', { status: 403 })) as unknown as typeof fetch,
+      resolve: async () => 'https://www.alarabiya.net/aswaq/1',
+    } as never);
+    expect(res.readable).toBe(false);
+    expect(res.reason).toBe('blocked');
+    // Without this the app's browser fallback opened the Google link (#54).
+    expect(res.resolvedUrl).toBe('https://www.alarabiya.net/aswaq/1');
+  });
+
+  it('carries it on an unreachable publisher too', async () => {
+    resetReaderCache();
+    const res = await readerArticle(gnews, {
+      fetchImpl: (async () => {
+        throw new Error('TLS reset');
+      }) as unknown as typeof fetch,
+      resolve: async () => 'https://gate.ahram.org.eg/News/1.aspx',
+    } as never);
+    expect(res.readable).toBe(false);
+    expect(res.resolvedUrl).toBe('https://gate.ahram.org.eg/News/1.aspx');
+  });
+
+  it('reports null rather than a Google link it could not resolve', async () => {
+    resetReaderCache();
+    const res = await readerArticle(gnews, {
+      fetchImpl: (async () =>
+        new Response('<html><body>Google</body></html>', { status: 200 })) as unknown as typeof fetch,
+      resolve: async () => null,
+    } as never);
+    expect(res.readable).toBe(false);
+    expect(res.resolvedUrl ?? null).toBeNull();
   });
 });

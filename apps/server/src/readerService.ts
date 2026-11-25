@@ -36,7 +36,13 @@ export function resetReaderCache(): void {
  */
 export async function readerArticle(
   url: string,
-  options: { title?: string | null; fetchImpl?: typeof fetch; now?: number } = {},
+  options: {
+    title?: string | null;
+    fetchImpl?: typeof fetch;
+    now?: number;
+    /** Test seam: how a Google-News link is resolved to the publisher's page. */
+    resolve?: (u: string) => Promise<string | null>;
+  } = {},
 ): Promise<ReaderArticle> {
   const key = url;
   const now = options.now ?? Date.now();
@@ -49,9 +55,22 @@ export async function readerArticle(
     try {
       // Google-News article URLs do not contain the publisher's URL; the existing
       // resolver is the supported way to recover it (see articleText.ts).
-      const target = isGoogleNewsUrl(url) ? await resolveGoogleNewsUrl(url) : url;
+      const resolve = options.resolve ?? resolveGoogleNewsUrl;
+      const target = isGoogleNewsUrl(url) ? await resolve(url) : url;
       if (!target) return { title: null, blocks: [], readable: false, reason: 'unreachable' };
-      const page = await fetchPage(target);
+      // A Google-News link that would not resolve must not be handed to the browser:
+      // its shell page renders as an "invalid redirect" error (#54).
+      if (isGoogleNewsUrl(target)) {
+        return { title: null, blocks: [], readable: false, reason: 'unreachable', resolvedUrl: null };
+      }
+      let page: Awaited<ReturnType<typeof fetchPage>>;
+      try {
+        page = await fetchPage(target, options.fetchImpl);
+      } catch {
+        // The publisher could not be reached at all (measured: a TLS reset from this
+        // host). The app still needs the publisher URL for its own browser fallback.
+        return { title: null, blocks: [], readable: false, reason: 'unreachable', resolvedUrl: target };
+      }
       if (!page.ok) {
         // 401/403/429 mean the publisher refused us, not that the page is empty: the
         // app must open it in the browser rather than claim the story is unreadable.
@@ -60,9 +79,13 @@ export async function readerArticle(
           blocks: [],
           readable: false,
           reason: page.status === 401 || page.status === 403 || page.status === 429 ? 'blocked' : 'unreachable',
+          // Even when the extraction fails the app needs the PUBLISHER url: its
+          // browser fallback would otherwise open the Google-News link and show
+          // Google's invalid-redirect page instead of the story (#54).
+          resolvedUrl: target,
         };
       }
-      return readerFromHtml(page.text, options.title ?? null);
+      return { ...readerFromHtml(page.text, options.title ?? null), resolvedUrl: target };
     } catch {
       return { title: null, blocks: [], readable: false, reason: 'unreachable' };
     }

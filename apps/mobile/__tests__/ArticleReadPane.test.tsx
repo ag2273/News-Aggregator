@@ -164,3 +164,123 @@ describe('reading an article at its source', () => {
     spy.mockRestore();
   });
 });
+
+/**
+ * The user's report on apk-74 (#54): on a real phone, an العربية and a الدستور
+ * article opened an "إشعار إعادة التوجيه — … عنوان ويب غير صالح" page instead of the
+ * story.
+ *
+ * Measured cause: every article our feeds store has a `news.google.com` URL, not the
+ * publisher's own. The browser fallback handed that Google link to the WebView, and
+ * Google's own article shell renders there as a redirect error. The server now
+ * resolves it, and the WebView must open the RESOLVED publisher page.
+ *
+ * These pin the exact `source.uri` on each fallback branch, for the three publishers
+ * the user named, plus the case where resolution failed and there is nothing to open.
+ */
+describe('the browser fallback opens the publisher, never the Google-News link', () => {
+  // Real shapes: our feed stores Google News article links for these outlets.
+  const gnews =
+    'https://news.google.com/rss/articles/CBMiS0FVX3lxTE41M3ExY3A3UFJOS05hcXl2ejBQdEsybG5vUHZHTjlfWXVWS3Z5QzVpaVlrVTVPSHlmTnlZQ01PMHZuN1VKNGR1Mk9Gcw?oc=5';
+  const publishers = {
+    dostor: 'https://elcaptain.dostor.org/231448',
+    alarabiya:
+      'https://www.alarabiya.net/aswaq/companies/2026/11/25/%D8%AA%D8%B3%D9%87%D9%8A%D9%84',
+    ahram: 'https://gate.ahram.org.eg/News/5130000.aspx',
+  };
+
+  const renderFallback = (url: string, id: string) =>
+    render(
+      <ArticleReadPane url={url} articleId={id} title="المصدر" t={t} onClose={() => {}} />,
+    );
+
+  beforeEach(() => {
+    mockReader.mockReset();
+    (WebView as unknown as { lastProps: any }).lastProps = null;
+  });
+
+  it.each(Object.entries(publishers))(
+    'opens the resolved publisher page for %s when the reader refuses (blocked)',
+    async (_name, publisher) => {
+      // The server's answer for these three: it cannot extract and cannot even reach
+      // them from this host, but it CAN resolve the Google link to the publisher URL.
+      mockReader.mockResolvedValue({
+        title: null,
+        blocks: [],
+        readable: false,
+        reason: 'blocked',
+        resolvedUrl: publisher,
+      });
+      renderFallback(gnews, 'x1');
+      await waitFor(() => expect(screen.getByTestId('webview')).toBeTruthy());
+      const props = (WebView as unknown as { lastProps: any }).lastProps;
+      // The cleaned endpoint receives the PUBLISHER url, not the Google link.
+      expect(props.source.uri).toBe(
+        `https://news.nileorbit.com/api/articles/clean?url=${encodeURIComponent(publisher)}`,
+      );
+      expect(props.source.uri).not.toContain('news.google.com');
+    },
+  );
+
+  it.each(Object.entries(publishers))(
+    'switches to the live publisher page for %s after the cleaner answers 502',
+    async (_name, publisher) => {
+      mockReader.mockResolvedValue({
+        title: null,
+        blocks: [],
+        readable: false,
+        reason: 'unreachable',
+        resolvedUrl: publisher,
+      });
+      renderFallback(gnews, 'x2');
+      await waitFor(() => expect(screen.getByTestId('webview')).toBeTruthy());
+      const first = (WebView as unknown as { lastProps: any }).lastProps;
+      await act(async () => {
+        first.onHttpError({ nativeEvent: { statusCode: 502 } });
+      });
+      await waitFor(() => {
+        const after = (WebView as unknown as { lastProps: any }).lastProps;
+        expect(after.source.uri).toBe(publisher);
+      });
+      const after = (WebView as unknown as { lastProps: any }).lastProps;
+      // The exact bug: this used to be the `news.google.com` link.
+      expect(after.source.uri).not.toContain('news.google.com');
+      expect(after.injectedJavaScript).toContain('adfull');
+      expect(screen.getByText(/ممكن تظهر إعلانات/)).toBeTruthy();
+    },
+  );
+
+  it('falls back to the original url when the server could not resolve it', async () => {
+    // A non-Google url is its own publisher page, so it is used as-is.
+    mockReader.mockResolvedValue({
+      title: null,
+      blocks: [],
+      readable: false,
+      reason: 'thin',
+      resolvedUrl: null,
+    });
+    render(
+      <ArticleReadPane url="https://www.masrawy.com/news/1" articleId="x3" title="مصراوي" t={t} onClose={() => {}} />,
+    );
+    await waitFor(() => expect(screen.getByTestId('webview')).toBeTruthy());
+    const props = (WebView as unknown as { lastProps: any }).lastProps;
+    expect(props.source.uri).toBe(
+      `https://news.nileorbit.com/api/articles/clean?url=${encodeURIComponent('https://www.masrawy.com/news/1')}`,
+    );
+  });
+
+  it('refuses to load a Google-News link it could not resolve, instead of the error page', async () => {
+    // No websafe page can be produced for a Google link: its shell is the invalid
+    // redirect the user saw. Show an honest message, not that error.
+    mockReader.mockResolvedValue({
+      title: null,
+      blocks: [],
+      readable: false,
+      reason: 'unreachable',
+      resolvedUrl: null,
+    });
+    renderFallback(gnews, 'x4');
+    await waitFor(() => expect(screen.queryByTestId('webview')).toBeNull());
+    expect(screen.getByText(/مش قادرين نفتح الخبر ده/)).toBeTruthy();
+  });
+});

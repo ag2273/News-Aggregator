@@ -18,7 +18,7 @@
 // rewritten to absolute URLs so they still work, and the page's own stylesheets,
 // images and fonts are kept — a "clean" page that lost its CSS is not readable.
 
-import { fetchPage } from './articleText.js';
+import { fetchPage, isGoogleNewsUrl, resolveGoogleNewsUrl } from './articleText.js';
 import { stripAdMarkup } from './cleanPage.js';
 
 /** How long a cleaned page is reused per URL. */
@@ -46,17 +46,31 @@ export function resetCleanCache(): void {
  * turns that into a clear message rather than serving an ad-laden page and calling
  * it cleaned.
  */
-export async function cleanPage(url: string, now: number = Date.now()): Promise<string | null> {
+export async function cleanPage(
+  url: string,
+  now: number = Date.now(),
+  deps: { fetchImpl?: typeof fetch; resolve?: (u: string) => Promise<string | null> } = {},
+): Promise<string | null> {
   const cached = cache.get(url);
   if (cached && now - cached.at < TTL_MS) return cached.html;
   const running = inFlight.get(url);
   if (running) return running;
 
+  const resolve = deps.resolve ?? resolveGoogleNewsUrl;
+
   const job = (async (): Promise<string | null> => {
     try {
-      const page = await fetchPage(url);
+      // Every stored article URL from our feeds is a `news.google.com` link, not the
+      // publisher's own. Fetching that link and cleaning it served Google's shell
+      // page back with a 200 — which the WebView then rendered as an "invalid
+      // redirect" error, and which never produced the 502 that switches the reader
+      // to the publisher's live page (issue #54). Resolve it first, exactly as the
+      // reader endpoint does, and refuse to ever serve Google's own document.
+      const target = isGoogleNewsUrl(url) ? await resolve(url) : url;
+      if (!target || isGoogleNewsUrl(target)) return null;
+      const page = await fetchPage(target, deps.fetchImpl);
       if (!page.ok || !page.text) return null;
-      const html = stripAdMarkup(page.text, url);
+      const html = stripAdMarkup(page.text, target);
       // A page that still has no body after cleaning is not worth showing.
       return html || null;
     } catch {

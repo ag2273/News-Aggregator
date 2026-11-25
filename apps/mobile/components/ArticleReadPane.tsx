@@ -31,6 +31,25 @@ import { WebViewPane } from './WebViewPane';
  * fabricates a body — an unreadable article goes to the browser rather than showing
  * a half-empty page dressed up as the story.
  */
+/**
+ * The URL the browser fallback should open.
+ *
+ * Our feeds store Google-News redirect links, and Google's own article page renders
+ * inside our WebView as an "invalid redirect" error instead of the story (#54). So
+ * the server-resolved publisher URL wins whenever there is one; the Google link is
+ * kept only as the last resort, where the server-side cleaner can still resolve it.
+ */
+export function publisherUrl(resolved: string | null | undefined, original: string): string {
+  const candidate = (resolved ?? '').trim();
+  if (/^https?:\/\//i.test(candidate) && !isGoogleNewsLink(candidate)) return candidate;
+  return original;
+}
+
+/** Is this a Google-News article link rather than the publisher's own page? */
+export function isGoogleNewsLink(url: string): boolean {
+  return /^https?:\/\/news\.google\.com\//i.test(url.trim());
+}
+
 export function ArticleReadPane({
   url,
   articleId,
@@ -47,7 +66,7 @@ export function ArticleReadPane({
   const [state, setState] = useState<
     | { phase: 'loading' }
     | { phase: 'reader'; article: ReaderArticle }
-    | { phase: 'web'; cleaned: boolean; reason?: string }
+    | { phase: 'web'; cleaned: boolean; reason?: string; target?: string }
   >({ phase: 'loading' });
 
   useEffect(() => {
@@ -60,27 +79,62 @@ export function ArticleReadPane({
           setState({ phase: 'reader', article });
           return;
         }
-        setState({ phase: 'web', cleaned: true });
+        // The browser fallback must open the PUBLISHER's page. Our feed stores
+        // `news.google.com` redirect links, and opening one of those shows Google's
+        // "invalid redirect" error instead of the story — the reported bug (#54).
+        setState({ phase: 'web', cleaned: true, target: publisherUrl(article?.resolvedUrl, url) });
       })
       .catch(() => {
         // The extract request itself failed. Still try the cleaned page: the two
         // come from the same server, but a failure here may be this request only.
-        if (!cancelled) setState({ phase: 'web', cleaned: true });
+        if (!cancelled) setState({ phase: 'web', cleaned: true, target: publisherUrl(null, url) });
       });
     return () => {
       cancelled = true;
     };
   }, [articleId, url]);
 
+  const target = state.phase === 'web' ? state.target ?? publisherUrl(null, url) : url;
+
   const openExternally = useCallback(() => {
     // The one action the app cannot do for the reader: leave for their browser.
-    Linking.openURL(url).catch(() => {});
-  }, [url]);
+    Linking.openURL(target).catch(() => {});
+  }, [target]);
 
   if (state.phase === 'loading') {
     return (
       <View style={[styles.center, { backgroundColor: t.surface }]}>
         <ActivityIndicator size="large" color={t.accent} />
+      </View>
+    );
+  }
+
+  // Nothing to open. Our feed stores Google-News redirect links, and when the server
+  // could not work out which publisher page the link points at there is no page we
+  // can show: Google's own shell renders as an "invalid redirect" error, which is
+  // exactly what the reader reported (#54). Say so instead of showing that.
+  if (state.phase === 'web' && isGoogleNewsLink(target)) {
+    return (
+      <View style={[styles.root, { backgroundColor: t.surface }]}>
+        <View style={[styles.header, { borderBottomColor: t.borderLight }]}>
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="رجوع"
+          >
+            <Ionicons name="chevron-forward" size={22} color={t.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: t.textPrimary }]} numberOfLines={1}>
+            {title}
+          </Text>
+          <View style={styles.back} />
+        </View>
+        <View style={styles.center}>
+          <Text style={[styles.unavailable, { color: t.textSecondary }]}>
+            مش قادرين نفتح الخبر ده دلوقتي. جرّب تاني بعد شوية.
+          </Text>
+        </View>
       </View>
     );
   }
@@ -91,7 +145,7 @@ export function ArticleReadPane({
     // the page is clean — measured: dostor.org refuses this host's TLS handshake.
     return (
       <WebViewPane
-        url={url}
+        url={state.target ?? publisherUrl(null, url)}
         title={title}
         t={t}
         onClose={onClose}
@@ -233,4 +287,11 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   sourceLinkText: { fontFamily: 'Cairo_600SemiBold', fontSize: 13 },
+  unavailable: {
+    fontFamily: 'Cairo_400Regular',
+    fontSize: 14,
+    lineHeight: 24,
+    textAlign: 'center',
+    paddingHorizontal: 28,
+  },
 });

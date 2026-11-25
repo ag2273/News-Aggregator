@@ -139,6 +139,13 @@ export interface ReaderArticle {
   readable: boolean;
   /** Why not, when `readable` is false: the app then falls back to the source page. */
   reason?: 'unreachable' | 'blocked' | 'thin';
+  /**
+   * The publisher page this article really lives at, resolved on the server when the
+   * stored URL was a `news.google.com` link. The browser fallback MUST load this:
+   * Google's link renders as an "invalid redirect" error instead of the story (#54).
+   * Null/absent when the server could not resolve it.
+   */
+  resolvedUrl?: string | null;
 }
 
 /**
