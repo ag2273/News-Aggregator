@@ -6,7 +6,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ArticleSheetProvider } from '../components/ArticleSheet';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { cairoDay } from '../lib/dates';
-import { prefetchTodayMatches } from '../lib/useMatchesDay';
 import { logEvent } from '../lib/perfLog';
 import { initCrashReporting } from '../lib/crash';
 import { beaconPing } from '../lib/analytics';
@@ -40,17 +39,11 @@ function PushTokenSync() {
   }, []);
   useEffect(() => addPushTokenRefreshListener(() => token), [token]);
 
-  // Warm today's matches so opening that page is instant (#59). ONE request, at the
-  // reader's own rate, and a no-op when a fresh copy is already stored — the server is
-  // small (see #58) and the phone must not look like a scraper.
+  // Boot marker for the performance log (#60). The start-up matches prefetch that used
+  // to run here was rolled back with the rest of the device cache (#59) — the user's
+  // decision: the app behaved better without it.
   useEffect(() => {
-    // Boot marker: the first render of the root layout (#60). Paired with the module
-    // load below, this gives the reader's "time to first frame" for their report.
     logEvent('boot', 'root-rendered', { signedIn: !!token });
-    const started = Date.now();
-    prefetchTodayMatches({ date: cairoDay(0), token })
-      .then((fetched) => logEvent('boot', 'prefetch-done', { fetched, ms: Date.now() - started }))
-      .catch(() => logEvent('boot', 'prefetch-done', { fetched: false, ms: Date.now() - started }));
   }, [token]);
 
   // Verification happens in the browser, so re-read the session whenever the

@@ -280,21 +280,6 @@ export function matchesForTeams(matches: MatchRow[], teams: string[]): MatchRow[
  */
 const DETAIL_TTL_LIVE_MS = 60 * 1000;
 const DETAIL_TTL_FINAL_MS = 24 * 60 * 60 * 1000;
-/**
- * A detail entry kept past its freshness window, for a reader who must not wait (#60).
- *
- * Measured on the user's phone: the FIRST open of a match took 16.2s because the
- * route blocked on the provider's page. The second was 2.2s off the 60s cache. Serving
- * a slightly old timeline instantly beats a blank screen; the row's own status still
- * says whether the match is over, and a finished match's detail never changes.
- */
-const detailStale = new Map<string, MatchDetailData>();
-
-/** The last known detail for a match, even if it is past its fresh window. */
-export function cachedMatchDetailStale(match: MatchRow): MatchDetailData | null {
-  return detailStale.get(detailKey(match)) ?? null;
-}
-
 export type MatchDetailData = {
   commentator: string | null;
   channel: string | null;
@@ -346,7 +331,6 @@ export async function loadMatchDetail(
         finished: match.status === 'finished',
         data,
       });
-      detailStale.set(key, data);
     }
     return data;
   });

@@ -75,9 +75,3 @@ export function failureMessage(kind: MatchFetchFailure): string {
   if (kind === 'offline') return 'تعذّر الاتصال. حاول مرة أخرى.';
   return 'تعذّر تحميل المباريات.';
 }
-
-/** The sentence for a failure while an older copy is still on screen. */
-export function staleFailureMessage(kind: MatchFetchFailure): string {
-  if (kind === 'timeout') return 'التحديث أخد وقت طويل — المعروض آخر نسخة متاحة';
-  return 'تعذّر تحديث النتائج — المعروض آخر نسخة متاحة';
-}

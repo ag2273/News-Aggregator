@@ -128,7 +128,6 @@ import { getAllArticles } from './db.js';
 import { readerArticle } from './readerService.js';
 import { cleanPage } from './cleanPageService.js';
 import {
-  cachedMatchDetailStale,
   competitionOf,
   enrichLiveClocks,
   loadDay,
@@ -1711,16 +1710,9 @@ app.get('/api/football/matches/:id', async (c) => {
   // The commentator and coaches live on the provider's match page only, so they are
   // fetched when the reader opens the match, not on every day refresh.
   //
-  // A reader must not wait for that page the first time either (#60): measured on the
-  // user's phone, the first open blocked for 16.2s. If a slightly older detail is on
-  // hand it is served at once and the refresh happens behind the response; a finished
-  // match's timeline cannot change anyway.
-  const hadStale = cachedMatchDetailStale(match);
-  const detail = hadStale ?? (await loadMatchDetail(match).catch(() => null));
-  if (hadStale) {
-    // Refresh in the background so the next open is current. Never awaited.
-    void loadMatchDetail(match).catch(() => null);
-  }
+  // The stale-detail cache added in #60 was rolled back with the device cache (#59) by
+  // user decision: "the situation before it was better". This is the plain fetch.
+  const detail = await loadMatchDetail(match).catch(() => null);
   return c.json({
     data: {
       match,

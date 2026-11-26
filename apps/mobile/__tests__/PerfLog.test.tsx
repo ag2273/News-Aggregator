@@ -50,7 +50,6 @@ import {
   withDeadline,
   classifyFailure,
   failureMessage,
-  staleFailureMessage,
 } from '../lib/matchesState';
 
 beforeEach(() => {
@@ -141,7 +140,6 @@ describe('the message matches what happened', () => {
     const kind = classifyFailure(Object.assign(new Error('x'), { timeout: true }), () => false);
     expect(kind).toBe('timeout');
     expect(failureMessage(kind)).toMatch(/بطيء/);
-    expect(staleFailureMessage(kind)).toMatch(/وقت طويل/);
   });
 
   it('tells offline apart from a server error', () => {
@@ -151,7 +149,4 @@ describe('the message matches what happened', () => {
     expect(failureMessage('server')).toMatch(/تعذّر تحميل/);
   });
 
-  it('keeps the honest wording when an older copy stays on screen', () => {
-    expect(staleFailureMessage('server')).toContain('آخر نسخة');
-  });
 });

@@ -26,7 +26,12 @@ import {
   type MatchesDay,
 } from '../../lib/api';
 import { cairoDay, ribbonLabel } from '../../lib/dates';
-import { useMatchesDay } from '../../lib/useMatchesDay';
+import {
+  MATCHES_FETCH_DEADLINE_MS,
+  classifyFailure,
+  failureMessage,
+  withDeadline,
+} from '../../lib/matchesState';
 import { LeagueStrip, MatchCard, matchCountLabel } from '../../components/FootballCard';
 
 type Filter = 'all' | 'live' | 'followed' | 'finished' | 'upcoming';
@@ -81,18 +86,31 @@ export default function MatchesScreen() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const date = cairoDay(offset);
-  // Cache-first (#59): the last copy for this day is drawn immediately, the network
-  // refreshes behind it, and the screen swaps when the fresh answer lands.
-  const matchesState = useMatchesDay({ date, token });
-  const loading = matchesState.loading;
-  const error = matchesState.error;
-  const load = matchesState.reload;
-  // The page owns its copy of the day: a follow toggle edits it locally, and a fresh
-  // network answer replaces it.
+  // Network-first, as before #59. The device cache was rolled back by user decision:
+  // "the situation before it was better". What stays is the deadline, so the spinner
+  // still always ends with a sentence instead of hanging.
   const [day, setDay] = useState<MatchesDay | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  /** Shown while a slow attempt is still in flight after the deadline passed. */
+  const [slowNotice, setSlowNotice] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setSlowNotice(null);
+    try {
+      setDay(await withDeadline(fetchMatches(date, token), MATCHES_FETCH_DEADLINE_MS));
+    } catch (err) {
+      const kind = classifyFailure(err, isNetworkFailure);
+      setError(failureMessage(kind));
+    } finally {
+      setLoading(false);
+    }
+  }, [date, token]);
+
   useEffect(() => {
-    if (matchesState.day) setDay(matchesState.day);
-  }, [matchesState.day]);
+    void load();
+  }, [load]);
 
   const followed = useMemo(() => new Set(day?.followedTeams ?? []), [day]);
   const followedLeagues = useMemo(() => new Set(day?.followedLeagues ?? []), [day]);
@@ -346,18 +364,10 @@ export default function MatchesScreen() {
           <View style={styles.stateWrap}>
             <ActivityIndicator color={t.accent} />
           </View>
-        ) : matchesState.staleNotice || matchesState.updatingLabel ? (
-          // The list below is real data, but it is not being sold as current (#59):
-          // either a refresh is in flight over it, or the last refresh failed.
+        ) : slowNotice ? (
           <View style={[styles.updateBar, { borderBottomColor: t.borderLight }]}>
-            {matchesState.staleNotice ? (
-              <Ionicons name="cloud-offline-outline" size={13} color={t.textMuted} />
-            ) : (
-              <ActivityIndicator size="small" color={t.accent} />
-            )}
-            <Text style={[styles.updateText, { color: t.textSecondary }]}>
-              {matchesState.staleNotice ?? matchesState.updatingLabel}
-            </Text>
+            <ActivityIndicator size="small" color={t.accent} />
+            <Text style={[styles.updateText, { color: t.textSecondary }]}>{slowNotice}</Text>
           </View>
         ) : null}
 
