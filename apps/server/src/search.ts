@@ -40,7 +40,7 @@ export function articleMatchesQuery(row: StoredArticle, normalizedQuery: string)
 }
 
 /** Fill the search cache in slices, yielding between them (after boot or a refresh). */
-export function warmSearch(rows: readonly StoredArticle[], chunk = 500): Promise<void> {
+export function warmSearch(rows: readonly StoredArticle[], chunk = 150): Promise<void> {
   return new Promise((resolve) => {
     let i = 0;
     const step = (): void => {

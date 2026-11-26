@@ -100,20 +100,26 @@ export interface ClusterInput {
  */
 const preparedTitles = new Map<string, { title: string; shingles: Set<string> }>();
 
-export function prepare(articles: Article[]): ClusterInput[] {
-  const out = articles.map((article) => {
-    let p = preparedTitles.get(article.title);
-    if (!p) {
-      const title = clusterTitle(article.title);
-      p = { title, shingles: shingles(title) };
-      preparedTitles.set(article.title, p);
-    }
-    return { article, title: p.title, shingles: p.shingles, publishedAt: article.publishedAt };
-  });
+function prepareOne(article: Article): ClusterInput {
+  let p = preparedTitles.get(article.title);
+  if (!p) {
+    const title = clusterTitle(article.title);
+    p = { title, shingles: shingles(title) };
+    preparedTitles.set(article.title, p);
+  }
+  return { article, title: p.title, shingles: p.shingles, publishedAt: article.publishedAt };
+}
+
+function trimPrepared(articles: Article[]): void {
   if (preparedTitles.size > 2 * articles.length + 1000) {
     const live = new Set(articles.map((a) => a.title));
     for (const key of preparedTitles.keys()) if (!live.has(key)) preparedTitles.delete(key);
   }
+}
+
+export function prepare(articles: Article[]): ClusterInput[] {
+  const out = articles.map(prepareOne);
+  trimPrepared(articles);
   return out;
 }
 
@@ -224,7 +230,14 @@ function* clusterSteps(
   minSimilarity: number,
   minShared: number,
 ): Generator<void, Cluster[], void> {
-  const prepared = prepare(articles);
+  // Prepared one article per step too: on a cold cache (the first build after a
+  // boot) shingling ~21k titles in one go was a >1s stall on the e2-micro.
+  const prepared: ClusterInput[] = [];
+  for (const article of articles) {
+    prepared.push(prepareOne(article));
+    yield;
+  }
+  trimPrepared(articles);
   const clusters: ClusterInput[][] = [];
   // shingle → the clusters whose LEAD carries it, in creation order. `head` skips
   // leads that fell out of the time window (only safe when input is newest-first).

@@ -544,13 +544,12 @@ export function relatedNews(
   // Rows the word index already covers are candidates only when one of their tokens
   // matches a needle exactly; a row the index has not seen yet falls back to the
   // substring test (and is indexed on the way).
-  const candidates = new Set<object>();
-  for (const n of needles) for (const row of tokenIndex.get(n) ?? []) candidates.add(row);
+  const postings = needles.map((n) => tokenIndex.get(n)).filter((p): p is Set<object> => Boolean(p));
 
   const hits: RelatedArticle[] = [];
   for (const article of articles) {
     if (indexedRows.has(article)) {
-      if (!candidates.has(article)) continue;
+      if (!postings.some((p) => p.has(article))) continue;
     } else {
       indexRow(article);
       const haystack = normalizedArticleText(article);
@@ -633,7 +632,7 @@ export function resetRelatedNewsIndex(): void {
  * Fill the normalised-text cache in small slices, yielding between them, so the
  * first match opened after a boot or a refresh does not pay for the whole corpus.
  */
-export function warmRelatedNews(articles: readonly ArticleLike[], chunk = 500): Promise<void> {
+export function warmRelatedNews(articles: readonly ArticleLike[], chunk = 150): Promise<void> {
   return new Promise((resolve) => {
     let i = 0;
     const step = (): void => {

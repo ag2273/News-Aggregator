@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import type { Article } from './types.js';
 import { categorize, detectBreaking } from './categorize.js';
 import { SOURCES } from './types.js';
@@ -30,6 +31,106 @@ const DATA_DIR = rawDataDir
   ? path.resolve(rawDataDir)
   : path.resolve(__dirname, '../../data');
 const DB_PATH = path.join(DATA_DIR, 'news.json');
+const SQLITE_PATH = path.join(DATA_DIR, 'news.db');
+
+/**
+ * Where the rows live (#perf, e2-micro).
+ *
+ * `sqlite` (the server default): one row per article in `news.db`. A refresh writes
+ * only its new rows (~1ms) instead of re-serialising the whole 20MB store (~0.3s of
+ * blocking CPU per refresh on the e2-micro, and a 20MB string in memory each time),
+ * and a boot reads ~3x faster than JSON.parse of the whole file. The first boot
+ * imports `news.json` once and leaves it in place, so a rollback still has a file.
+ *
+ * `json`: the original single file. The default in tests, whose fixtures reset the
+ * store by deleting news.json; also the fallback when node:sqlite is unavailable.
+ */
+const STORE_BACKEND: 'sqlite' | 'json' =
+  (process.env['NEWS_STORE'] as 'sqlite' | 'json' | undefined) ??
+  (process.env['NODE_ENV'] === 'test' ? 'json' : 'sqlite');
+
+/** The few node:sqlite calls this file uses (typed here; @types/node 20 lacks them). */
+interface SqlStatement {
+  run(...params: unknown[]): unknown;
+  all(...params: unknown[]): Array<Record<string, unknown>>;
+  get(...params: unknown[]): Record<string, unknown> | undefined;
+}
+interface SqlDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): SqlStatement;
+  close(): void;
+}
+
+let sql: { db: SqlDatabase; upsert: SqlStatement; remove: SqlStatement } | null = null;
+
+/** Open news.db, or null when the json backend is in use or node:sqlite is missing. */
+function openSqlite(): typeof sql {
+  if (STORE_BACKEND !== 'sqlite') return null;
+  if (sql) return sql;
+  try {
+    const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
+      DatabaseSync: new (file: string) => SqlDatabase;
+    };
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const db = new DatabaseSync(SQLITE_PATH);
+    db.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
+      CREATE TABLE IF NOT EXISTS articles (
+        url TEXT PRIMARY KEY,
+        published_at INTEGER NOT NULL,
+        data TEXT NOT NULL
+      );
+    `);
+    sql = {
+      db,
+      upsert: db.prepare(
+        'INSERT INTO articles (url, published_at, data) VALUES (?, ?, ?) ' +
+          'ON CONFLICT(url) DO UPDATE SET published_at = excluded.published_at, data = excluded.data',
+      ),
+      remove: db.prepare('DELETE FROM articles WHERE url = ?'),
+    };
+    return sql;
+  } catch (err) {
+    console.error('[db] SQLite unavailable, falling back to news.json:', err);
+    return null;
+  }
+}
+
+/** Write these rows and delete these urls in one transaction. */
+function sqlWrite(upserts: readonly StoredArticle[], removedUrls: readonly string[]): void {
+  const s = openSqlite();
+  if (!s) return;
+  s.db.exec('BEGIN');
+  try {
+    for (const url of removedUrls) s.remove.run(url);
+    for (const r of upserts) s.upsert.run(r.url, r.publishedAt, JSON.stringify(r));
+    s.db.exec('COMMIT');
+  } catch (err) {
+    s.db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+/** Every row in news.db, importing news.json first if the database is new. */
+function sqlLoadAll(s: NonNullable<typeof sql>): StoredArticle[] {
+  const count = Number(s.db.prepare('SELECT COUNT(*) AS n FROM articles').get()?.['n'] ?? 0);
+  if (count === 0 && fs.existsSync(DB_PATH)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(DB_PATH, 'utf8')) as unknown;
+      if (Array.isArray(parsed) && parsed.length) {
+        sqlWrite(parsed as StoredArticle[], []);
+        console.log(`[db] imported ${parsed.length} row(s) from news.json into news.db (news.json kept)`);
+      }
+    } catch (err) {
+      console.error('[db] could not import news.json:', err);
+    }
+  }
+  return s.db
+    .prepare('SELECT data FROM articles')
+    .all()
+    .map((r) => JSON.parse(String(r['data'])) as StoredArticle);
+}
 
 export interface StoredArticle extends Article {
   fetchedAt: number;
@@ -53,6 +154,10 @@ export function getStoreVersion(): number {
 export function _resetDbCache(): void {
   cache = null;
   storeVersion++;
+  if (sql) {
+    sql.db.close();
+    sql = null;
+  }
 }
 
 /** Lazy migration: re-classify legacy 'general' categories and decode leftover HTML entities. */
@@ -107,18 +212,32 @@ function migrate(rows: StoredArticle[]): { rows: StoredArticle[]; changed: boole
 
 function load(): StoredArticle[] {
   if (cache) return cache;
-  try {
-    const raw = fs.readFileSync(DB_PATH, 'utf8');
-    const parsed = JSON.parse(raw) as unknown;
-    cache = Array.isArray(parsed) ? (parsed as StoredArticle[]) : [];
-  } catch {
-    cache = [];
+  const s = openSqlite();
+  if (s) {
+    cache = sqlLoadAll(s);
+  } else {
+    try {
+      const raw = fs.readFileSync(DB_PATH, 'utf8');
+      const parsed = JSON.parse(raw) as unknown;
+      cache = Array.isArray(parsed) ? (parsed as StoredArticle[]) : [];
+    } catch {
+      cache = [];
+    }
   }
-  const { rows, changed } = migrate(cache);
+  const before = cache;
+  const { rows, changed } = migrate(before);
   storeVersion++;
   if (changed) {
     cache = rows;
-    save();
+    if (s) {
+      // Only what the migration touched: rewritten rows (a new object) and purged ones.
+      const keptUrls = new Set(rows.map((r) => r.url));
+      const original = new Set(before);
+      const purged = before.filter((r) => !keptUrls.has(r.url)).map((r) => r.url);
+      sqlWrite(rows.filter((r) => !original.has(r)), purged);
+    } else {
+      save();
+    }
   }
   return cache;
 }
@@ -223,7 +342,8 @@ export function insertArticlesDetailed(articles: Article[]): StoredArticle[] {
     storeVersion++;
     // Nothing new, nothing to write: a sweep where most feeds had no new story used
     // to queue a full re-serialisation of the store per feed.
-    save();
+    if (openSqlite()) sqlWrite(inserted, []);
+    else save();
   }
   return inserted;
 }
@@ -291,9 +411,12 @@ export function pruneArticles(cutoffMs: number, keep: ReadonlySet<string>): numb
   const kept = rows.filter((r) => r.publishedAt >= cutoffMs || keep.has(r.id));
   const removed = rows.length - kept.length;
   if (removed > 0) {
+    const keptSet = new Set(kept);
+    const gone = rows.filter((r) => !keptSet.has(r)).map((r) => r.url);
     cache = kept;
     storeVersion++;
-    save();
+    if (openSqlite()) sqlWrite([], gone);
+    else save();
   }
   return removed;
 }
