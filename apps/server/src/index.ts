@@ -160,6 +160,7 @@ import {
 } from './footballStore.js';
 import { pollFootball } from './footballPush.js';
 import { crestCacheStats, getCrest, registerLogoSource } from './crests.js';
+import { getSourceIcon } from './sourceIcons.js';
 import { buildTeamPage } from './teamPage.js';
 import { competitionOrderFor, normaliseCompetitionOrder } from './competitionOrder.js';
 import { buildFollowCatalog } from './followCatalog.js';
@@ -2079,6 +2080,19 @@ app.get('/api/football/logo/:key', async (c) => {
     'Content-Type': crest.contentType,
     // Crests change rarely; a day is polite and keeps the screen fast.
     'Cache-Control': 'public, max-age=86400',
+  });
+});
+
+/**
+ * An outlet's icon, for the card of a story with no picture (#57). Our bytes, never
+ * a hotlink; 404 when the outlet has none we can use, and the app draws a letter.
+ */
+app.get('/api/sources/:id/icon', async (c) => {
+  const icon = await getSourceIcon(c.req.param('id'));
+  if (!icon) return c.body(null, 404);
+  return c.body(new Uint8Array(icon.buffer), 200, {
+    'Content-Type': icon.contentType,
+    'Cache-Control': 'public, max-age=604800',
   });
 });
 
