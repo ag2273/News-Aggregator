@@ -228,8 +228,11 @@ describe('articleText: transport', () => {
       'utf8',
     );
     const realCalls = src.match(/await fetch\(/g) ?? [];
-    // Only the explicit HTTP/1.1 fallbacks inside fetchPage may use bare fetch.
-    expect(realCalls.length).toBeLessThanOrEqual(2);
+    // Bare fetch is confined to: the two explicit HTTP/1.1 fallbacks inside
+    // `fetchPage`, and ONE deliberate probe in the tag hop (#61) — measured, a plain
+    // HTTP/1.1 request to المصري اليوم gets Cloudflare's challenge while HTTP/2 gets
+    // the page, so trying both is the point of that third call.
+    expect(realCalls.length).toBeLessThanOrEqual(3);
     expect(src).toMatch(/resolveGoogleNewsUrl[\s\S]{0,800}fetchPage\(/);
   });
 

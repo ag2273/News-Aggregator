@@ -94,13 +94,33 @@ export async function followTagPage(
     /href=["'](?:https?:\/\/[^"']+)?(\/(?:news\/details|editor\/details|story|article)[^"']*\d[^"']*)["']/i;
   let match: RegExpMatchArray | null = null;
   for (let attempt = 0; attempt < 2 && !match; attempt += 1) {
-    const page = await fetchPageWithTimeout(
-      url,
-      fetchImpl === fetch ? undefined : fetchImpl,
-      RESOLVE_TIMEOUT_MS,
-    );
-    if (!page.ok || !page.text) continue;
-    match = page.text.match(STORY_LINK);
+    // The two transports are NOT interchangeable for this publisher: measured, a plain
+    // HTTP/1.1 request to المصري اليوم gets 403 with Cloudflare's "Just a moment…"
+    // challenge while the HTTP/2 path gets the page. Trying both is what turns a
+    // challenge into the story instead of a dead end.
+    const viaFetch =
+      attempt === 1 && fetchImpl === fetch
+        ? await (async () => {
+            try {
+              const res = await fetch(url, {
+                headers: BROWSER_HEADERS,
+                redirect: 'follow',
+                signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS),
+              });
+              return { ok: res.ok, status: res.status, text: await res.text() };
+            } catch {
+              return { ok: false, status: 0, text: '' };
+            }
+          })()
+        : await fetchPageWithTimeout(
+            url,
+            fetchImpl === fetch ? undefined : fetchImpl,
+            RESOLVE_TIMEOUT_MS,
+          );
+    if (!viaFetch.ok || !viaFetch.text) continue;
+    // A challenge page is not the listing; never parse it for links.
+    if (/Just a moment|cf-browser-verification|security verification/i.test(viaFetch.text)) continue;
+    match = viaFetch.text.match(STORY_LINK);
   }
   if (!match?.[1]) return null;
   try {

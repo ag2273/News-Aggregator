@@ -85,6 +85,13 @@ export async function readerArticle(
           resolvedUrl: target,
         };
       }
+      // A challenge page answers 200, so it is not caught by the status check above —
+      // it would otherwise be reported as `thin` ("we read it, there was no body")
+      // rather than what it is: the publisher refused this request (#61). Measured on
+      // المصري اليوم over HTTP/1.1: 403 with "Just a moment…".
+      if (/Just a moment|cf-browser-verification|security verification/i.test(page.text.slice(0, 4000))) {
+        return { title: null, blocks: [], readable: false, reason: 'blocked', resolvedUrl: target };
+      }
       return { ...readerFromHtml(page.text, options.title ?? null), resolvedUrl: target };
     } catch {
       return { title: null, blocks: [], readable: false, reason: 'unreachable' };
