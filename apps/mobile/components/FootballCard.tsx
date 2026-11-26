@@ -140,11 +140,12 @@ export function LeagueStrip({
  * half, and the score as the loudest element. Everything else is the upcoming
  * card: crests, the kickoff in a time badge, and the channel under it.
  */
-export function MatchCard({
+export const MatchCard = React.memo(function MatchCard({
   t,
   m,
   favourite,
   onPress,
+  onOpenMatch,
   onPressTeam,
   showCompetition = false,
   channelFallback,
@@ -152,7 +153,14 @@ export function MatchCard({
   t: Theme;
   m: FootballMatch;
   favourite?: boolean;
-  onPress: () => void;
+  /** Either a per-card handler, or one stable handler for a whole list (below). */
+  onPress?: () => void;
+  /**
+   * A list-wide handler that receives the match. A long day list passes one stable
+   * function here instead of a new closure per card, so a memoised card is not
+   * re-rendered every time the screen collapses a league or follows a club.
+   */
+  onOpenMatch?: (m: FootballMatch) => void;
   onPressTeam: (name: string) => void;
   /**
    * Print the competition on the card.
@@ -201,7 +209,7 @@ export function MatchCard({
           backgroundColor: isLive ? t.cardGradientStart : t.surface,
         },
       ]}
-      onPress={onPress}
+      onPress={onPress ?? (onOpenMatch ? () => onOpenMatch(m) : undefined)}
       accessibilityRole="button"
       accessibilityLabel={`${m.home} ضد ${m.away}`}
     >
@@ -277,7 +285,7 @@ export function MatchCard({
           gone rather than guarded. */}
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   strip: {

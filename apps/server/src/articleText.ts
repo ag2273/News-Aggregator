@@ -17,6 +17,7 @@
 // Extraction is Mozilla Readability over linkedom (small, no jsdom), so menu and
 // CSS chrome does not end up in the text we pay the AI to read.
 
+import { remember } from './boundedCache.js';
 import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 import { Agent, request } from 'undici';
@@ -400,7 +401,7 @@ export async function resolveGoogleNewsUrl(
       // a tag URL cached for the full 24h kept being served after the hop was added,
       // which is how a fix can look like it did nothing. A real story is permanent.
       const ttl = /\/tag\//i.test(finalUrl) ? LISTING_TTL_MS : RESOLVE_TTL_MS;
-      resolvedCache.set(articleUrl, { url: finalUrl, at: Date.now(), ttl });
+      remember(resolvedCache, articleUrl, { url: finalUrl, at: Date.now(), ttl }, 2000, (e) => Date.now() - e.at >= e.ttl);
       return finalUrl;
     } catch {
       if (attempt === attempts - 1) return null;

@@ -538,18 +538,20 @@ export async function sendPushNotifications(
   const keywordJobs: Array<{ article: Article; record: PushRecord; keyword: string }> = [];
   const budgetUsed = new Map<string, number>();
 
+  // Devices belong to users; group by user so preferences are read once. Built once
+  // per run — it was rebuilt inside the article loop, articles × devices of work.
+  const byUser = new Map<string, PushRecord[]>();
+  for (const record of records) {
+    const list = byUser.get(record.userId) ?? [];
+    list.push(record);
+    byUser.set(record.userId, list);
+  }
+
   for (const article of pushable) {
     if (keywordPushedIds.has(article.id)) continue;
     // Same cluster already notified for this user? Then the story is already on
     // their phone; do not buzz again for another outlet's copy.
     const articleClusterKey = clusterKeys.get(article.id) ?? article.id;
-    // Devices belong to users; group by user so preferences are read once.
-    const byUser = new Map<string, PushRecord[]>();
-    for (const record of records) {
-      const list = byUser.get(record.userId) ?? [];
-      list.push(record);
-      byUser.set(record.userId, list);
-    }
 
     for (const [userId, userRecords] of byUser) {
       const prefs = getPreferences(userId);
@@ -591,7 +593,23 @@ export async function sendPushNotifications(
     });
   }
 
+  trimDedupe(pushedArticleIds);
+  trimDedupe(keywordPushedIds);
   return delivered;
+}
+
+/**
+ * The dedupe sets only need recent ids: an article older than PUSH_MAX_AGE_MS is
+ * never pushed anyway. Without a cap they grew by every new article for the life of
+ * the process. A Set iterates in insertion order, so the oldest ids go first.
+ */
+const DEDUPE_MAX = 20_000;
+function trimDedupe(set: Set<string>): void {
+  if (set.size <= DEDUPE_MAX) return;
+  for (const id of set) {
+    if (set.size <= DEDUPE_MAX) break;
+    set.delete(id);
+  }
 }
 
 /** Reset the in-process dedupe set (tests only). */

@@ -83,3 +83,11 @@ export function deleteSavedForUser(userId: string): number {
 export function _resetSavedCache(): void {
   cache = null;
 }
+
+/** Every article id any reader has saved (kept out of the store's retention prune). */
+export function allSavedArticleIds(): Set<string> {
+  const out = new Set<string>();
+  for (const ids of Object.values(load())) for (const id of ids) out.add(id);
+  return out;
+}
+

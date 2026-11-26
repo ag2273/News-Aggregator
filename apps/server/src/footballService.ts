@@ -11,6 +11,7 @@
 // Provider order is Yallakora then ESPN, for a reason that shows on screen:
 // Yallakora is Arabic and Cairo-local, ESPN is English and UTC.
 
+import { remember } from './boundedCache.js';
 import {
   canonicalCompetition,
   settleCompetition,
@@ -47,7 +48,7 @@ import {
 } from './filgoal.js';
 import { parseMatchEvents, type MatchEvent } from './matchEvents.js';
 import { parseYallakoraGoals, type MatchGoal } from './yallakoraMatch.js';
-import { getAllArticles } from './db.js';
+import { getAllArticlesReadonly } from './db.js';
 import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
 import { clockFor, espnCompetitions, fetchEspnLive, fetchEspnLiveDay } from './espnLive.js';
 import { canonicalClub } from './clubAliases.js';
@@ -248,7 +249,9 @@ export function relatedNews(
   return relatedNewsFrom(home, away, {
     limit: options.limit,
     country,
-    articles: options.articles ?? getAllArticles(),
+    articles: options.articles ?? getAllArticlesReadonly(),
+    // The store is newest-first; a caller's own corpus may not be.
+    newestFirst: !options.articles,
   });
 }
 
@@ -330,11 +333,13 @@ export async function loadMatchDetail(
   if (running) return running;
   const job = fetchMatchDetail(match, options).then((data) => {
     if (data) {
-      detailCache.set(key, {
-        at: Date.now(),
-        finished: match.status === 'finished',
-        data,
-      });
+      remember(
+        detailCache,
+        key,
+        { at: Date.now(), finished: match.status === 'finished', data },
+        1000,
+        (e) => Date.now() - e.at >= (e.finished ? DETAIL_TTL_FINAL_MS : DETAIL_TTL_LIVE_MS),
+      );
     }
     return data;
   });

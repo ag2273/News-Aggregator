@@ -211,13 +211,20 @@ export default function MatchesScreen() {
     router.push({ pathname: '/team/[name]', params: { name } });
   }, []);
 
+  // One stable handler for every card, so the memoised cards skip re-rendering when
+  // the screen's own state (a collapsed league, a follow) changes.
+  const openMatch = useCallback(
+    (m: FootballMatch) => router.push({ pathname: '/matches/[id]', params: { id: m.id, date } }),
+    [date],
+  );
+
   const card = (m: FootballMatch) => (
     <MatchCard
       key={m.id}
       t={t}
       m={m}
       favourite={isFavourite(m)}
-      onPress={() => router.push({ pathname: '/matches/[id]', params: { id: m.id, date } })}
+      onOpenMatch={openMatch}
       onPressTeam={openTeam}
     />
   );

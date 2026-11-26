@@ -191,6 +191,8 @@ export async function flushDb(): Promise<void> {
   while (saveInFlight) await saveInFlight;
 }
 
+let urlIndex: { rows: StoredArticle[]; urls: Set<string> } | null = null;
+
 export function insertArticles(articles: Article[]): number {
   return insertArticlesDetailed(articles).length;
 }
@@ -202,7 +204,11 @@ export function insertArticles(articles: Article[]): number {
  */
 export function insertArticlesDetailed(articles: Article[]): StoredArticle[] {
   const rows = load();
-  const seen = new Set(rows.map((r) => r.url));
+  // The URL set is kept between calls instead of rebuilt from all ~21k rows on each
+  // of a sweep's 29 per-source inserts; it is rebuilt only when the store is
+  // replaced (load, migration, prune, reset).
+  if (!urlIndex || urlIndex.rows !== rows) urlIndex = { rows, urls: new Set(rows.map((r) => r.url)) };
+  const seen = urlIndex.urls;
   const inserted: StoredArticle[] = [];
   const now = Date.now();
   for (const a of articles) {
@@ -213,19 +219,53 @@ export function insertArticlesDetailed(articles: Article[]): StoredArticle[] {
     inserted.push(row);
   }
   cache = rows;
-  if (inserted.length) storeVersion++;
-  save();
+  if (inserted.length) {
+    storeVersion++;
+    // Nothing new, nothing to write: a sweep where most feeds had no new story used
+    // to queue a full re-serialisation of the store per feed.
+    save();
+  }
   return inserted;
 }
 
+/**
+ * The newest-first view of the store, and an id index, rebuilt once per store
+ * version instead of on every call. Every list route used to copy and sort all
+ * ~21k rows per request, and `findArticleById` was a linear scan — called once
+ * per saved article on مقالاتي, which made that screen N × 21k.
+ */
+let sortedView: { version: number; rows: StoredArticle[]; byId: Map<string, StoredArticle> } | null = null;
+
+function view(): { rows: StoredArticle[]; byId: Map<string, StoredArticle> } {
+  const rows = load();
+  if (!sortedView || sortedView.version !== storeVersion) {
+    const sorted = rows.slice().sort((a, b) => b.publishedAt - a.publishedAt);
+    const byId = new Map<string, StoredArticle>();
+    // First row wins, the same answer `Array.find` gave over the stored order.
+    for (const r of rows) if (!byId.has(r.id)) byId.set(r.id, r);
+    sortedView = { version: storeVersion, rows: sorted, byId };
+  }
+  return sortedView;
+}
+
+/**
+ * Every stored article, newest first. A fresh array each call (callers may sort or
+ * splice it), but the sort itself is shared until the store changes.
+ */
 export function getAllArticles(): StoredArticle[] {
-  return load()
-    .slice()
-    .sort((a, b) => b.publishedAt - a.publishedAt);
+  return view().rows.slice();
+}
+
+/**
+ * The shared newest-first array itself, for hot read-only scans that must not pay
+ * for a copy. Callers must not mutate it.
+ */
+export function getAllArticlesReadonly(): readonly StoredArticle[] {
+  return view().rows;
 }
 
 export function findArticleById(id: string): StoredArticle | null {
-  return load().find((r) => r.id === id) ?? null;
+  return view().byId.get(id) ?? null;
 }
 
 export function getDistinctSources(): Array<{ id: string; name: string; country: string }> {
@@ -237,3 +277,24 @@ export function getDistinctSources(): Array<{ id: string; name: string; country:
   }
   return [...map.values()];
 }
+
+/**
+ * Drop rows published before `cutoffMs`, except the ids in `keep` (saved or
+ * reacted articles, which a reader can still open). Returns how many went.
+ *
+ * Without a retention window the store only ever grew, and everything that reads
+ * it — the save, the grouped feed's clusters, search, a match's news — grew with
+ * it.
+ */
+export function pruneArticles(cutoffMs: number, keep: ReadonlySet<string>): number {
+  const rows = load();
+  const kept = rows.filter((r) => r.publishedAt >= cutoffMs || keep.has(r.id));
+  const removed = rows.length - kept.length;
+  if (removed > 0) {
+    cache = kept;
+    storeVersion++;
+    save();
+  }
+  return removed;
+}
+

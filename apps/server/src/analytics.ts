@@ -19,6 +19,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { coalescedWriter } from './coalescedWrite.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rawDataDir = process.env['DATA_DIR'] || process.env['RAILWAY_VOLUME_MOUNT_PATH'];
@@ -82,11 +83,14 @@ function load(): AnalyticsStore {
   return cache;
 }
 
+// Coalesced: this runs on every open, share, search and ping (see coalescedWrite.ts).
+const writeAnalytics = coalescedWriter(ANALYTICS_FILE, () =>
+  JSON.stringify(cache ?? { days: {}, salts: {}, updatedAt: 0 }),
+);
+
 function save(): void {
-  fs.mkdirSync(path.dirname(ANALYTICS_FILE), { recursive: true });
-  const store = cache ?? { days: {}, salts: {}, updatedAt: 0 };
-  store.updatedAt = Date.now();
-  fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(store));
+  if (cache) cache.updatedAt = Date.now();
+  writeAnalytics();
 }
 
 export function _resetAnalyticsCache(): void {
