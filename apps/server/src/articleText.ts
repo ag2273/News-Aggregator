@@ -81,6 +81,9 @@ export async function followTagPage(
   } catch {
     return null;
   }
+  // Only a TAG listing is followed. An author page (`/editor/details/…`) also lists
+  // stories — measured, 41 of them — and picking one would open a story the reader did
+  // not ask for. An honest failure is better than the wrong article.
   if (!/\/tag\//i.test(parsed.pathname)) return null;
 
   const page = await fetchPageWithTimeout(url, fetchImpl === fetch ? undefined : fetchImpl, RESOLVE_TIMEOUT_MS);
@@ -89,7 +92,7 @@ export async function followTagPage(
   // Matched relative OR absolute: measured on المصري اليوم, the listing links its story
   // as `/news/details/4420774`, but other templates emit the absolute form.
   const match =
-    page.text.match(/href=["'](?:https?:\/\/[^"']+)?(\/(?:news\/details|story|article)[^"']*\d[^"']*)["']/i);
+    page.text.match(/href=["'](?:https?:\/\/[^"']+)?(\/(?:news\/details|editor\/details|story|article)[^"']*\d[^"']*)["']/i);
   if (!match?.[1]) return null;
   try {
     return new URL(match[1], parsed.origin).toString();
@@ -258,7 +261,9 @@ export function arabicLength(text: string): number {
  */
 const RESOLVE_TIMEOUT_MS = 5000;
 const RESOLVE_TTL_MS = 24 * 60 * 60 * 1000;
-const resolvedCache = new Map<string, { url: string; at: number }>();
+/** A tag listing may become a story once the hop works, so it is not kept for a day. */
+const LISTING_TTL_MS = 10 * 60 * 1000;
+const resolvedCache = new Map<string, { url: string; at: number; ttl?: number }>();
 
 /** Test seam. */
 export function _resetResolvedCache(): void {
@@ -275,7 +280,7 @@ export async function resolveGoogleNewsUrl(
   if (!token) return null;
 
   const cached = resolvedCache.get(articleUrl);
-  if (cached && Date.now() - cached.at < RESOLVE_TTL_MS) return cached.url;
+  if (cached && Date.now() - cached.at < (cached.ttl ?? RESOLVE_TTL_MS)) return cached.url;
 
   let html: string;
   try {
@@ -350,7 +355,11 @@ export async function resolveGoogleNewsUrl(
       // and best-effort: if it fails, the tag URL is still better than nothing.
       const followed = await followTagPage(url, fetchImpl).catch(() => null);
       const finalUrl = followed ?? url;
-      resolvedCache.set(articleUrl, { url: finalUrl, at: Date.now() });
+      // A LISTING is not a good answer, so it is cached only briefly (#60): measured,
+      // a tag URL cached for the full 24h kept being served after the hop was added,
+      // which is how a fix can look like it did nothing. A real story is permanent.
+      const ttl = /\/tag\//i.test(finalUrl) ? LISTING_TTL_MS : RESOLVE_TTL_MS;
+      resolvedCache.set(articleUrl, { url: finalUrl, at: Date.now(), ttl });
       return finalUrl;
     } catch {
       if (attempt === attempts - 1) return null;
