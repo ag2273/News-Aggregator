@@ -486,15 +486,38 @@ export function stripBoilerplate(text: string): string {
  * body (a template it does not recognise). Those fall back to their paragraphs,
  * de-duplicated because several outlets render the body twice.
  */
-export function extractArticleText(html: string): string {
-  const strippedHtml = html
+/** What Readability made of a page, or null when parsing threw. */
+export type ParsedArticle = { content?: string | null; textContent?: string | null } | null;
+
+/** The page with scripts and styles removed, as both extractors parse it. */
+export function stripScripts(html: string): string {
+  return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ');
+}
+
+/**
+ * Parse a page and run Readability on it once.
+ *
+ * The reader used to do this twice per article (once for the body text, once for
+ * the blocks): measured on real Yallakora pages, ~0.3s of the ~0.6s it spent per
+ * open on the e2-micro was the second parse.
+ */
+export function parseArticle(strippedHtml: string): ParsedArticle {
   try {
     const { document } = parseHTML(strippedHtml);
+    return new Readability(document as unknown as Document, { charThreshold: 100 }).parse();
+  } catch {
+    return null;
+  }
+}
+
+export function extractArticleText(html: string, preParsed?: { stripped: string; parsed: ParsedArticle }): string {
+  const strippedHtml = preParsed?.stripped ?? stripScripts(html);
+  try {
     // Readability needs a documentURI to resolve relative links; without it some
     // pages parse but yield an empty article.
-    const article = new Readability(document as unknown as Document, { charThreshold: 100 }).parse();
+    const article = preParsed ? preParsed.parsed : parseArticle(strippedHtml);
     // Prefer its HTML so the body can be de-duplicated: several outlets render the
     // same article twice, and identical paragraphs would be paid for twice.
     const fromContent = article?.content ? paragraphTexts(article.content) : [];
