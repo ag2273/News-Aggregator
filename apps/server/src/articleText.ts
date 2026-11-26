@@ -261,8 +261,15 @@ export function arabicLength(text: string): number {
  */
 const RESOLVE_TIMEOUT_MS = 5000;
 const RESOLVE_TTL_MS = 24 * 60 * 60 * 1000;
-/** A tag listing may become a story once the hop works, so it is not kept for a day. */
-const LISTING_TTL_MS = 10 * 60 * 1000;
+/**
+ * A tag listing is not a good answer, so it is not kept like one.
+ *
+ * Measured: a listing cached for the full 24h kept being served after the hop that
+ * fixes it was deployed, which makes a correct fix look like it did nothing. Two
+ * minutes is enough to spare the publisher a burst of identical requests and short
+ * enough that a bad answer cannot outlive the code that produced it.
+ */
+const LISTING_TTL_MS = 2 * 60 * 1000;
 const resolvedCache = new Map<string, { url: string; at: number; ttl?: number }>();
 
 /** Test seam. */
