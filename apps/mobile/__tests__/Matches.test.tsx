@@ -71,6 +71,30 @@ describe('matches screen', () => {
     expect(screen.getByText('مباريات اليوم')).toBeTruthy();
   });
 
+  it('mounts a busy league lazily instead of every card at once (#perf)', async () => {
+    // 60 fixtures in ONE competition: before, the whole league was one list row,
+    // so all 60 cards mounted when the screen opened.
+    const many = Array.from({ length: 60 }, (_, i) =>
+      match({ id: `yk-${i}`, home: `فريق ${i}`, away: `ضيف ${i}` }),
+    );
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: many });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('فريق 0')).toBeTruthy());
+    const mounted = screen.queryAllByText(/^فريق \d+$/).length;
+    expect(mounted).toBeLessThan(60);
+    expect(screen.queryByText('فريق 59')).toBeNull();
+  });
+
+  it('still collapses and reopens a league', async () => {
+    mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: false, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [match()] });
+    render(<MatchesScreen />);
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+    fireEvent.press(screen.getByLabelText('الدوري المصري — طي'));
+    await waitFor(() => expect(screen.queryByText('الأهلي')).toBeNull());
+    fireEvent.press(screen.getByLabelText('الدوري المصري — توسيع'));
+    await waitFor(() => expect(screen.getByText('الأهلي')).toBeTruthy());
+  });
+
   it('says the data is unavailable rather than showing an empty board', async () => {
     mockMatches.mockResolvedValue({ date: '2026-11-23', unavailable: true, fetchedAt: 1, followedTeams: [], followedLeagues: [], matches: [] });
     render(<MatchesScreen />);
