@@ -9,6 +9,7 @@ import { remember } from './boundedCache.js';
 import { fetchPage, isGoogleNewsUrl, resolveGoogleNewsUrl } from './articleText.js';
 import { type ReaderArticle } from './reader.js';
 import { readerFromHtmlOffThread } from './readerPool.js';
+import { noteImageFromPage } from './imageEnrich.js';
 
 /** How long a reader extract is reused. */
 const READER_TTL_MS = 10 * 60 * 1000;
@@ -94,6 +95,8 @@ export async function readerArticle(
       if (/Just a moment|cf-browser-verification|security verification/i.test(page.text.slice(0, 4000))) {
         return { title: null, blocks: [], readable: false, reason: 'blocked', resolvedUrl: target };
       }
+      // The page is in hand: give the story's card its picture too (#57).
+      noteImageFromPage(url, page.text, target);
       return { ...(await readerFromHtmlOffThread(page.text, options.title ?? null)), resolvedUrl: target };
     } catch {
       return { title: null, blocks: [], readable: false, reason: 'unreachable' };

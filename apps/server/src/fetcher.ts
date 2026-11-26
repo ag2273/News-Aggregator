@@ -17,27 +17,47 @@ function hashUrl(url: string): string {
   return crypto.createHash('sha1').update(url).digest('hex').slice(0, 16);
 }
 
-function extractImage(item: Record<string, unknown>): string | null {
-  // Try <media:content>, <media:thumbnail>, <enclosure>, og-style <image>
-  const media = item['media:content'] as Record<string, unknown> | undefined;
-  if (media?.['@_url']) return String(media['@_url']);
+/** The url of a media element, or of the first of several (the parser gives an array). */
+function mediaUrl(node: unknown, imageOnly = false): string | null {
+  const list = Array.isArray(node) ? node : node ? [node] : [];
+  for (const n of list) {
+    if (!n || typeof n !== 'object') continue;
+    const o = n as Record<string, unknown>;
+    const url = o['@_url'];
+    if (!url) continue;
+    const type = String(o['@_type'] ?? '');
+    const medium = String(o['@_medium'] ?? '');
+    // A video or audio enclosure is not a card picture.
+    if (imageOnly && !type.startsWith('image')) continue;
+    if (!imageOnly && (/^(video|audio)/.test(type) || /^(video|audio)$/.test(medium))) continue;
+    return String(url);
+  }
+  return null;
+}
 
-  const thumb = item['media:thumbnail'] as Record<string, unknown> | undefined;
-  if (thumb?.['@_url']) return String(thumb['@_url']);
-
-  const enclosure = item['enclosure'] as Record<string, unknown> | undefined;
-  if (enclosure?.['@_url'] && String(enclosure['@_type'] ?? '').startsWith('image'))
-    return String(enclosure['@_url']);
+export function extractImage(item: Record<string, unknown>): string | null {
+  // Try <media:content>, <media:thumbnail>, <media:group>, <enclosure>, <image>.
+  // Each can repeat: measured, a feed with two <media:content> sizes was parsed as an
+  // ARRAY, and reading `['@_url']` off the array found nothing, so the card had no
+  // picture although the feed carried two (#57 follow-up).
+  const direct =
+    mediaUrl(item['media:content']) ??
+    mediaUrl(item['media:thumbnail']) ??
+    mediaUrl((item['media:group'] as Record<string, unknown> | undefined)?.['media:content']) ??
+    mediaUrl((item['media:group'] as Record<string, unknown> | undefined)?.['media:thumbnail']) ??
+    mediaUrl(item['enclosure'], true);
+  if (direct) return direct;
 
   // Some feeds have <image><url>
   const img = item['image'] as Record<string, unknown> | undefined;
   if (typeof img === 'object' && img?.['url']) return String(img['url']);
 
-  // Try to pick first img src from description HTML
-  const desc = extractText(item['description']);
-  if (desc) {
-    const m = desc.match(/src=["']([^"']+\.(jpg|jpeg|png|webp))/i);
-    if (m) return m[1];
+  // The first <img> in the description or the full content. Not only .jpg/.png:
+  // image CDNs often serve a photo from a URL with no extension at all.
+  for (const field of ['content:encoded', 'description']) {
+    const html = extractText(item[field]);
+    const m = html.match(/<img\b[^>]*\bsrc=["'](https?:\/\/[^"']+)["']/i);
+    if (m && !/(logo|icon|pixel|1x1|spacer|feeds\.feedburner)/i.test(m[1]!)) return m[1]!.replace(/&amp;/g, '&');
   }
 
   return null;

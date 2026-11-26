@@ -127,7 +127,8 @@ import {
 } from './adminStats.js';
 import { userCounts } from './users.js';
 import { flushDb, whenMigrated, getAllArticles, getAllArticlesReadonly, getStoreVersion, pruneArticles, setArticleImages } from './db.js';
-import { enrichImages } from './imageEnrich.js';
+import { enrichImages, setImageSaver } from './imageEnrich.js';
+setImageSaver(setArticleImages);
 import { flushAllWrites } from './coalescedWrite.js';
 import { readerArticle } from './readerService.js';
 import { startReaderWorker } from './readerPool.js';
@@ -265,7 +266,7 @@ export function startRefresh(): { joined: boolean } {
       await maintainStoreAfterRefresh();
       // Pictures for imageless cards (#57): bounded, and never awaited by a route.
       if (process.env['NODE_ENV'] !== 'test') {
-        void enrichImages(getAllArticlesReadonly(), { save: setArticleImages }).catch((err) =>
+        void enrichImages(getAllArticlesReadonly()).catch((err) =>
           console.error('[images] pass failed:', err),
         );
       }
