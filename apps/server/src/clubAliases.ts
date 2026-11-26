@@ -297,3 +297,20 @@ export function isAliasedClub(name: string): boolean {
   const key = fold(name);
   return ALIAS_TO.has(key) || ALIAS_FROM.has(key);
 }
+
+/**
+ * Names the merge must not pair by schedule alone, because pairing them is a
+ * decision nobody has made yet.
+ *
+ * «ميجا سبورت» (FilGoal) and «نادى دلتا يونايتد» (Yallakora) play the same opponent
+ * at the same kickoff with the same score — measured on 2026-11-12, 11-20 and 11-26
+ * — but no outside source names them as one club, and leaving them separate was
+ * agreed on #48/#49. The kickoff rule in `mergeDay` would otherwise fold them, so
+ * they are listed here until that decision changes.
+ */
+const UNSETTLED = new Set(['ميجا سبورت', 'نادى دلتا يونايتد'].map(fold));
+
+/** Is this a name the merge must leave as its own row (see `UNSETTLED`)? */
+export function isUnsettledClub(name: string): boolean {
+  return UNSETTLED.has(fold(name));
+}

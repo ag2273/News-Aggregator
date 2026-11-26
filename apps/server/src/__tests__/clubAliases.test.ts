@@ -97,10 +97,12 @@ describe('the reported fixture is one row', () => {
   });
 
   it('does not merge two genuinely different clubs that share a city', () => {
-    // Both clubs are in Baku, and they are not the same club.
+    // Both clubs are in Baku, and they are not the same club. Each plays its own
+    // opponent: one club in two fixtures at one kickoff would be the same fixture
+    // (#45), so the opponents differ to test the NAME rule alone.
     const merged = mergeDay(
       [row({ dataSource: 'filgoal', home: 'صباح باكو', away: 'برشلونة' })],
-      [row({ id: 'yk', dataSource: 'yallakora', home: 'نيفتشي باكو', away: 'برشلونة' })],
+      [row({ id: 'yk', dataSource: 'yallakora', home: 'نيفتشي باكو', away: 'ريال مدريد' })],
     );
     expect(merged).toHaveLength(2);
   });

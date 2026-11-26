@@ -16,6 +16,7 @@ import {
   canonicalCompetition,
   settleCompetition,
   clubFrame,
+  sameClub,
   COMPETITIONS,
   cairoDate,
   ESPN_BASE,
@@ -51,7 +52,7 @@ import { parseYallakoraGoals, type MatchGoal } from './yallakoraMatch.js';
 import { getAllArticlesReadonly } from './db.js';
 import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
 import { clockFor, espnCompetitions, fetchEspnLive, fetchEspnLiveDay } from './espnLive.js';
-import { canonicalClub } from './clubAliases.js';
+import { canonicalClub, isUnsettledClub } from './clubAliases.js';
 import type { EspnLive } from './espnLive.js';
 import { halfText } from './espnClock.js';
 
@@ -603,52 +604,53 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
   // 0-0 on one and 0-5 on the other at the same minute). We show the preferred
   // source whole, but the disagreement is logged rather than hidden: a silent
   // choice between two published scores is how a wrong score gets shipped.
-  const key = (m: MatchRow): string => {
-    // The two sources name some clubs differently, and the difference is only
-    // in the qualifier: FilGoal writes «إسبانيا | تحت 17» and «ماينز 05», where
-    // Yallakora writes «إسبانيا» and «ماينز». Without stripping those, one
-    // fixture appeared twice with two different scores on the same screen.
-    const clean = (name: string): string =>
-      squashSpacing(
-        dropInitials(
-          normalizeTeam(
-            // A club the two feeds name differently in a way no character rule can
-            // see: FilGoal calls Sabah «صباح باكو» (its city) where Yallakora calls
-            // it «صباح إف كيه». The alias table resolves both to one name, so the
-            // fixture becomes one row (#47). Every entry is anchored on the club's
-            // official name from an outside source, not on similarity.
-            canonicalClub(name)
-              .replace(/\s*\|\s*تحت\s*\d+\s*$/, '')
-              .replace(/\s*تحت\s*\d+\s*$/, '')
-              // A trailing founding-year suffix («05», «04») is part of the club's
-              // registered name, not a different club.
-              .replace(/\s+0?[1-9]\d?$/, '')
-              // «ستاد رين» and «رين» are the same club: «ستاد» is the word for
-              // stadium, not part of the name. Without this the fixture appeared
-              // twice, once from each source.
-              .replace(/^ستاد\s+/, '')
-              // A trailing «FC»/«إف سي» is the club's legal form, not its name:
-              // «لافيينا أف سي» and «لافيينا» are one club, and the fixture was
-              // listed twice. Measured across 538 club names seen on both sources'
-              // pages, this folds exactly one pair (لافيينا / لافيينا أف سي) and
-              // merges nothing else.
-              .replace(/\s+(?:اف|أف|إف)\s+(?:سي|سى)$/, '')
-              .replace(/\s+/g, ' ')
-              .trim(),
-          )
-            // These two run AFTER normalisation, because they are written against
-            // the FOLDED spelling (ة→ه, أ→ا). Applied to the raw name they never
-            // matched — «أهلي جدة» stayed «أهلي جدة» while «الأهلي» stayed
-            // «الأهلي», so the Saudi fixture was listed twice, once per source.
-            //
-            // Saudi «أهلي جدة» is written «الأهلي» by the other source, and both are
-            // the same club — not Egypt's Al Ahly, which never plays Al Nassr in
-            // this competition. One form, so one fixture is one row.
-            .replace(/^الاهلي$/, 'اهلي')
-            .replace(/^اهلي جده$/, 'اهلي')
+  //
+  // The two sources name some clubs differently, and the difference is only
+  // in the qualifier: FilGoal writes «إسبانيا | تحت 17» and «ماينز 05», where
+  // Yallakora writes «إسبانيا» and «ماينز». Without stripping those, one
+  // fixture appeared twice with two different scores on the same screen.
+  const clean = (name: string): string =>
+    squashSpacing(
+      dropInitials(
+        normalizeTeam(
+          // A club the two feeds name differently in a way no character rule can
+          // see: FilGoal calls Sabah «صباح باكو» (its city) where Yallakora calls
+          // it «صباح إف كيه». The alias table resolves both to one name, so the
+          // fixture becomes one row (#47). Every entry is anchored on the club's
+          // official name from an outside source, not on similarity.
+          canonicalClub(name)
+            .replace(/\s*\|\s*تحت\s*\d+\s*$/, '')
+            .replace(/\s*تحت\s*\d+\s*$/, '')
+            // A trailing founding-year suffix («05», «04») is part of the club's
+            // registered name, not a different club.
+            .replace(/\s+0?[1-9]\d?$/, '')
+            // «ستاد رين» and «رين» are the same club: «ستاد» is the word for
+            // stadium, not part of the name. Without this the fixture appeared
+            // twice, once from each source.
+            .replace(/^ستاد\s+/, '')
+            // A trailing «FC»/«إف سي» is the club's legal form, not its name:
+            // «لافيينا أف سي» and «لافيينا» are one club, and the fixture was
+            // listed twice. Measured across 538 club names seen on both sources'
+            // pages, this folds exactly one pair (لافيينا / لافيينا أف سي) and
+            // merges nothing else.
+            .replace(/\s+(?:اف|أف|إف)\s+(?:سي|سى)$/, '')
+            .replace(/\s+/g, ' ')
             .trim(),
-        ),
-      );
+        )
+          // These two run AFTER normalisation, because they are written against
+          // the FOLDED spelling (ة→ه, أ→ا). Applied to the raw name they never
+          // matched — «أهلي جدة» stayed «أهلي جدة» while «الأهلي» stayed
+          // «الأهلي», so the Saudi fixture was listed twice, once per source.
+          //
+          // Saudi «أهلي جدة» is written «الأهلي» by the other source, and both are
+          // the same club — not Egypt's Al Ahly, which never plays Al Nassr in
+          // this competition. One form, so one fixture is one row.
+          .replace(/^الاهلي$/, 'اهلي')
+          .replace(/^اهلي جده$/, 'اهلي')
+          .trim(),
+      ),
+    );
+  const key = (m: MatchRow): string => {
     // Home and away are meaningful for the fixture, but a provider can list them
     // the other way round, so the PAIR is ordered — not each side's words. (The
     // earlier version sorted each name's words, which made «راسينج سانتاندير» and
@@ -672,48 +674,127 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
     if (!byFrame.has(frame)) byFrame.set(frame, m);
   };
 
+  // The preferred feed's rows, by competition and kickoff, for the last check below.
+  const bySlot = new Map<string, MatchRow[]>();
+  const slotOf = (m: MatchRow): string | null =>
+    m.kickoff ? `${canonicalCompetition(m.competitionName)}|${m.kickoff}` : null;
+  // A kept row that already took in a row from the other feed. One fixture is one
+  // row per feed, so it cannot take in a second one.
+  const absorbed = new Set<MatchRow>();
+
   for (const m of preferred) {
     const row = { ...m, competitionName: canonicalCompetition(m.competitionName) };
     seen.set(key(row), row);
     remember(row);
+    const slot = slotOf(row);
+    if (slot) bySlot.set(slot, [...(bySlot.get(slot) ?? []), row]);
   }
+
+  /**
+   * Fold a fallback row into a row we already keep, when the two agree on the score.
+   *
+   * The fixture is merged into the row we already keep, because that row carries
+   * the match page the detail screen opens (line-ups, commentator, timeline). Only
+   * the NAMES come from the other feed: Yallakora's spelling is the one our league
+   * tables use — measured on 7 of 7 duplicate pairs — and a club page resolves a
+   * fixture by the table's spelling, so keeping the other feed's spelling would
+   * leave the fixture invisible from the club it belongs to. It is also the
+   * spelling the ESPN link table is written in, so the merged row keeps the live
+   * minute.
+   *
+   * Two published scores that disagree are neither blended nor renamed; the
+   * fallback row is then kept as it is.
+   */
+  const absorb = (kept: MatchRow, row: MatchRow): boolean => {
+    const agrees =
+      kept.homeScore === row.homeScore &&
+      kept.awayScore === row.awayScore &&
+      kept.status === row.status;
+    if (!agrees) return false;
+    kept.home = row.home;
+    kept.away = row.away;
+    // The channel is the one thing Yallakora carries and FilGoal sometimes does
+    // not, so it fills a gap rather than replacing a published value.
+    if (!kept.channel && row.channel) kept.channel = row.channel;
+    absorbed.add(kept);
+    return true;
+  };
+
+  /**
+   * Is this one club, as far as the merge can tell from the names alone?
+   *
+   * The same folded name, the same consonant frame, or one name's whole word inside
+   * the other's («مونشنجلادباخ» in «بوروسيا مونشنجلادباخ»).
+   */
+  const sameSide = (a: string, b: string): boolean => {
+    if (sameClub(a, b)) return true;
+    const x = clean(a);
+    const y = clean(b);
+    if (x === y) return true;
+    return (x.length >= 4 && y.includes(x)) || (y.length >= 4 && x.includes(y));
+  };
+
+  /**
+   * The preferred row for the same fixture, found by ONE club and the kickoff.
+   *
+   * Some clubs are spelled so differently that no name rule can see it — Yallakora
+   * writes Red Star «سرفينا زافيزدا» where FilGoal writes «ريد ستار بلجراد», and
+   * KuPS «كوبس» against «كوبيون بالوسورا». Measured on the 2026-11-12..30 pages,
+   * 20 fixtures were still listed twice this way after #46-#49.
+   *
+   * What identifies the fixture then is the schedule: in one competition, one club
+   * plays one match at one kickoff. So when the other side matches and the kickoff
+   * is the same, it is the same fixture. Guarded so a malformed page cannot merge
+   * two matches:
+   *   - the two rows come from different feeds, and the kept row has not already
+   *     taken in a row from the other feed;
+   *   - exactly ONE kept row in that slot has the club (FilGoal sometimes lists a
+   *     club twice at one kickoff in the lower Egyptian tiers — that is left alone);
+   *   - the scores agree, checked in `absorb`;
+   *   - neither club is one whose pairing is still undecided (`isUnsettledClub`).
+   */
+  const slotTwin = (row: MatchRow): MatchRow | null => {
+    const slot = slotOf(row);
+    if (!slot) return null;
+    if (isUnsettledClub(row.home) || isUnsettledClub(row.away)) return null;
+    const candidates = (bySlot.get(slot) ?? []).filter(
+      (kept) =>
+        kept.dataSource !== row.dataSource &&
+        !isUnsettledClub(kept.home) &&
+        !isUnsettledClub(kept.away) &&
+        [kept.home, kept.away].some((side) => sameSide(side, row.home) || sameSide(side, row.away)),
+    );
+    if (candidates.length !== 1) return null;
+    const kept = candidates[0]!;
+    return absorbed.has(kept) ? null : kept;
+  };
 
   for (const m of fallback) {
     const row = { ...m, competitionName: canonicalCompetition(m.competitionName) };
     const k = key(row);
-    if (seen.has(k)) continue;
+    const exact = seen.get(k);
+    if (exact) {
+      absorbed.add(exact);
+      continue;
+    }
     // Exact key first. If that misses, the two sources may still be naming the
     // same fixture differently — «سانتاندير» against «راسينج سانتاندير» — so a
     // fuzzy check on the same competition and the same distinctive words runs
     // before the row is kept as a separate match.
     const near = [...seen.entries()].find(([existingKey]) => sameFixture(existingKey, k));
-    if (near) continue;
+    if (near) {
+      absorbed.add(near[1]);
+      continue;
+    }
     // Then the consonant frame, for the spellings the key above cannot fold
     // («فينورد» / «فيينورد», «لايبزيج» / «لايبزج»).
     const twin = byFrame.get(frameOf(row));
-    if (twin) {
-      const kept = seen.get(key(twin)) ?? twin;
-      const agrees =
-        kept.homeScore === row.homeScore &&
-        kept.awayScore === row.awayScore &&
-        kept.status === row.status;
-      if (agrees) {
-        // The fixture is merged into the row we already keep, because that row
-        // carries the match page the detail screen opens (line-ups, commentator,
-        // timeline). Only the NAMES come from the other feed: Yallakora's spelling
-        // is the one our league tables use — measured on 7 of 7 duplicate pairs —
-        // and a club page resolves a fixture by the table's spelling, so keeping
-        // the other feed's spelling would leave the fixture invisible from the club
-        // it belongs to.
-        kept.home = row.home;
-        kept.away = row.away;
-        // The channel is the one thing Yallakora carries and FilGoal sometimes does
-        // not, so it fills a gap rather than replacing a published value.
-        if (!kept.channel && row.channel) kept.channel = row.channel;
-        continue;
-      }
-      // Two published scores that disagree are neither blended nor renamed; the
-      // fallback row is kept as it is and the conflict is logged below.
+    if (twin && absorb(seen.get(key(twin)) ?? twin, row)) continue;
+    // Last, one club and the kickoff (see `slotTwin`). Only when no frame twin
+    // exists: a frame twin with a different score is a conflict to keep visible.
+    if (!twin) {
+      const kept = slotTwin(row);
+      if (kept && absorb(kept, row)) continue;
     }
     seen.set(k, row);
     remember(row);
