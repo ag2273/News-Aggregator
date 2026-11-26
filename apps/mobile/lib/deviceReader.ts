@@ -18,6 +18,7 @@
 // THRESHOLDS are pinned by tests so "thin" cannot drift.
 
 import { arabicLength } from './text';
+import { isAdRequestHost } from './adBlockHosts';
 
 /** One block of the article body, in reading order. */
 export type DeviceBlock =
@@ -52,7 +53,40 @@ function isChrome(src: string, width: number | null, height: number | null): boo
   const url = src.toLowerCase();
   if (/(sprite|logo|icon|avatar|pixel|1x1|spacer|blank)\.(png|gif|svg|webp|jpe?g)/.test(url)) return true;
   if (width !== null && height !== null && (width <= 2 || height <= 2)) return true;
+  // A badge, an icon or a share button: real photos are not declared this small.
+  if ((width !== null && width < 100) || (height !== null && height < 80)) return true;
   return false;
+}
+
+/**
+ * The real picture behind an `<img>`: these outlets lazy-load, so `src` is often a
+ * placeholder and the photo is in `data-src`, `data-original` or a srcset (#57).
+ * The same rule as the server's reader (`imageSource` in reader.ts).
+ */
+export function imageSource(attrs: string): string | null {
+  const attr = (name: string) => new RegExp(`\\s${name}\\s*=\\s*["']([^"']+)["']`, 'i').exec(attrs)?.[1]?.trim() || null;
+  const lazy = attr('data-src') ?? attr('data-lazy-src') ?? attr('data-original') ?? attr('data-full-url') ?? attr('data-lazy');
+  const src = attr('src');
+  const placeholder = !src || /^data:/i.test(src) || /(lazy|placeholder|blank|loading|spacer|grey|gray)[^/]*\.(gif|png|svg|jpe?g|webp)/i.test(src);
+  if (lazy && !/^data:/i.test(lazy)) return lazy;
+  if (!placeholder) return src;
+  const set = attr('data-srcset') ?? attr('srcset');
+  if (set) {
+    const best = set
+      .split(',')
+      .map((c) => c.trim().split(/\s+/))
+      .filter(([u]) => u && !/^data:/i.test(u))
+      .sort((a, b) => parseInt(b[1] ?? '0', 10) - parseInt(a[1] ?? '0', 10))[0];
+    if (best?.[0]) return best[0];
+  }
+  return null;
+}
+
+/** An ad network's image, or one that is plainly a banner. */
+function isAdImage(url: string): boolean {
+  if (isAdRequestHost(url)) return true;
+  const path = url.replace(/^https?:\/\/[^/]+/i, '').split('?')[0] ?? '';
+  return /\/(ads?|banners?|advert[a-z]*|sponsor[a-z]*|promo)\//i.test(path) || /[_-](ad|banner)s?[_-]/i.test(path);
 }
 
 /** Pull `<meta property="og:...">` or `<meta name="...">` out of the head. */
@@ -123,19 +157,25 @@ export function deviceBlocks(html: string, baseUrl: string): DeviceBlock[] {
     doc;
 
   const blocks: DeviceBlock[] = [];
+  const seenImages = new Set<string>();
   // Walk paragraphs, headings and images in document order in one pass.
   const marks = [...container.matchAll(/<(h2|h3|p|img)\b([^>]*)>/gi)];
   for (const mark of marks) {
     const tag = mark[1]!.toLowerCase();
     const attrs = mark[2] ?? '';
     if (tag === 'img') {
-      const src = /src=["']([^"']+)["']/i.exec(attrs)?.[1];
+      const src = imageSource(attrs);
       if (!src) continue;
       const width = /width=["']?(\d+)/i.exec(attrs)?.[1];
       const height = /height=["']?(\d+)/i.exec(attrs)?.[1];
       if (isChrome(src, width ? Number(width) : null, height ? Number(height) : null)) continue;
+      const url = absoluteUrl(src.replace(/&amp;/g, '&'), baseUrl);
+      if (!/^https?:\/\//i.test(url) || isAdImage(url)) continue;
+      const key = url.split('?')[0]!.replace(/[-_]\d{2,4}x\d{2,4}(?=\.\w+$)/, '').toLowerCase();
+      if (seenImages.has(key)) continue;
+      seenImages.add(key);
       const caption = /alt=["']([^"']+)["']/i.exec(attrs)?.[1] ?? null;
-      blocks.push({ type: 'image', url: absoluteUrl(src, baseUrl), caption: caption ? decodeEntities(caption) : null });
+      blocks.push({ type: 'image', url, caption: caption ? decodeEntities(caption) : null });
       continue;
     }
     const start = (mark.index ?? 0) + mark[0].length;
@@ -167,9 +207,17 @@ export function deviceBlocks(html: string, baseUrl: string): DeviceBlock[] {
   }
 
   // A lead image that lives outside the container is still the article's image.
-  if (!blocks.some((b) => b.type === 'image')) {
+  // Also when the body's first picture comes after the text has started: the lead
+  // photo usually sits above the article container.
+  const firstImage = blocks.findIndex((b) => b.type === 'image');
+  const firstText = blocks.findIndex((b) => b.type === 'paragraph');
+  if (firstImage < 0 || (firstText >= 0 && firstImage > firstText)) {
     const og = meta(html, 'og:image');
-    if (og && !isChrome(og, null, null)) blocks.unshift({ type: 'image', url: absoluteUrl(og, baseUrl), caption: null });
+    const url = og ? absoluteUrl(og.replace(/&amp;/g, '&'), baseUrl) : null;
+    const key = url?.split('?')[0]!.replace(/[-_]\d{2,4}x\d{2,4}(?=\.\w+$)/, '').toLowerCase();
+    if (url && key && !seenImages.has(key) && !isChrome(url, null, null) && !isAdImage(url)) {
+      blocks.unshift({ type: 'image', url, caption: null });
+    }
   }
 
   return blocks;

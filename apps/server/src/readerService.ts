@@ -7,7 +7,7 @@
 
 import { remember } from './boundedCache.js';
 import { fetchPage, isGoogleNewsUrl, resolveGoogleNewsUrl } from './articleText.js';
-import { type ReaderArticle } from './reader.js';
+import { type ReaderArticle, finishImages } from './reader.js';
 import { readerFromHtmlOffThread } from './readerPool.js';
 import { noteImageFromPage } from './imageEnrich.js';
 
@@ -97,7 +97,8 @@ export async function readerArticle(
       }
       // The page is in hand: give the story's card its picture too (#57).
       noteImageFromPage(url, page.text, target);
-      return { ...(await readerFromHtmlOffThread(page.text, options.title ?? null)), resolvedUrl: target };
+      const extracted = await readerFromHtmlOffThread(page.text, options.title ?? null);
+      return { ...extracted, blocks: finishImages(extracted.blocks, target), resolvedUrl: target };
     } catch {
       return { title: null, blocks: [], readable: false, reason: 'unreachable' };
     }
