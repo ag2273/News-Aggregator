@@ -49,7 +49,7 @@ import {
   unsaveArticle,
 } from './saved.js';
 import { searchArticles } from './search.js';
-import { groupedFeedPage } from './groupedFeed.js';
+import { groupedFeedPageCached } from './groupedFeed.js';
 import {
   ADMIN_USERNAME,
   aggregateReactions,
@@ -124,7 +124,7 @@ import {
   renderStatsCsv,
 } from './adminStats.js';
 import { userCounts } from './users.js';
-import { getAllArticles } from './db.js';
+import { getAllArticles, getStoreVersion } from './db.js';
 import { readerArticle } from './readerService.js';
 import { cleanPage } from './cleanPageService.js';
 import {
@@ -878,8 +878,9 @@ app.get('/api/feed', async (c) => {
   if (grouped === '1' || grouped === 'true') {
     // Grouped shape: /api/feed?grouped=1 returns rows that are either an article
     // or a same-story cluster. The default shape is untouched for compatibility.
-    const ordered = getFeedArticles();
-    const page = groupedFeedPage(ordered, offset, limit, maxPerSource);
+    // Clustering the whole store is the expensive part, so it is built once per
+    // store version and shared by every reader until the next refresh lands.
+    const page = groupedFeedPageCached(getStoreVersion(), getFeedArticles, offset, limit, maxPerSource);
     return c.json({
       data: page.rows.map((row) =>
         row.kind === 'article'
