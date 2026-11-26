@@ -72,8 +72,12 @@ describe('competition names: one id, one name, and a page that opens', () => {
 
   it('never files a youth or lower-tier edition under the senior competition', () => {
     expect(competitionForLeague('دوري أبطال أوروبا للشباب')).toBeUndefined();
-    expect(competitionForLeague('الدوري الإنجليزي - الدرجة الأولى')).toBeUndefined();
-    expect(canonicalCompetition('الدوري الإنجليزي - الدرجة الأولى')).toBe('الدوري الإنجليزي - الدرجة الأولى');
+    // The Championship is a lower tier with an entry of its own, never the Premier
+    // League; FilGoal heads it «الدوري الإنجليزي | الدرجة الأولى».
+    expect(competitionForLeague('الدوري الإنجليزي - الدرجة الأولى')?.id).toBe('eng-championship');
+    expect(competitionForLeague('الدوري الإنجليزي | الدرجة الأولى')?.id).toBe('eng-championship');
+    expect(canonicalCompetition('الدوري الإنجليزي | الدرجة الأولى')).toBe('الدوري الإنجليزي - الدرجة الأولى');
+    expect(competitionForLeague('الدوري الإنجليزي - الدرجة الثانية')).toBeUndefined();
     // The senior names the feeds use still resolve.
     expect(competitionForLeague('الدوري الإنجليزي الممتاز')?.id).toBe('eng-premier');
     expect(competitionForLeague('الدوري السعودي للمحترفين')?.id).toBe('saudi-pro-league');
@@ -83,7 +87,7 @@ describe('competition names: one id, one name, and a page that opens', () => {
   it('settles a row: the registered name for a known id, an own page for the rest', () => {
     // FilGoal's champion id names the competition even when its wording does not.
     const byId = settleCompetition(row({ competitionId: 'eng-championship', competitionName: 'التشامبيونشيب' }));
-    expect(byId).toMatchObject({ competitionId: 'eng-championship', competitionName: 'دوري البطولة الإنجليزية' });
+    expect(byId).toMatchObject({ competitionId: 'eng-championship', competitionName: 'الدوري الإنجليزي - الدرجة الأولى' });
     const unknown = settleCompetition(row({ competitionName: 'الدوري الاسكتلندي' }));
     expect(unknown).toMatchObject({ competitionId: 'other:الدوري الاسكتلندي', competitionName: 'الدوري الاسكتلندي' });
   });

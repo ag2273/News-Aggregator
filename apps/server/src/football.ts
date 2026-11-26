@@ -77,14 +77,24 @@ export const COMPETITIONS: Competition[] = [
   // Competitions the two feeds publish every week whose strip did not open:
   // they were filed as «other», which has no page. FilGoal's id map already sent
   // two of them (eng-championship, tur-super-lig) to a page the server did not
-  // know, which answered 404. Their Yallakora table ids are not verified yet, so
-  // `yallakoraTourId` is empty and the page says the source publishes no table —
-  // the fixtures and results are real, a table we have not read is not.
-  { id: 'uefa-europa', nameAr: 'الدوري الأوروبي', yallakoraName: 'الدوري الأوروبي', yallakoraTourId: '', country: 'EU', priority: 32, listWhenEmpty: false },
-  { id: 'uefa-conference', nameAr: 'دوري المؤتمر الأوروبي', yallakoraName: 'دوري المؤتمر الأوروبي', yallakoraTourId: '', country: 'EU', priority: 33, listWhenEmpty: false },
-  { id: 'fifa-u17-world-cup', nameAr: 'كأس العالم تحت 17', yallakoraName: 'كأس العالم تحت 17', yallakoraTourId: '', country: 'INT', priority: 50, listWhenEmpty: false },
-  { id: 'tur-super-lig', nameAr: 'الدوري التركي', yallakoraName: 'الدوري التركي', yallakoraTourId: '', country: 'TR', priority: 60, listWhenEmpty: false },
-  { id: 'eng-championship', nameAr: 'دوري البطولة الإنجليزية', yallakoraName: 'دوري البطولة الإنجليزية', yallakoraTourId: '', country: 'GB', priority: 61, listWhenEmpty: false },
+  // know, which answered 404.
+  //
+  // Table ids read off Yallakora's own menu and opened on 2026-11-26 (fixtures in
+  // __tests__/fixtures/standings-*.html): /tour/129 is the Europa League phase
+  // (36 clubs), /tour/238 the Conference League phase (36), /tour/1287 the U17
+  // World Cup's 12 groups of 4, and /tour-standing/233 the Süper Lig's 18 clubs
+  // with the full seven columns.
+  //
+  // The Championship has no Yallakora id: Yallakora does not carry it at all (not
+  // in its competition menu, not on four match-centre days measured). So its id
+  // stays empty and its page says the source publishes no table. Its name is
+  // FilGoal's own («الدوري الإنجليزي | الدرجة الأولى», championships/1666), with
+  // a dash for the pipe; «دوري البطولة الإنجليزية» was a guess neither source uses.
+  { id: 'uefa-europa', nameAr: 'الدوري الأوروبي', yallakoraName: 'الدوري الأوروبي', yallakoraTourId: '129', country: 'EU', priority: 32, listWhenEmpty: false },
+  { id: 'uefa-conference', nameAr: 'دوري المؤتمر الأوروبي', yallakoraName: 'دوري المؤتمر الأوروبي', yallakoraTourId: '238', country: 'EU', priority: 33, listWhenEmpty: false },
+  { id: 'fifa-u17-world-cup', nameAr: 'كأس العالم تحت 17', yallakoraName: 'كأس العالم تحت 17', yallakoraTourId: '1287', country: 'INT', priority: 50, listWhenEmpty: false },
+  { id: 'tur-super-lig', nameAr: 'الدوري التركي', yallakoraName: 'الدوري التركي', yallakoraTourId: '233', country: 'TR', priority: 60, listWhenEmpty: false },
+  { id: 'eng-championship', nameAr: 'الدوري الإنجليزي - الدرجة الأولى', yallakoraName: '', yallakoraTourId: '', country: 'GB', priority: 61, listWhenEmpty: false },
 ];
 
 /**
@@ -436,11 +446,23 @@ function groupOf(html: string, at: number): string | null {
   // The latest group heading before the row, by position. A fixed-size window is
   // wrong: rows further than the window from their heading lost it, which split
   // the Egyptian league into 4 + 16.
-  const headingRe = /المجموعة\s*(\d+)/g;
+  //
+  // Groups are numbered («المجموعة 1») or lettered («المجموعة A», the U17 World
+  // Cup). Measured on /tour/1287: the G heading is printed empty («المجموعة »)
+  // between F and H. Without a label of its own its four teams would be counted
+  // into F, so an empty heading after a lettered one takes the next letter.
+  const headingRe = /المجموعة\s*(\d+|[A-Z](?![A-Za-z]))?\s*</g;
   let last: { at: number; label: string } | null = null;
+  let letter: string | null = null;
   let m: RegExpExecArray | null;
   while ((m = headingRe.exec(html)) && m.index < at) {
-    last = { at: m.index, label: `المجموعة ${m[1]}` };
+    let id = m[1];
+    if (!id) {
+      if (!letter) continue;
+      id = String.fromCharCode(letter.charCodeAt(0) + 1);
+    }
+    letter = /^[A-Z]$/.test(id) ? id : null;
+    last = { at: m.index, label: `المجموعة ${id}` };
   }
   return last?.label ?? null;
 }
@@ -805,6 +827,9 @@ export function canonicalCompetition(name: string): string {
   // has a canonical name; any other keeps its own.
   if (isWomenLeague(name)) return /المصري/.test(n) ? 'الدوري المصري للسيدات' : name;
   if (/كاس العالم تحت 17/.test(n)) return 'كأس العالم تحت 17';
+  // The Championship is the one lower tier we register, under FilGoal's wording
+  // («الدوري الإنجليزي | الدرجة الأولى»); any punctuation between the two halves.
+  if (/^الدوري الانجليزي الدرجه الاولي$/.test(n)) return 'الدوري الإنجليزي - الدرجة الأولى';
   // A youth or lower-tier edition keeps its own name: «الدوري الإنجليزي - الدرجة
   // الأولى» must not become the Premier League.
   if (isSideEdition(n)) return name;

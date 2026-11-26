@@ -21,7 +21,7 @@ export const COMPETITION_LABELS: Record<string, string> = {
   'uefa-conference': 'دوري المؤتمر الأوروبي',
   'fifa-u17-world-cup': 'كأس العالم تحت 17',
   'tur-super-lig': 'الدوري التركي',
-  'eng-championship': 'دوري البطولة الإنجليزية',
+  'eng-championship': 'الدوري الإنجليزي - الدرجة الأولى',
 };
 
 export function competitionName(id: string): string {

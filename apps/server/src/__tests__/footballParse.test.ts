@@ -123,6 +123,54 @@ describe('Yallakora standings, short route', () => {
   });
 });
 
+// The ids verified on 2026-11-26 (`COMPETITIONS`), each against the page it opens.
+// The fixtures are Yallakora's own pages from that day, cut to the table.
+describe('Yallakora standings, competitions added on 2026-11-26', () => {
+  it('Europa League: /tour/129 is the 36-club league phase, one table', () => {
+    const tables = parseYallakoraStandings(fixture('standings-europa.html'), 'uefa-europa');
+    expect(tables).toHaveLength(1);
+    expect(tables[0]!.group).toBeNull();
+    expect(tables[0]!.rows).toHaveLength(36);
+    expect(tables[0]!.rows[0]).toMatchObject({ team: 'بنفيكا', played: 5, points: 13 });
+    expect(tables[0]!.rows.map((r) => r.team)).toContain('باير ليفركوزن');
+  });
+
+  it('Conference League: /tour/238 is the 36-club league phase, one table', () => {
+    const tables = parseYallakoraStandings(fixture('standings-conference.html'), 'uefa-conference');
+    expect(tables).toHaveLength(1);
+    expect(tables[0]!.rows).toHaveLength(36);
+    expect(tables[0]!.rows[0]).toMatchObject({ team: 'لوجانو', points: 10 });
+    expect(tables[0]!.rows.map((r) => r.team)).toContain('برايتون');
+  });
+
+  it('U17 World Cup: /tour/1287 is 12 lettered groups of 4, not one table of 48', () => {
+    const tables = parseYallakoraStandings(fixture('standings-u17.html'), 'fifa-u17-world-cup');
+    expect(tables.map((t) => t.group)).toEqual(
+      'ABCDEFGHIJKL'.split('').map((l) => `المجموعة ${l}`),
+    );
+    expect(tables.every((t) => t.rows.length === 4)).toBe(true);
+    expect(tables[0]!.rows.map((r) => r.team)).toContain('مصر');
+  });
+
+  it('U17 World Cup: the group printed with an empty heading is G, not part of F', () => {
+    // Yallakora prints «المجموعة » with no letter between F and H.
+    const tables = parseYallakoraStandings(fixture('standings-u17.html'), 'fifa-u17-world-cup');
+    const f = tables.find((t) => t.group === 'المجموعة F')!;
+    const g = tables.find((t) => t.group === 'المجموعة G')!;
+    expect(f.rows).toHaveLength(4);
+    expect(g.rows[0]!.team).toBe('مالي');
+    expect(f.rows.map((r) => r.team)).not.toContain('مالي');
+  });
+
+  it('Süper Lig: /tour-standing/233 is the full 18-club table', () => {
+    const tables = parseFullStandings(fixture('standings-turkey-full.html'), 'tur-super-lig');
+    expect(tables).toHaveLength(1);
+    expect(tables[0]!.rows).toHaveLength(18);
+    const top = tables[0]!.rows[0]!;
+    expect(top).toMatchObject({ team: 'جالاتا سراي', played: 12, won: 10, drawn: 1, lost: 1, points: 31 });
+  });
+});
+
 describe('status vocabulary', () => {
   it('maps every word measured on 24 days of pages', () => {
     expect(statusOf('لم تبدأ')).toBe('upcoming');
