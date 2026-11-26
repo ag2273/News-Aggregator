@@ -62,10 +62,11 @@ describe('the alias table names one club one way', () => {
   it('carries an outside source for every pairing, so it can be re-checked', () => {
     // The rule is "an outside source names it", not "ESPN names it": the clubs
     // outside ESPN's eight leagues are anchored on their own Wikipedia article,
-    // and the entry says which one.
+    // and the entry says which one. Delta United (Egypt's second tier, on no
+    // Wikipedia or ESPN page) is anchored on the live-score site that lists it.
     for (const pair of CLUB_ALIASES) {
       expect(pair.official.length).toBeGreaterThan(2);
-      expect(pair.source).toMatch(/ESPN|Wikipedia/);
+      expect(pair.source).toMatch(/ESPN|Wikipedia|sportytrader\.com/);
     }
   });
 });
@@ -97,10 +98,12 @@ describe('the reported fixture is one row', () => {
   });
 
   it('does not merge two genuinely different clubs that share a city', () => {
-    // Both clubs are in Baku, and they are not the same club.
+    // Both clubs are in Baku, and they are not the same club. Each plays its own
+    // opponent: one club in two fixtures at one kickoff would be the same fixture
+    // (#45), so the opponents differ to test the NAME rule alone.
     const merged = mergeDay(
       [row({ dataSource: 'filgoal', home: 'صباح باكو', away: 'برشلونة' })],
-      [row({ id: 'yk', dataSource: 'yallakora', home: 'نيفتشي باكو', away: 'برشلونة' })],
+      [row({ id: 'yk', dataSource: 'yallakora', home: 'نيفتشي باكو', away: 'ريال مدريد' })],
     );
     expect(merged).toHaveLength(2);
   });

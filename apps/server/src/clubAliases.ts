@@ -253,6 +253,19 @@ export const CLUB_ALIASES: AliasPair[] = [
     source: 'ESPN uefa.nations roster (Israel), displayed name chosen by the user',
     kind: 'national',
   },
+  // Decided by the user on #45, 2026-11-26, after the schedule matched: FilGoal's
+  // «ميجا سبورت» and Yallakora's «نادى دلتا يونايتد» play the same opponent at the
+  // same kickoff with the same score on 2026-11-12, 11-20 and 11-26. The club now
+  // plays as Delta United FC: Sportytrader lists its fixtures under «Delta United
+  // FC» at URLs still named after its old name, «mega-sport-belqas». Shown under
+  // Yallakora's spelling, as every other pair here.
+  {
+    from: 'ميجا سبورت',
+    to: 'نادى دلتا يونايتد',
+    official: 'Delta United FC (formerly Mega Sport, Belqas)',
+    source: 'sportytrader.com/en/results-live/mega-sport-belqas-tanta-fc-8672301/ (titled «Delta United FC vs Tanta FC»)',
+    kind: 'club',
+  },
 ];
 
 /** The club a name is written as, when it is one of the pairs above. */
@@ -297,3 +310,4 @@ export function isAliasedClub(name: string): boolean {
   const key = fold(name);
   return ALIAS_TO.has(key) || ALIAS_FROM.has(key);
 }
+

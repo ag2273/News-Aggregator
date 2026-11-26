@@ -10,7 +10,28 @@ import {
   scrollerRegion,
 } from '../filgoal.js';
 import { canonicalCompetition, type MatchRow } from '../football.js';
-import { mergeDay } from '../footballService.js';
+import { applyLiveClocks, mergeDay } from '../footballService.js';
+import { parseEspnLive } from '../espnLive.js';
+
+/** One live ESPN scoreboard event in the second half, 84th minute. */
+const espnEvent = (home: string, away: string) => ({
+  id: '401915300',
+  date: '2026-11-24T17:45Z',
+  competitions: [
+    {
+      status: {
+        clock: 5040,
+        displayClock: "84'",
+        period: 2,
+        type: { state: 'in', name: 'STATUS_SECOND_HALF', detail: "84'", description: 'Second Half' },
+      },
+      competitors: [
+        { homeAway: 'home', team: { displayName: home }, score: '0' },
+        { homeAway: 'away', team: { displayName: away }, score: '0' },
+      ],
+    },
+  ],
+});
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (n: string) => fs.readFileSync(path.join(here, 'fixtures', n), 'utf8');
@@ -206,21 +227,40 @@ describe('merging two sources', () => {
       ...over,
     });
 
-  it.each([
-    ['فينورد', 'فيينورد', 'بورتو', 'بورتو'],
-    ['لايبزيج', 'لايبزج', 'لانس', 'لانس'],
-    ['بروسيا دورتموند', 'بوروسيا دورتموند', 'أرسنال', 'أرسنال'],
-    ['شاختار دونيتسك', 'شاختار دونتسك', 'فنربخشة', 'فنربخشة'],
-    ['أتلتيك بلباو', 'أتليتك بلباو', 'اسبانيول', 'إسبانيول'],
-    ['رايو فاييكانو', 'رايو فايكانو', 'فالنسيا', 'فالنسيا'],
-    ['نوتينجهام فورست', 'نوتنجهام فورست', 'بورنموث', 'بورنموث'],
-  ])('lists «%s» × %s once, not twice', (yallaHome, fgHome, yallaAway, fgAway) => {
-    const merged = mergeDay(
-      [european({ dataSource: 'filgoal', home: fgHome, away: fgAway })],
-      [european({ id: 'yk', dataSource: 'yallakora', home: yallaHome, away: yallaAway })],
-    );
-    expect(merged).toHaveLength(1);
-  });
+  // The 7 real spelling pairs from #45: Yallakora's spelling, FilGoal's spelling,
+  // the opponent on each feed, and the two clubs as ESPN names them.
+  const ISSUE_45_PAIRS: [string, string, string, string, string, string][] = [
+    ['فينورد', 'فيينورد', 'بورتو', 'بورتو', 'Feyenoord Rotterdam', 'FC Porto'],
+    ['لايبزيج', 'لايبزج', 'لانس', 'لانس', 'RB Leipzig', 'Lens'],
+    ['بروسيا دورتموند', 'بوروسيا دورتموند', 'أرسنال', 'أرسنال', 'Borussia Dortmund', 'Arsenal'],
+    ['شاختار دونيتسك', 'شاختار دونتسك', 'فنربخشة', 'فنربخشة', 'Shakhtar Donetsk', 'Fenerbahce'],
+    ['أتلتيك بلباو', 'أتليتك بلباو', 'اسبانيول', 'إسبانيول', 'Athletic Club', 'Espanyol'],
+    ['رايو فاييكانو', 'رايو فايكانو', 'فالنسيا', 'فالنسيا', 'Rayo Vallecano', 'Valencia'],
+    ['نوتينجهام فورست', 'نوتنجهام فورست', 'بورنموث', 'بورنموث', 'Nottingham Forest', 'AFC Bournemouth'],
+  ];
+
+  it.each(ISSUE_45_PAIRS)(
+    'lists «%s» (FilGoal «%s») once, under Yallakora’s spelling, with ESPN’s minute',
+    (yallaHome, fgHome, yallaAway, fgAway, espnHome, espnAway) => {
+      const merged = mergeDay(
+        [european({ dataSource: 'filgoal', home: fgHome, away: fgAway })],
+        [european({ id: 'yk', dataSource: 'yallakora', home: yallaHome, away: yallaAway })],
+      );
+      // One row, not two.
+      expect(merged).toHaveLength(1);
+      const only = merged[0]!;
+      // FilGoal's row (it carries the match page), under Yallakora's names — the
+      // spelling the league tables and club pages use.
+      expect(only.dataSource).toBe('filgoal');
+      expect(only.home).toBe(yallaHome);
+      expect(only.away).toBe(yallaAway);
+      // The verified ESPN clock still lands on the merged row.
+      const live = parseEspnLive({ events: [espnEvent(espnHome, espnAway)] });
+      const [clocked] = applyLiveClocks(merged, live);
+      expect(clocked!.minute).toBe(84);
+      expect(clocked!.half).toBe('الشوط الثاني');
+    },
+  );
 
   it('keeps the preferred row, and takes the spelling our league tables use', () => {
     const merged = mergeDay(
@@ -293,6 +333,98 @@ describe('merging two sources', () => {
       [european({ id: 'yk', dataSource: 'yallakora', competitionId: 'ger-bundesliga', competitionName: 'الدوري الألماني', home: 'ماينز', away: 'يوفنتوس' })],
     );
     expect(merged).toHaveLength(2);
+  });
+  // ---- #45 follow-up: names no spelling rule can see ---------------------------
+  //
+  // Measured on the real pages of 2026-11-12..30 after #46-#49: 20 fixtures were
+  // still listed twice, because one club is written in a way no character rule can
+  // fold. One club and the kickoff identify the fixture then.
+  const conference = (over: Partial<MatchRow>): MatchRow =>
+    row({
+      competitionId: 'uefa-conference',
+      competitionName: 'دوري المؤتمر الأوروبي',
+      status: 'finished',
+      statusText: 'انتهت',
+      kickoff: '22:00',
+      homeScore: 1,
+      awayScore: 1,
+      ...over,
+    });
+
+  it.each([
+    // FilGoal's pair, then Yallakora's — all from the 2026-11-26 pages.
+    ['جنت', 'ريد ستار بلجراد', 'جينت', 'سرفينا زافيزدا'],
+    ['سبورتنج براجا', 'كوبيون بالوسورا', 'سبورتينج براجا', 'كوبس'],
+    ['بافوس', 'ميتيلاند', 'نادي بافوس', 'ميتييلاند'],
+    ['أياكس', 'ثون', 'أياكس امستردام', 'نادي ثون'],
+  ])('lists «%s × %s» once when the other feed writes «%s × %s»', (fgHome, fgAway, ykHome, ykAway) => {
+    const merged = mergeDay(
+      [conference({ dataSource: 'filgoal', home: fgHome, away: fgAway })],
+      [conference({ id: 'yk', dataSource: 'yallakora', home: ykHome, away: ykAway })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.dataSource).toBe('filgoal');
+    expect([merged[0]!.home, merged[0]!.away]).toEqual([ykHome, ykAway]);
+  });
+
+  it('lists Gladbach × Dortmund once, though neither name agrees letter for letter', () => {
+    const merged = mergeDay(
+      [row({ competitionId: 'ger-bundesliga', competitionName: 'الدوري الألماني', kickoff: '16:30', status: 'finished', homeScore: 0, awayScore: 1, home: 'بوروسيا مونشنجلادباخ', away: 'بوروسيا دورتموند' })],
+      [row({ id: 'yk', dataSource: 'yallakora', competitionId: 'ger-bundesliga', competitionName: 'الدوري الألماني', kickoff: '16:30', status: 'finished', homeScore: 0, awayScore: 1, home: 'مونشنجلادباخ', away: 'بروسيا دورتموند' })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.home).toBe('مونشنجلادباخ');
+  });
+
+  it('does not merge on one club when the kickoff differs', () => {
+    const merged = mergeDay(
+      [conference({ dataSource: 'filgoal', home: 'جنت', away: 'ريد ستار بلجراد' })],
+      [conference({ id: 'yk', dataSource: 'yallakora', home: 'جينت', away: 'سرفينا زافيزدا', kickoff: '19:45' })],
+    );
+    expect(merged).toHaveLength(2);
+  });
+
+  it('does not merge on one club when the two feeds publish different scores', () => {
+    const merged = mergeDay(
+      [conference({ dataSource: 'filgoal', home: 'جنت', away: 'ريد ستار بلجراد' })],
+      [conference({ id: 'yk', dataSource: 'yallakora', home: 'جينت', away: 'سرفينا زافيزدا', homeScore: 2 })],
+    );
+    expect(merged).toHaveLength(2);
+  });
+
+  it('does not merge on one club when that club is in two kept fixtures at the same kickoff', () => {
+    // Measured: FilGoal lists «المجد السكندري» twice at 14:30 in one lower-tier
+    // group. The schedule then proves nothing, so nothing is merged on it.
+    const tier = (over: Partial<MatchRow>): MatchRow =>
+      row({ competitionName: 'دوري القسم الثاني (ب) - المجموعة الرابعة', kickoff: '14:30', status: 'finished', homeScore: 1, awayScore: 0, ...over });
+    const merged = mergeDay(
+      [tier({ id: 'a', home: 'أصحاب الجياد', away: 'المجد السكندري' }), tier({ id: 'b', home: 'المجد السكندري', away: 'الحمام' })],
+      [tier({ id: 'yk', dataSource: 'yallakora', home: 'المجد السكندري', away: 'نادي آخر' })],
+    );
+    expect(merged).toHaveLength(3);
+  });
+
+  it('does not merge two rows from the same feed', () => {
+    const merged = mergeDay(
+      [conference({ dataSource: 'filgoal', home: 'جنت', away: 'ريد ستار بلجراد' })],
+      [conference({ id: 'fg2', dataSource: 'filgoal', home: 'جنت', away: 'سرفينا زافيزدا' })],
+    );
+    expect(merged).toHaveLength(2);
+  });
+
+  it('lists «ميجا سبورت» and «نادى دلتا يونايتد» as one club (#45)', () => {
+    // Same opponent, kickoff and score on three days; the club plays as Delta
+    // United FC now, and the user chose to merge them.
+    const second = (over: Partial<MatchRow>): MatchRow =>
+      row({ competitionName: 'دوري القسم الثاني-أ', kickoff: '14:30', status: 'finished', homeScore: 1, awayScore: 0, away: 'السكة الحديد', ...over });
+    const merged = mergeDay(
+      [second({ home: 'ميجا سبورت' })],
+      [second({ id: 'yk', dataSource: 'yallakora', home: 'نادى دلتا يونايتد' })],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.home).toBe('نادى دلتا يونايتد');
+    // Shown under the club's name even on a day only FilGoal lists it.
+    expect(mergeDay([second({ home: 'ميجا سبورت' })], [])[0]!.home).toBe('نادى دلتا يونايتد');
   });
 });
 
