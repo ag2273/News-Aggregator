@@ -64,19 +64,69 @@ export function prefersHttp1(url: string): boolean {
 }
 
 /**
+ * Google sometimes resolves a Google-News link to a publisher's TAG listing, not the
+ * story (#60). Measured on المصري اليوم: `/tag/2756060` is a listing whose first story
+ * link is the article the reader asked for.
+ *
+ * One hop only, and only for a `/tag/` URL: following arbitrary links would be a
+ * crawler, and the point here is to reach the story the reader came for.
+ */
+export async function followTagPage(
+  url: string,
+  fetchImpl: typeof fetch,
+): Promise<string | null> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (!/\/tag\//i.test(parsed.pathname)) return null;
+
+  const page = await fetchPageWithTimeout(url, fetchImpl === fetch ? undefined : fetchImpl, RESOLVE_TIMEOUT_MS);
+  if (!page.ok || !page.text) return null;
+  // The listing's own story links: a path segment that is an id, not a tag.
+  // Matched relative OR absolute: measured on المصري اليوم, the listing links its story
+  // as `/news/details/4420774`, but other templates emit the absolute form.
+  const match =
+    page.text.match(/href=["'](?:https?:\/\/[^"']+)?(\/(?:news\/details|story|article)[^"']*\d[^"']*)["']/i);
+  if (!match?.[1]) return null;
+  try {
+    return new URL(match[1], parsed.origin).toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * `fetchPage` with a shorter deadline than the shared page timeout (#60).
  *
  * Used only for the Google redirect stub, where a slow answer is worth abandoning
  * quickly so the reader's own budget can go to the publisher instead.
  */
-async function fetchPageWithTimeout(
+export async function fetchPageWithTimeout(
   url: string,
   fetchImpl: typeof fetch | undefined,
   timeoutMs: number,
 ): Promise<{ ok: boolean; status: number; text: string }> {
-  const target = fetchImpl ?? fetch;
+  // A plain `fetch` is NOT enough for these publishers (#60): measured, المصري اليوم
+  // answers 403 to a bare fetch (with or without a referer) and 200 to `fetchPage`,
+  // which speaks HTTP/2 through undici. So the real transport is used, and the
+  // timeout is enforced here rather than handed to it.
+  if (!fetchImpl) {
+    try {
+      return await Promise.race([
+        fetchPage(url),
+        new Promise<{ ok: boolean; status: number; text: string }>((resolve) =>
+          setTimeout(() => resolve({ ok: false, status: 0, text: '' }), timeoutMs),
+        ),
+      ]);
+    } catch {
+      return { ok: false, status: 0, text: '' };
+    }
+  }
   try {
-    const res = await target(url, {
+    const res = await fetchImpl(url, {
       headers: BROWSER_HEADERS,
       redirect: 'follow',
       signal: AbortSignal.timeout(timeoutMs),
@@ -293,8 +343,15 @@ export async function resolveGoogleNewsUrl(
         .replace(/\\*u002f/gi, '/')
         .replace(/\\\//g, '/');
       if (!/^https?:\/\//.test(url)) return null;
-      resolvedCache.set(articleUrl, { url, at: Date.now() });
-      return url;
+      // Google sometimes indexes a TAG page rather than the story (#60). Measured on
+      // المصري اليوم: two of three links resolved to `/tag/<id>`, which is a listing —
+      // extraction fails there and "open as-is" would open a list instead of the story.
+      // The tag page carries the story's own link, so follow exactly one hop. Bounded
+      // and best-effort: if it fails, the tag URL is still better than nothing.
+      const followed = await followTagPage(url, fetchImpl).catch(() => null);
+      const finalUrl = followed ?? url;
+      resolvedCache.set(articleUrl, { url: finalUrl, at: Date.now() });
+      return finalUrl;
     } catch {
       if (attempt === attempts - 1) return null;
     }

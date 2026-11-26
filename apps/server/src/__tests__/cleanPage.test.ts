@@ -296,3 +296,45 @@ describe('resolving a Google-News link is bounded and cached (#60)', () => {
     expect(calls).toBe(0);
   });
 });
+
+/**
+ * Google sometimes indexes a publisher's TAG listing instead of the story (#60).
+ *
+ * Measured on المصري اليوم: two of six current links resolved to `/tag/<id>`, which is
+ * a listing — extraction fails there, and "open as-is" opened a list instead of the
+ * story the reader asked for.
+ */
+describe('a tag listing is followed one hop to the story (#60)', () => {
+  const gnews =
+    'https://news.google.com/rss/articles/CBMiS0FVX3lxTE41M3ExY3A3UFJOS05hcXl2ejBQdEsybG5vUHZHTjlfWXVWS3Z5QzVpaVlrVTVPSHlmTnlZQ01PMHZuN1VKNGR1Mk9Gcw?oc=5';
+  // Built rather than pasted: the real response is a doubly-escaped JS payload, and a
+  // literal in this file is unreadable and easy to corrupt.
+  const RPC = ['[["wrb.fr","Fbv4je","[\\"garturlres\\",\\"',
+    'https://www.almasryalyoum.com/tag/2756060',
+    '\\"]"]]'].join('');
+  const PAGE = '<html><body data-n-a-sg="sig" data-n-a-ts="1" data-n-a-id="id"></body></html>';
+
+  const fakeFetch = (listing: string) =>
+    (async (url: string) => {
+      const u = String(url);
+      if (u.includes('batchexecute')) return new Response(RPC, { status: 200 });
+      if (u.includes('/tag/')) return new Response(listing, { status: 200 });
+      return new Response(PAGE, { status: 200 });
+    }) as unknown as typeof fetch;
+
+  it('follows a /tag/ page to the story it links, once', async () => {
+    _resetResolvedCache();
+    const out = await resolveGoogleNewsUrl(
+      gnews,
+      fakeFetch('<html><body><a href="/news/details/4420774">الخبر</a></body></html>'),
+    );
+    expect(out).toBe('https://www.almasryalyoum.com/news/details/4420774');
+    expect(out).not.toContain('/tag/');
+  });
+
+  it('keeps the tag url when the listing cannot be followed', async () => {
+    _resetResolvedCache();
+    const out = await resolveGoogleNewsUrl(gnews, fakeFetch('<html>empty listing</html>'));
+    expect(out).toBe('https://www.almasryalyoum.com/tag/2756060');
+  });
+});
