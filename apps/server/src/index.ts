@@ -43,13 +43,15 @@ import {
   unfollowSource,
 } from './follows.js';
 import {
+  allSavedArticleIds,
   getSavedArticleIds,
   isArticleSaved,
   saveArticle,
   unsaveArticle,
 } from './saved.js';
-import { searchArticles } from './search.js';
-import { groupedFeedPageCached } from './groupedFeed.js';
+import { searchArticles, warmSearch } from './search.js';
+import { resetRelatedNewsIndex, warmRelatedNews } from './matchNews.js';
+import { groupedFeedPageCached, rebuildGroupedIndex } from './groupedFeed.js';
 import {
   ADMIN_USERNAME,
   aggregateReactions,
@@ -124,7 +126,8 @@ import {
   renderStatsCsv,
 } from './adminStats.js';
 import { userCounts } from './users.js';
-import { getAllArticles, getStoreVersion } from './db.js';
+import { flushDb, getAllArticles, getAllArticlesReadonly, getStoreVersion, pruneArticles } from './db.js';
+import { flushAllWrites } from './coalescedWrite.js';
 import { readerArticle } from './readerService.js';
 import { cleanPage } from './cleanPageService.js';
 import {
@@ -257,10 +260,46 @@ export function startRefresh(): { joined: boolean } {
       } finally {
         lastRefreshAt = Date.now();
       }
+      await maintainStoreAfterRefresh();
     },
     refreshState,
   );
   return { joined };
+}
+
+/**
+ * How long a story stays in the store. Saved and reacted articles are always kept.
+ * `ARTICLE_RETENTION_DAYS=0` turns the prune off.
+ */
+const RETENTION_DAYS = Number(process.env['ARTICLE_RETENTION_DAYS'] ?? 60);
+
+/**
+ * Work that follows a refresh, off the request path:
+ *
+ *   1. drop rows past the retention window, so the store stops growing forever;
+ *   2. rebuild the grouped feed's clusters now (~0.35s on 21k rows), instead of
+ *      making the first reader after each refresh wait for it;
+ *   3. pre-normalise text for search and a match's news in small slices.
+ */
+async function maintainStoreAfterRefresh(): Promise<void> {
+  if (process.env['NODE_ENV'] === 'test') return;
+  try {
+    if (RETENTION_DAYS > 0) {
+      const keep = allSavedArticleIds();
+      for (const id of Object.keys(getAllReactions())) keep.add(id);
+      const removed = pruneArticles(Date.now() - RETENTION_DAYS * 86_400_000, keep);
+      if (removed) {
+        console.log(`[db] retention: dropped ${removed} row(s) older than ${RETENTION_DAYS} days`);
+        resetRelatedNewsIndex();
+      }
+    }
+    await rebuildGroupedIndex(getStoreVersion(), getFeedArticles);
+    const rows = getAllArticlesReadonly();
+    await warmSearch(rows);
+    await warmRelatedNews(rows);
+  } catch (err) {
+    console.error('[db] post-refresh maintenance failed:', err);
+  }
 }
 
 /** Kick a refresh only when the stored data is past its window and none is running. */
@@ -288,7 +327,14 @@ if (process.env['NODE_ENV'] !== 'test') {
   // measurement meaningless. One minute, with a cache TTL that follows it, keeps the
   // worst case close to the source's own delay.
   pollFootball().catch((err) => console.error('[football] first poll failed:', err));
-  setInterval(() => pollFootball().catch((err) => console.error('[football] poll failed:', err)), 60 * 1000);
+  // One poll at a time: a slow source or a slow notification round must not let the
+  // next tick start a second poll on top of it.
+  const pollState: { running: Promise<unknown> | null } = { running: null };
+  setInterval(() => {
+    singleFlight(() => pollFootball(), pollState).promise.catch((err) =>
+      console.error('[football] poll failed:', err),
+    );
+  }, 60 * 1000);
 }
 // Twice-daily digest at 09:00 and 18:00 Cairo. Idempotent per slot, so a restart
 // never double-builds, and a failure keeps the previous digest.
@@ -880,7 +926,9 @@ app.get('/api/feed', async (c) => {
     // or a same-story cluster. The default shape is untouched for compatibility.
     // Clustering the whole store is the expensive part, so it is built once per
     // store version and shared by every reader until the next refresh lands.
-    const page = groupedFeedPageCached(getStoreVersion(), getFeedArticles, offset, limit, maxPerSource);
+    const page = groupedFeedPageCached(getStoreVersion(), getFeedArticles, offset, limit, maxPerSource, {
+      serveStale: true,
+    });
     return c.json({
       data: page.rows.map((row) =>
         row.kind === 'article'
@@ -2006,4 +2054,13 @@ const PORT = Number(process.env['PORT'] ?? 3001);
 if (process.env['NODE_ENV'] !== 'test') {
   console.log(`[server] listening on http://localhost:${PORT}`);
   serve({ fetch: app.fetch, port: PORT });
+  // Writes are coalesced and asynchronous now, so a deploy's SIGTERM must let the
+  // pending ones land before the process goes.
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => {
+      const done = (): never => process.exit(0);
+      setTimeout(done, 5000).unref();
+      Promise.all([flushDb(), flushAllWrites()]).finally(done);
+    });
+  }
 }

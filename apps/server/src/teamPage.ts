@@ -13,7 +13,7 @@ import { normalizeTeam, type MatchRow } from './football.js';
 import { COMPETITIONS } from './football.js';
 import { getCachedDay, getCachedStandings } from './footballStore.js';
 import { relatedNews } from './matchNews.js';
-import { getAllArticles } from './db.js';
+import { getAllArticlesReadonly } from './db.js';
 
 export interface TeamPage {
   name: string;
@@ -112,7 +112,8 @@ export function buildTeamPage(name: string, options: { matches?: MatchRow[] } = 
   const country = COMPETITIONS.find((c) => c.id === ordered[0])?.country;
   const news = relatedNews(name, name, {
     limit: 10,
-    articles: getAllArticles(),
+    articles: getAllArticlesReadonly(),
+    newestFirst: true,
     country,
   });
 

@@ -18,6 +18,7 @@
 // rewritten to absolute URLs so they still work, and the page's own stylesheets,
 // images and fonts are kept — a "clean" page that lost its CSS is not readable.
 
+import { remember } from './boundedCache.js';
 import { fetchPage, isGoogleNewsUrl, resolveGoogleNewsUrl } from './articleText.js';
 import { stripAdMarkup } from './cleanPage.js';
 
@@ -81,7 +82,7 @@ export async function cleanPage(
   inFlight.set(url, job);
   try {
     const html = await job;
-    if (html) cache.set(url, { at: Date.now(), html });
+    if (html) remember(cache, url, { at: Date.now(), html }, 100, (e) => Date.now() - e.at >= TTL_MS);
     return html;
   } finally {
     inFlight.delete(url);

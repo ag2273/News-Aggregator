@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { coalescedWriter } from './coalescedWrite.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rawDataDir = process.env['DATA_DIR'] || process.env['RAILWAY_VOLUME_MOUNT_PATH'];
@@ -79,9 +80,14 @@ function load(): Store {
   return cache;
 }
 
+// Coalesced and compact: the whole map was pretty-printed synchronously on every
+// reaction (see coalescedWrite.ts).
+const writeReactions = coalescedWriter(REACTIONS_FILE, () =>
+  JSON.stringify(cache ?? { reactions: {}, rates: {} }),
+);
+
 function save(): void {
-  fs.mkdirSync(path.dirname(REACTIONS_FILE), { recursive: true });
-  fs.writeFileSync(REACTIONS_FILE, JSON.stringify(cache ?? { reactions: {}, rates: {} }, null, 2));
+  writeReactions();
 }
 
 export interface ReactionCounts {

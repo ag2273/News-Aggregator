@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Animated,
   StyleSheet,
   Text,
@@ -11,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { fetchFeed, fetchGroupedFeed, fetchLiveStatus, isNetworkFailure } from '../lib/api';
 import { beginPageFetch, publishPage, publishGroupedPage } from '../lib/reactionPublish';
 import { ClusterSheetHost } from '../components/ClusterCard';
@@ -77,6 +78,12 @@ export default function FeedScreen() {
   // It was a pulsing dot on a header button; that button moved into the dock
   // (#31), so the signal moved with it.
   const [footballLive, setFootballLive] = useState(false);
+  // Built once per change of `clusters`, not on every render: a fresh object each
+  // render made the deck re-render whenever anything on home changed.
+  const clusterSources = useMemo(
+    () => Object.fromEntries(Object.entries(clusters).map(([id, c]) => [id, c.sourceCount])),
+    [clusters],
+  );
 
   const load = useCallback(async (replace: boolean) => {
     try {
@@ -129,24 +136,31 @@ export default function FeedScreen() {
   // Ask whether anything the reader cares about is live. Recheck on mount and on
   // a slow interval while the screen is open; the query is cheap and cached on
   // the server, and a dot that lags by a minute is still useful.
-  useEffect(() => {
-    let cancelled = false;
-    const check = () => {
-      fetchLiveStatus(token)
-        .then((s) => {
-          if (!cancelled) setFootballLive(s.live);
-        })
-        .catch(() => {
-          /* a silent dot beats an error banner on the home screen */
-        });
-    };
-    check();
-    const timer = setInterval(check, 120_000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [token]);
+  //
+  // Only while home is the focused screen and the app is in the foreground: home
+  // stays mounted under every screen pushed on top of it, and the interval used to
+  // keep polling the server from there for the whole session.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const check = () => {
+        if (AppState.currentState !== 'active') return;
+        fetchLiveStatus(token)
+          .then((s) => {
+            if (!cancelled) setFootballLive(s.live);
+          })
+          .catch(() => {
+            /* a silent dot beats an error banner on the home screen */
+          });
+      };
+      check();
+      const timer = setInterval(check, 120_000);
+      return () => {
+        cancelled = true;
+        clearInterval(timer);
+      };
+    }, [token]),
+  );
 
   useEffect(() => {
     load(true).finally(() => setLoading(false));
@@ -281,9 +295,7 @@ export default function FeedScreen() {
                 t={t}
                 onPress={openArticle}
                 onPressSource={openSource}
-                clusterSources={Object.fromEntries(
-                  Object.entries(clusters).map(([id, c]) => [id, c.sourceCount]),
-                )}
+                clusterSources={clusterSources}
                 onPressCluster={(a) => setClusterArticle(a)}
               />
               <ClusterSheetHost

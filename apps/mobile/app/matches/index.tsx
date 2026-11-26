@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  FlatList,
   ActivityIndicator,
   ScrollView,
   StyleSheet,
@@ -138,11 +139,14 @@ export default function MatchesScreen() {
     }
   }, [matches, filter, isFavourite]);
 
-  const pinned = visible.filter(isFavourite);
+  const pinned = useMemo(() => visible.filter(isFavourite), [visible, isFavourite]);
   // Live matches that are NOT already pinned. A pinned live match belongs in the
   // favourites strip; printing it twice on one screen is the duplication the user
   // photographed on the old cards.
-  const liveNow = visible.filter((m) => m.status === 'live' && !pinned.includes(m));
+  const liveNow = useMemo(
+    () => visible.filter((m) => m.status === 'live' && !pinned.includes(m)),
+    [visible, pinned],
+  );
   const rest = visible.filter((m) => !pinned.includes(m) && !liveNow.includes(m));
 
   /** Competitions with no fixture today, so their heading never disappears. */
@@ -211,16 +215,94 @@ export default function MatchesScreen() {
     router.push({ pathname: '/team/[name]', params: { name } });
   }, []);
 
+  // One stable handler for every card, so the memoised cards skip re-rendering when
+  // the screen's own state (a collapsed league, a follow) changes.
+  const openMatch = useCallback(
+    (m: FootballMatch) => router.push({ pathname: '/matches/[id]', params: { id: m.id, date } }),
+    [date],
+  );
+
   const card = (m: FootballMatch) => (
     <MatchCard
       key={m.id}
       t={t}
       m={m}
       favourite={isFavourite(m)}
-      onPress={() => router.push({ pathname: '/matches/[id]', params: { id: m.id, date } })}
+      onOpenMatch={openMatch}
       onPressTeam={openTeam}
     />
   );
+
+  type ListItem =
+    | { key: string; kind: 'heading'; text: string; color: string }
+    | { key: string; kind: 'card'; m: FootballMatch }
+    | { key: string; kind: 'group'; g: Group }
+    | { key: string; kind: 'footnote' };
+
+  const listItems = useMemo((): ListItem[] => {
+    const items: ListItem[] = [];
+    if (pinned.length) {
+      // «فرقك» whether one club or five: the strip is the reader's followed
+      // fixtures, and the count is already on the filter.
+      items.push({ key: 'h:pinned', kind: 'heading', text: '⭐ مباريات فرقك المتابعة', color: t.accent });
+      for (const m of pinned) items.push({ key: `p:${m.id}`, kind: 'card', m });
+    }
+    if (liveNow.length) {
+      items.push({ key: 'h:live', kind: 'heading', text: 'مباشر الآن', color: t.liveRed });
+      for (const m of liveNow) items.push({ key: `l:${m.id}`, kind: 'card', m });
+    }
+    for (const g of groups) items.push({ key: `g:${g.key}`, kind: 'group', g });
+    if (visible.length) items.push({ key: 'footnote', kind: 'footnote' });
+    return items;
+  }, [pinned, liveNow, groups, visible.length, t]);
+
+  const renderListItem = ({ item }: { item: ListItem }) => {
+    switch (item.kind) {
+      case 'heading':
+        return <Text style={[styles.section, { color: item.color }]}>{item.text}</Text>;
+      case 'card':
+        return card(item.m);
+      case 'footnote':
+        return (
+          <Text style={[styles.footnote, { color: t.textDim }]}>
+            {`${matchCountLabel(visible.length)} — النتائج كما يعلنها المصدر، بلا دقائق غير منشورة.`}
+          </Text>
+        );
+      case 'group': {
+        const g = item.g;
+        return (
+          <View>
+            <LeagueStrip
+              t={t}
+              name={g.name}
+              country={g.country}
+              rows={g.rows}
+              followed={Boolean(g.competitionId && followedLeagues.has(g.competitionId))}
+              collapsed={Boolean(collapsed[g.name])}
+              onToggleCollapse={() => setCollapsed((c) => ({ ...c, [g.name]: !c[g.name] }))}
+              onToggleFollow={() => toggleLeague(g.competitionId)}
+              onOpen={
+                g.competitionId && g.competitionId !== 'other'
+                  ? () =>
+                      router.push({
+                        pathname: '/competition/[id]',
+                        params: { id: g.competitionId! },
+                      })
+                  : undefined
+              }
+            />
+            {collapsed[g.name] ? null : g.rows.length === 0 ? (
+              <Text style={[styles.groupEmpty, { color: t.textMuted }]}>
+                لا توجد مباريات لهذا الدوري اليوم
+              </Text>
+            ) : (
+              g.rows.map(card)
+            )}
+          </View>
+        );
+      }
+    }
+  };
 
   const liveCount = matches.filter((m) => m.status === 'live').length;
   const followedCount = matches.filter(isFavourite).length;
@@ -415,59 +497,20 @@ export default function MatchesScreen() {
             )}
           </ScrollView>
         ) : (
-          <ScrollView contentContainerStyle={styles.list}>
-            {pinned.length ? (
-              <>
-                {/* «فرقك» whether one club or five: the strip is the reader's
-                    followed fixtures, and the count is already on the filter. */}
-                <Text style={[styles.section, { color: t.accent }]}>
-                  ⭐ مباريات فرقك المتابعة
-                </Text>
-                {pinned.map(card)}
-              </>
-            ) : null}
-            {liveNow.length ? (
-              <>
-                <Text style={[styles.section, { color: t.liveRed }]}>مباشر الآن</Text>
-                {liveNow.map(card)}
-              </>
-            ) : null}
-            {groups.map((g) => (
-              <View key={g.key}>
-                <LeagueStrip
-                  t={t}
-                  name={g.name}
-                  country={g.country}
-                  rows={g.rows}
-                  followed={Boolean(g.competitionId && followedLeagues.has(g.competitionId))}
-                  collapsed={Boolean(collapsed[g.name])}
-                  onToggleCollapse={() => setCollapsed((c) => ({ ...c, [g.name]: !c[g.name] }))}
-                  onToggleFollow={() => toggleLeague(g.competitionId)}
-                  onOpen={
-                    g.competitionId && g.competitionId !== 'other'
-                      ? () =>
-                          router.push({
-                            pathname: '/competition/[id]',
-                            params: { id: g.competitionId! },
-                          })
-                      : undefined
-                  }
-                />
-                {collapsed[g.name] ? null : g.rows.length === 0 ? (
-                  <Text style={[styles.groupEmpty, { color: t.textMuted }]}>
-                    لا توجد مباريات لهذا الدوري اليوم
-                  </Text>
-                ) : (
-                  g.rows.map(card)
-                )}
-              </View>
-            ))}
-            {visible.length ? (
-              <Text style={[styles.footnote, { color: t.textDim }]}>
-                {`${matchCountLabel(visible.length)} — النتائج كما يعلنها المصدر، بلا دقائق غير منشورة.`}
-              </Text>
-            ) : null}
-          </ScrollView>
+          // Virtualised (#perf): a busy day carries 100+ fixtures with crests, and a
+          // ScrollView mounted every card at once. Each top-level child of the old
+          // list is one item here, so spacing and order are unchanged.
+          <FlatList
+            data={listItems}
+            keyExtractor={(item) => item.key}
+            renderItem={renderListItem}
+            // Items read these from the screen's state, so a change must re-render them.
+            extraData={[collapsed, followedLeagues, followed]}
+            contentContainerStyle={styles.list}
+            initialNumToRender={12}
+            windowSize={7}
+            removeClippedSubviews
+          />
         )}
         <AccountGateSheet t={t} gate={gate} message="عشان تتابع البطولة" />
       </SafeAreaView>

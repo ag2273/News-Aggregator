@@ -318,7 +318,24 @@ export function mentionsTeam(
   /** The competition's country, used to break ties between same-named clubs. */
   country?: string,
 ): boolean {
-  const haystack = normalizeArabic(text);
+  return mentionsTeamIn(text, normalizeArabic(text), team, words, country);
+}
+
+/**
+ * `mentionsTeam` over text that is already normalised.
+ *
+ * The match centre runs this over the whole corpus on every open, and normalising
+ * each article's text was most of the cost (measured on 21k rows: ~0.45s of a
+ * ~1.2s blocking scan). `relatedNews` normalises each row once and reuses it.
+ */
+function mentionsTeamIn(
+  text: string,
+  haystack: string,
+  team: string,
+  words: string[],
+  // Kept for signature parity with `mentionsTeam`; see the country note in step 2.
+  _country?: string,
+): boolean {
   if (!haystack || !words.length) return false;
   const tokens = haystack.split(' ');
 
@@ -502,18 +519,46 @@ export interface RelatedArticle {
 export function relatedNews(
   home: string,
   away: string,
-  options: { limit?: number; articles?: ArticleLike[]; country?: string } = {},
+  options: {
+    limit?: number;
+    articles?: readonly ArticleLike[];
+    country?: string;
+    /**
+     * The corpus is already newest-first (the store's order). The scan can then stop
+     * at the `limit`-th hit, because later rows can only be older — the result is
+     * identical to scanning everything and sorting.
+     */
+    newestFirst?: boolean;
+  } = {},
 ): RelatedArticle[] {
   const articles = options.articles ?? [];
   const limit = options.limit ?? 10;
   const homeWords = teamWords(home);
-  const awayWords = teamWords(away);
+  const sameTeam = home === away;
+  const awayWords = sameTeam ? homeWords : teamWords(away);
+  // Every accepting path in `mentionsTeam` needs one of the name's words (prefix-
+  // stripped) to occur in the normalised text, so a plain substring test on these
+  // rejects almost the whole corpus before the full rules run.
+  const needles = [...new Set([...homeWords, ...awayWords].map(stripPrefixes).filter(Boolean))];
+
+  // Rows the word index already covers are candidates only when one of their tokens
+  // matches a needle exactly; a row the index has not seen yet falls back to the
+  // substring test (and is indexed on the way).
+  const postings = needles.map((n) => tokenIndex.get(n)).filter((p): p is Set<object> => Boolean(p));
 
   const hits: RelatedArticle[] = [];
   for (const article of articles) {
+    if (indexedRows.has(article)) {
+      if (!postings.some((p) => p.has(article))) continue;
+    } else {
+      indexRow(article);
+      const haystack = normalizedArticleText(article);
+      if (!needles.some((n) => haystack.includes(n))) continue;
+    }
+    const haystack = normalizedArticleText(article);
     const text = `${article.title} ${article.summary ?? ''}`;
-    const inHome = mentionsTeam(text, home, homeWords, options.country);
-    const inAway = mentionsTeam(text, away, awayWords, options.country);
+    const inHome = mentionsTeamIn(text, haystack, home, homeWords, options.country);
+    const inAway = sameTeam ? inHome : mentionsTeamIn(text, haystack, away, awayWords, options.country);
     if (!inHome && !inAway) continue;
     hits.push({
       id: article.id,
@@ -524,6 +569,78 @@ export function relatedNews(
       imageUrl: article.imageUrl ?? null,
       team: inHome && inAway ? 'both' : inHome ? 'home' : 'away',
     });
+    if (options.newestFirst && hits.length >= limit) break;
   }
   return hits.sort((a, b) => b.publishedAt - a.publishedAt).slice(0, limit);
+}
+
+/**
+ * Normalised title + summary, computed once per stored row.
+ *
+ * Keyed by the row object: the store replaces a row object whenever its text
+ * changes (migration builds new objects), so a cached entry can never be stale,
+ * and a row dropped from the store takes its entry with it.
+ */
+const normalizedCache = new WeakMap<object, string>();
+
+function normalizedArticleText(article: ArticleLike): string {
+  let haystack = normalizedCache.get(article);
+  if (haystack === undefined) {
+    haystack = normalizeArabic(`${article.title} ${article.summary ?? ''}`);
+    normalizedCache.set(article, haystack);
+  }
+  return haystack;
+}
+
+/**
+ * Word index: prefix-stripped token → the rows containing it.
+ *
+ * Every accepting path in `mentionsTeam` compares `stripPrefixes(token)` with
+ * `stripPrefixes(word)` (or the raw forms, which implies it), so a row is only ever
+ * a match if one of its stripped tokens equals one of the name's stripped words.
+ * Looking those up replaces a substring scan of the whole corpus (~130ms per open
+ * for a rarely covered club on the e2-micro) with a few set lookups.
+ *
+ * Holds the rows strongly, so it must be reset when rows leave the store
+ * (`resetRelatedNewsIndex`, called after a retention prune).
+ */
+let tokenIndex = new Map<string, Set<object>>();
+let indexedRows = new WeakSet<object>();
+
+function indexRow(article: ArticleLike): void {
+  if (indexedRows.has(article)) return;
+  indexedRows.add(article);
+  for (const token of normalizedArticleText(article).split(' ')) {
+    const key = stripPrefixes(token);
+    if (!key) continue;
+    let set = tokenIndex.get(key);
+    if (!set) {
+      set = new Set();
+      tokenIndex.set(key, set);
+    }
+    set.add(article);
+  }
+}
+
+/** Forget the word index (after rows were removed from the store). */
+export function resetRelatedNewsIndex(): void {
+  tokenIndex = new Map();
+  indexedRows = new WeakSet();
+}
+
+/**
+ * Fill the normalised-text cache in small slices, yielding between them, so the
+ * first match opened after a boot or a refresh does not pay for the whole corpus.
+ */
+export function warmRelatedNews(articles: readonly ArticleLike[], chunk = 150): Promise<void> {
+  return new Promise((resolve) => {
+    let i = 0;
+    const step = (): void => {
+      const end = Math.min(articles.length, i + chunk);
+      for (; i < end; i++) indexRow(articles[i]!);
+      if (i < articles.length) setImmediate(step);
+      else resolve();
+    };
+    setImmediate(step);
+  });
 }

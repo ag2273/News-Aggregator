@@ -5,6 +5,7 @@
 // (which it opens in its WebView with ads blocked). Nothing is invented: on any
 // failure the answer is "not readable", never a partly-made-up article.
 
+import { remember } from './boundedCache.js';
 import { fetchPage, isGoogleNewsUrl, resolveGoogleNewsUrl } from './articleText.js';
 import { readerFromHtml, type ReaderArticle } from './reader.js';
 
@@ -101,7 +102,7 @@ export async function readerArticle(
   inFlight.set(key, job);
   try {
     const article = await job;
-    cache.set(key, { at: Date.now(), article });
+    remember(cache, key, { at: Date.now(), article }, 500, (e) => Date.now() - e.at >= READER_TTL_MS);
     return article;
   } finally {
     inFlight.delete(key);
