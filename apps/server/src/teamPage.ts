@@ -89,7 +89,7 @@ export function buildTeamPage(name: string, options: { matches?: MatchRow[] } = 
     if (m.awayTeamId) teamIds.add(m.awayTeamId);
     if (isHome && m.homeLogo) logo = m.homeLogo;
     if (!isHome && m.awayLogo) logo = m.awayLogo;
-    if (m.competitionId && m.competitionId !== 'other') competitionIds.add(m.competitionId);
+    if (m.competitionId && !m.competitionId.startsWith('other')) competitionIds.add(m.competitionId);
   }
 
   // A finished match belongs to `recent`, anything else to `upcoming`; a live

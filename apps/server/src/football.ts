@@ -46,6 +46,14 @@ export interface Competition {
    * without touching the app. Ties break on the Arabic name.
    */
   priority: number;
+  /**
+   * Listed on the matches screen as an empty strip on a day it does not play.
+   *
+   * Defaults to true. The competitions added so that their page opens are
+   * listed only on a day they actually have a fixture, so the screen does not
+   * gain five «لا توجد مباريات» strips every day.
+   */
+  listWhenEmpty?: boolean;
 }
 
 export const COMPETITIONS: Competition[] = [
@@ -66,7 +74,36 @@ export const COMPETITIONS: Competition[] = [
   // them. Its own entry keeps it visible and correctly labelled instead of
   // silently dropping fixtures the source actually carries.
   { id: 'egyptian-women', nameAr: 'الدوري المصري للسيدات', yallakoraName: 'الدوري المصري سيدات', yallakoraTourId: '', country: 'EG', priority: 90 },
+  // Competitions the two feeds publish every week whose strip did not open:
+  // they were filed as «other», which has no page. FilGoal's id map already sent
+  // two of them (eng-championship, tur-super-lig) to a page the server did not
+  // know, which answered 404. Their Yallakora table ids are not verified yet, so
+  // `yallakoraTourId` is empty and the page says the source publishes no table —
+  // the fixtures and results are real, a table we have not read is not.
+  { id: 'uefa-europa', nameAr: 'الدوري الأوروبي', yallakoraName: 'الدوري الأوروبي', yallakoraTourId: '', country: 'EU', priority: 32, listWhenEmpty: false },
+  { id: 'uefa-conference', nameAr: 'دوري المؤتمر الأوروبي', yallakoraName: 'دوري المؤتمر الأوروبي', yallakoraTourId: '', country: 'EU', priority: 33, listWhenEmpty: false },
+  { id: 'fifa-u17-world-cup', nameAr: 'كأس العالم تحت 17', yallakoraName: 'كأس العالم تحت 17', yallakoraTourId: '', country: 'INT', priority: 50, listWhenEmpty: false },
+  { id: 'tur-super-lig', nameAr: 'الدوري التركي', yallakoraName: 'الدوري التركي', yallakoraTourId: '', country: 'TR', priority: 60, listWhenEmpty: false },
+  { id: 'eng-championship', nameAr: 'دوري البطولة الإنجليزية', yallakoraName: 'دوري البطولة الإنجليزية', yallakoraTourId: '', country: 'GB', priority: 61, listWhenEmpty: false },
 ];
+
+/**
+ * A youth, reserve or lower-tier edition of a competition, by its normalised name.
+ *
+ * «دوري أبطال أوروبا للشباب» contains «دوري أبطال أوروبا», and the old lookup
+ * (`includes`) filed it under the senior competition, name and page included.
+ * These words never appear in the name of a senior top flight we cover.
+ */
+export function isSideEdition(normalised: string): boolean {
+  return /الدرجه|للشباب|(^|\s)الشباب|للناشئين|الناشئين|تحت\s*\d+|رديف|الاحتياطي/.test(normalised);
+}
+
+/** Id for a competition we do not cover, so its page still opens from its name. */
+export const OTHER_COMPETITION_PREFIX = 'other:';
+
+export function otherCompetitionId(name: string): string {
+  return `${OTHER_COMPETITION_PREFIX}${canonicalCompetition(name)}`;
+}
 
 export type MatchStatus = 'live' | 'upcoming' | 'finished' | 'unknown';
 
@@ -262,10 +299,37 @@ export function isWomenLeague(name: string): boolean {
 
 /** Competition lookup by the source's league heading. */
 export function competitionForLeague(league: string): Competition | undefined {
-  // The women's league is checked FIRST: «الدوري المصري | سيدات» contains the
-  // men's name, so the plain lookup below would file it as the men's league.
-  if (isWomenLeague(league)) return COMPETITIONS.find((c) => c.id === 'egyptian-women');
-  return COMPETITIONS.find((c) => league.includes(c.yallakoraName));
+  // The canonical name first: it is what every screen prints, so a competition
+  // is found by the same name it is shown under. «كأس الكونفدرالية» (FilGoal)
+  // was not found by the old `includes(yallakoraName)` lookup at all — the strip
+  // showed, and did not open.
+  const canonical = canonicalCompetition(league);
+  const exact = COMPETITIONS.find((c) => c.nameAr === canonical);
+  if (exact) return exact;
+  // A women's competition is only ever the Egyptian women's league, and only when
+  // it says so: «دوري أبطال أوروبا للسيدات» is not «الدوري المصري للسيدات» (the
+  // old rule filed EVERY women's competition there).
+  if (isWomenLeague(league)) return undefined;
+  if (isSideEdition(normalizeTeam(league))) return undefined;
+  return COMPETITIONS.find((c) => c.yallakoraName && league.includes(c.yallakoraName));
+}
+
+/**
+ * One competition, one id, one name — whichever feed the row came from.
+ *
+ * The id from the name wins, then the id the feed sent (FilGoal's champion id),
+ * and the registered Arabic name replaces the feed's own wording, so the group
+ * on the matches screen, the page it opens and the chip on a club page all say
+ * the same thing. A competition we do not cover keeps its own name and gets an
+ * `other:` id, so its page opens from its fixtures instead of not opening at all.
+ */
+export function settleCompetition(row: MatchRow): MatchRow {
+  const comp =
+    competitionForLeague(row.competitionName) ??
+    COMPETITIONS.find((c) => c.id === row.competitionId);
+  if (comp) return { ...row, competitionId: comp.id, competitionName: comp.nameAr };
+  const name = canonicalCompetition(row.competitionName);
+  return { ...row, competitionId: otherCompetitionId(name), competitionName: name };
 }
 
 /**
@@ -736,13 +800,25 @@ export function sameClub(a: string, b: string): boolean {
  */
 export function canonicalCompetition(name: string): string {
   const n = normalizeTeam(name);
+  // Women's competitions first, so no rule below can rename one to the men's
+  // («دوري أبطال أوروبا للسيدات» was «دوري أبطال أوروبا»). Only the Egyptian one
+  // has a canonical name; any other keeps its own.
+  if (isWomenLeague(name)) return /المصري/.test(n) ? 'الدوري المصري للسيدات' : name;
   if (/كاس العالم تحت 17/.test(n)) return 'كأس العالم تحت 17';
-  if (/ابطال افريقيا/.test(n)) return 'دوري أبطال أفريقيا';
+  // A youth or lower-tier edition keeps its own name: «الدوري الإنجليزي - الدرجة
+  // الأولى» must not become the Premier League.
+  if (isSideEdition(n)) return name;
+  // The registered spelling (إفريقيا), so the strip and the page say the same.
+  if (/ابطال افريقيا/.test(n)) return 'دوري أبطال إفريقيا';
   // Normalisation folds ة to ه, so the pattern has to match the folded spelling.
   // The two sources spell it «كونفيدرالية» and «كونفدرالية», so the extra ي
   // is optional in the pattern.
   if (/كونفي?درالي/.test(n)) return 'كأس الكونفدرالية';
   if (/ابطال اوروبا/.test(n)) return 'دوري أبطال أوروبا';
+  // «دوري المؤتمر الأوروبي» is the third UEFA competition, not the Europa League.
+  if (/المؤتمر الاوروبي|كونفرنس ليج/.test(n)) return 'دوري المؤتمر الأوروبي';
+  // Anchored: «الدوري الأوروبي» only, so «دوري الأمم الأوروبية» (below) is not it.
+  if (/^الدوري الاوروبي|يوروبا ليج/.test(n)) return 'الدوري الأوروبي';
   // The same tournament, with one feed adding its tier or season:
   // «دوري الأمم الأوروبية» vs «دوري الأمم الأوروبية - المستوى الثالث», and
   // «تصفيات أمم أفريقيا» vs «تصفيات كأس الأمم الإفريقية 2027». The tier and the
@@ -781,6 +857,8 @@ export function canonicalCompetition(name: string): string {
   if (/القسم الثاني\s*-?\s*ا(?![لب])|القسم الثاني\s*-?\s*أ/.test(n)) return 'دوري القسم الثاني-أ';
   if (/المحترفين المصري|المحترفين$/.test(n)) return 'دوري القسم الثاني-أ';
   if (/الدوري المصري/.test(n)) return 'الدوري المصري';
+  if (/^كاس مصر/.test(n)) return 'كأس مصر';
+  if (/الدوري التركي/.test(n)) return 'الدوري التركي';
   // The two sources name the same league differently («الدوري التونسي» and
   // «الرابطة التونسية المحترفة»). Without folding them, one fixture arrived twice
   // under two competition names.
