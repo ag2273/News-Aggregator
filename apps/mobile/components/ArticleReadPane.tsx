@@ -112,6 +112,9 @@ export function ArticleReadPane({
   }, [articleId, url, attempt]);
 
   const target = state.phase === 'web' ? state.target ?? publisherUrl(null, url) : url;
+  // What "open as-is" hands the browser: the publisher page when it is known, so the
+  // reader never lands on Google's stub (#60).
+  const openTarget = publisherUrl(target, url);
 
   // Read-aloud on this device (#56). Declared before the early returns because hooks
   // cannot be conditional; `enabled` keeps it inert on every phase but the reader.
@@ -164,7 +167,11 @@ export function ArticleReadPane({
               resolve it to a publisher page or extract it. */}
           <View style={styles.recoverRow}>
             <TouchableOpacity
-              onPress={() => Linking.openURL(url).catch(() => {})}
+              // The PUBLISHER page, not the stored Google-News link: opening that
+              // link in a browser lands on Google's redirect stub, which is the user's
+              // «مش بيفتح من الموقع الأصلي» (#60). `target` is the resolved publisher
+              // URL whenever we have one.
+              onPress={() => Linking.openURL(openTarget).catch(() => {})}
               style={[styles.recoverBtn, { borderColor: t.accent }]}
               accessibilityRole="button"
               accessibilityLabel="افتح الخبر زي ما هو"

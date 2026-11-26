@@ -49,7 +49,7 @@ jest.mock('../lib/api', () => {
 });
 (globalThis as any).__mockReader = mockReader;
 
-import { ArticleReadPane } from '../components/ArticleReadPane';
+import { ArticleReadPane, publisherUrl } from '../components/ArticleReadPane';
 import { WebView } from 'react-native-webview';
 
 const t = palette.light;
@@ -322,5 +322,70 @@ describe('the reader header offers a listen control', () => {
     renderPane();
     await waitFor(() => expect(screen.getByTestId('webview')).toBeTruthy());
     expect(screen.queryByLabelText('استماع للخبر')).toBeNull();
+  });
+});
+
+/**
+ * «افتح الخبر زي ما هو» must open the PUBLISHER page (#60).
+ *
+ * The user's report after apk-83: «مش بيفتح من الموقع الأصلي». The button was opening
+ * the stored `news.google.com` link rather than the resolved publisher URL, so a tap
+ * landed on Google's redirect stub instead of the story.
+ */
+describe('the recovery action opens the publisher, not the Google link', () => {
+  const gnews =
+    'https://news.google.com/rss/articles/CBMiX0FVX3lxTFA1VXUtX2p2LTUxQldRblV1SlVGbTdXa1VBcS16R?oc=5';
+  const publisher = 'https://www.almasryalyoum.com/news/details/4420757';
+
+  it('falls back to the original link only when no publisher url is known', async () => {
+    // The Google link still redirects to the story in a real browser, so it is a usable
+    // last resort — but it must never be preferred over a known publisher page.
+    const spy = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as any);
+    mockReader.mockResolvedValue({
+      title: null,
+      blocks: [],
+      readable: false,
+      reason: 'unreachable',
+      resolvedUrl: null,
+    });
+    render(
+      <ArticleReadPane url={gnews} articleId="x10" title="المصري اليوم" t={t} onClose={() => {}} />,
+    );
+    await waitFor(() => expect(screen.getByTestId('recover-open-source')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('recover-open-source'));
+    // With nothing resolved, the original link is the only thing to offer.
+    expect(spy).toHaveBeenCalledWith(gnews);
+    spy.mockRestore();
+  });
+});
+
+
+/**
+ * Which URL "open as-is" hands the browser (#60).
+ *
+ * The user's report after apk-83: «مش بيفتح من الموقع الأصلي». The button was opening
+ * the stored Google-News link even when the publisher page was known.
+ */
+describe('the URL the browser is given', () => {
+  const gnews = 'https://news.google.com/rss/articles/CBMiX0FVX3lx?oc=5';
+  const publisher = 'https://www.almasryalyoum.com/news/details/4420757';
+
+  it('prefers the resolved publisher page', () => {
+    expect(publisherUrl(publisher, gnews)).toBe(publisher);
+  });
+
+  it('never prefers a Google link over an available publisher', () => {
+    expect(publisherUrl(publisher, gnews)).not.toContain('news.google.com');
+  });
+
+  it('uses the original link only when nothing better is known', () => {
+    // A Google link does redirect to the story in a real browser, so it stays as the
+    // last resort rather than leaving the reader with no action at all.
+    expect(publisherUrl(null, gnews)).toBe(gnews);
+    // A garbage "resolved" value is not trusted either.
+    expect(publisherUrl('not-a-url', gnews)).toBe(gnews);
+    expect(publisherUrl('https://news.google.com/x', 'https://www.masrawy.com/1')).toBe(
+      'https://www.masrawy.com/1',
+    );
   });
 });

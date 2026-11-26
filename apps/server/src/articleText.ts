@@ -255,6 +255,12 @@ export async function resolveGoogleNewsUrl(
   ]);
   const body = `f.req=${encodeURIComponent(JSON.stringify([[['Fbv4je', inner, null, 'generic']]]))}`;
 
+  // Every network call inside a resolve carries a deadline (#60). Measured on the
+  // user's phone: the reader failed at 20s on a story from المصري اليوم, a source that
+  // resolves fine in 420ms from here. The cause is this RPC — it had NO timeout and
+  // three attempts with backoff, so on a slow mobile link it could run far longer than
+  // the reader's budget. A resolve is a nicety; it must never become the reason a story
+  // will not open.
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const res = await fetchImpl('https://news.google.com/_/DotsSplashUi/data/batchexecute', {
@@ -264,6 +270,7 @@ export async function resolveGoogleNewsUrl(
           'User-Agent': BROWSER_HEADERS['User-Agent'] as string,
         },
         body,
+        ...(fetchImpl === fetch ? { signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS) } : {}),
       });
       // 429 here is pacing, not a refusal: back off and retry.
       if (res.status === 429 || res.status >= 500) {
