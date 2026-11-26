@@ -253,6 +253,19 @@ export const CLUB_ALIASES: AliasPair[] = [
     source: 'ESPN uefa.nations roster (Israel), displayed name chosen by the user',
     kind: 'national',
   },
+  // Decided by the user on #45, 2026-11-26, after the schedule matched: FilGoal's
+  // «ميجا سبورت» and Yallakora's «نادى دلتا يونايتد» play the same opponent at the
+  // same kickoff with the same score on 2026-11-12, 11-20 and 11-26. The club now
+  // plays as Delta United FC: Sportytrader lists its fixtures under «Delta United
+  // FC» at URLs still named after its old name, «mega-sport-belqas». Shown under
+  // Yallakora's spelling, as every other pair here.
+  {
+    from: 'ميجا سبورت',
+    to: 'نادى دلتا يونايتد',
+    official: 'Delta United FC (formerly Mega Sport, Belqas)',
+    source: 'sportytrader.com/en/results-live/mega-sport-belqas-tanta-fc-8672301/ (titled «Delta United FC vs Tanta FC»)',
+    kind: 'club',
+  },
 ];
 
 /** The club a name is written as, when it is one of the pairs above. */
@@ -298,19 +311,3 @@ export function isAliasedClub(name: string): boolean {
   return ALIAS_TO.has(key) || ALIAS_FROM.has(key);
 }
 
-/**
- * Names the merge must not pair by schedule alone, because pairing them is a
- * decision nobody has made yet.
- *
- * «ميجا سبورت» (FilGoal) and «نادى دلتا يونايتد» (Yallakora) play the same opponent
- * at the same kickoff with the same score — measured on 2026-11-12, 11-20 and 11-26
- * — but no outside source names them as one club, and leaving them separate was
- * agreed on #48/#49. The kickoff rule in `mergeDay` would otherwise fold them, so
- * they are listed here until that decision changes.
- */
-const UNSETTLED = new Set(['ميجا سبورت', 'نادى دلتا يونايتد'].map(fold));
-
-/** Is this a name the merge must leave as its own row (see `UNSETTLED`)? */
-export function isUnsettledClub(name: string): boolean {
-  return UNSETTLED.has(fold(name));
-}

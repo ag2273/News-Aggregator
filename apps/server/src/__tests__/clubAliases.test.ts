@@ -62,10 +62,11 @@ describe('the alias table names one club one way', () => {
   it('carries an outside source for every pairing, so it can be re-checked', () => {
     // The rule is "an outside source names it", not "ESPN names it": the clubs
     // outside ESPN's eight leagues are anchored on their own Wikipedia article,
-    // and the entry says which one.
+    // and the entry says which one. Delta United (Egypt's second tier, on no
+    // Wikipedia or ESPN page) is anchored on the live-score site that lists it.
     for (const pair of CLUB_ALIASES) {
       expect(pair.official.length).toBeGreaterThan(2);
-      expect(pair.source).toMatch(/ESPN|Wikipedia/);
+      expect(pair.source).toMatch(/ESPN|Wikipedia|sportytrader\.com/);
     }
   });
 });

@@ -52,7 +52,7 @@ import { parseYallakoraGoals, type MatchGoal } from './yallakoraMatch.js';
 import { getAllArticlesReadonly } from './db.js';
 import { relatedNews as relatedNewsFrom, type ArticleLike, type RelatedArticle } from './matchNews.js';
 import { clockFor, espnCompetitions, fetchEspnLive, fetchEspnLiveDay } from './espnLive.js';
-import { canonicalClub, isUnsettledClub } from './clubAliases.js';
+import { canonicalClub } from './clubAliases.js';
 import type { EspnLive } from './espnLive.js';
 import { halfText } from './espnClock.js';
 
@@ -750,18 +750,14 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
    *     taken in a row from the other feed;
    *   - exactly ONE kept row in that slot has the club (FilGoal sometimes lists a
    *     club twice at one kickoff in the lower Egyptian tiers — that is left alone);
-   *   - the scores agree, checked in `absorb`;
-   *   - neither club is one whose pairing is still undecided (`isUnsettledClub`).
+   *   - the scores agree, checked in `absorb`.
    */
   const slotTwin = (row: MatchRow): MatchRow | null => {
     const slot = slotOf(row);
     if (!slot) return null;
-    if (isUnsettledClub(row.home) || isUnsettledClub(row.away)) return null;
     const candidates = (bySlot.get(slot) ?? []).filter(
       (kept) =>
         kept.dataSource !== row.dataSource &&
-        !isUnsettledClub(kept.home) &&
-        !isUnsettledClub(kept.away) &&
         [kept.home, kept.away].some((side) => sameSide(side, row.home) || sameSide(side, row.away)),
     );
     if (candidates.length !== 1) return null;

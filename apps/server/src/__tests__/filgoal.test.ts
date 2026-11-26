@@ -412,16 +412,19 @@ describe('merging two sources', () => {
     expect(merged).toHaveLength(2);
   });
 
-  it('keeps «ميجا سبورت» and «نادى دلتا يونايتد» apart, as agreed on #48', () => {
-    // Same opponent, kickoff and score on three days, but no outside source names
-    // them as one club, so the schedule alone does not settle it.
+  it('lists «ميجا سبورت» and «نادى دلتا يونايتد» as one club (#45)', () => {
+    // Same opponent, kickoff and score on three days; the club plays as Delta
+    // United FC now, and the user chose to merge them.
     const second = (over: Partial<MatchRow>): MatchRow =>
       row({ competitionName: 'دوري القسم الثاني-أ', kickoff: '14:30', status: 'finished', homeScore: 1, awayScore: 0, away: 'السكة الحديد', ...over });
     const merged = mergeDay(
       [second({ home: 'ميجا سبورت' })],
       [second({ id: 'yk', dataSource: 'yallakora', home: 'نادى دلتا يونايتد' })],
     );
-    expect(merged).toHaveLength(2);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.home).toBe('نادى دلتا يونايتد');
+    // Shown under the club's name even on a day only FilGoal lists it.
+    expect(mergeDay([second({ home: 'ميجا سبورت' })], [])[0]!.home).toBe('نادى دلتا يونايتد');
   });
 });
 
