@@ -64,6 +64,30 @@ export function prefersHttp1(url: string): boolean {
 }
 
 /**
+ * `fetchPage` with a shorter deadline than the shared page timeout (#60).
+ *
+ * Used only for the Google redirect stub, where a slow answer is worth abandoning
+ * quickly so the reader's own budget can go to the publisher instead.
+ */
+async function fetchPageWithTimeout(
+  url: string,
+  fetchImpl: typeof fetch | undefined,
+  timeoutMs: number,
+): Promise<{ ok: boolean; status: number; text: string }> {
+  const target = fetchImpl ?? fetch;
+  try {
+    const res = await target(url, {
+      headers: BROWSER_HEADERS,
+      redirect: 'follow',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return { ok: res.ok, status: res.status, text: await res.text() };
+  } catch {
+    return { ok: false, status: 0, text: '' };
+  }
+}
+
+/**
  * Fetch a page the way a browser would: HTTP/2 first (see `h2Agent`), following
  * redirects — undici's low-level `request` does not, and Google's article pages
  * answer 302 — then one HTTP/1.1 retry. `fetchImpl` is injectable so tests never
@@ -161,6 +185,36 @@ export function arabicLength(text: string): number {
  * article link. Returns null when the page carries no signature or the RPC
  * answers nothing usable — the caller then falls back to the snippet.
  */
+/**
+ * Resolving a Google-News link, with the two things it was missing (#60).
+ *
+ * MEASURED ON THE USER'S PHONE
+ * ----------------------------
+ * Their log had `reader` fail at exactly 20,010ms three times, and the screen then
+ * showed «مش قادرين نفتح الخبر ده» — the dead end from #54, where a Google link that
+ * cannot be resolved leaves no URL to open at all.
+ *
+ * The cost is here: this function fetches Google's own article page with the shared
+ * 20-second page timeout, so a slow Google consumes the reader's whole budget before
+ * the publisher is even contacted.
+ *
+ * Two fixes, both about that:
+ *   1. Its own, much shorter timeout. Google's page is a redirect stub; if it takes
+ *      more than a few seconds it is having a bad day, and spending the reader's
+ *      budget on it is the wrong trade.
+ *   2. A resolved-URL cache. The mapping from a Google link to its publisher is
+ *      permanent, so once resolved it never needs asking again — which also turns a
+ *      repeat open into zero network calls.
+ */
+const RESOLVE_TIMEOUT_MS = 5000;
+const RESOLVE_TTL_MS = 24 * 60 * 60 * 1000;
+const resolvedCache = new Map<string, { url: string; at: number }>();
+
+/** Test seam. */
+export function _resetResolvedCache(): void {
+  resolvedCache.clear();
+}
+
 export async function resolveGoogleNewsUrl(
   articleUrl: string,
   fetchImpl: typeof fetch = fetch,
@@ -170,9 +224,18 @@ export async function resolveGoogleNewsUrl(
   const token = articleUrl.split('/articles/')[1]?.split('?')[0];
   if (!token) return null;
 
+  const cached = resolvedCache.get(articleUrl);
+  if (cached && Date.now() - cached.at < RESOLVE_TTL_MS) return cached.url;
+
   let html: string;
   try {
-    const page = await fetchPage(articleUrl, fetchImpl === fetch ? undefined : fetchImpl);
+    // A short, dedicated budget: see the note above. Without this, a slow Google ate
+    // the reader's entire 20s allowance before the publisher was even asked.
+    const page = await fetchPageWithTimeout(
+      articleUrl,
+      fetchImpl === fetch ? undefined : fetchImpl,
+      RESOLVE_TIMEOUT_MS,
+    );
     if (!page.ok) return null;
     html = page.text;
   } catch {
@@ -222,7 +285,9 @@ export async function resolveGoogleNewsUrl(
         .replace(/\\*u0026/g, '&')
         .replace(/\\*u002f/gi, '/')
         .replace(/\\\//g, '/');
-      return /^https?:\/\//.test(url) ? url : null;
+      if (!/^https?:\/\//.test(url)) return null;
+      resolvedCache.set(articleUrl, { url, at: Date.now() });
+      return url;
     } catch {
       if (attempt === attempts - 1) return null;
     }

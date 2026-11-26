@@ -271,9 +271,10 @@ describe('the browser fallback opens the publisher, never the Google-News link',
     );
   });
 
-  it('refuses to load a Google-News link it could not resolve, instead of the error page', async () => {
-    // No websafe page can be produced for a Google link: its shell is the invalid
-    // redirect the user saw. Show an honest message, not that error.
+  it('offers the way out when a Google-News link could not be resolved (#60)', async () => {
+    // The Google shell renders as the invalid-redirect page, so it is not loaded. But
+    // a wall is not an answer either: the user's screenshot showed only «جرّب تاني بعد
+    // شوية» with nothing to tap. There is now an action that opens the story.
     mockReader.mockResolvedValue({
       title: null,
       blocks: [],
@@ -283,7 +284,10 @@ describe('the browser fallback opens the publisher, never the Google-News link',
     });
     renderFallback(gnews, 'x4');
     await waitFor(() => expect(screen.queryByTestId('webview')).toBeNull());
-    expect(screen.getByText(/مش قادرين نفتح الخبر ده/)).toBeTruthy();
+    expect(screen.getByText(/مش قادرين نجهّز نسخة/)).toBeTruthy();
+    // Two real actions instead of a dead end.
+    expect(screen.getByTestId('recover-open-source')).toBeTruthy();
+    expect(screen.getByTestId('recover-retry')).toBeTruthy();
   });
 });
 

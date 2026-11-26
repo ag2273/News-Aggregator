@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { stripAdMarkup, isAdUrl } from '../cleanPage.js';
 import { readerArticle, resetReaderCache } from '../readerService.js';
 import { cleanPage, resetCleanCache } from '../cleanPageService.js';
+import { resolveGoogleNewsUrl, _resetResolvedCache } from '../articleText.js';
 import { readerFromHtml } from '../reader.js';
 
 /** A page shaped like the outlets we measured, ad markup included. */
@@ -223,5 +224,75 @@ describe('the reader tells the app the publisher url even when extraction fails 
     } as never);
     expect(res.readable).toBe(false);
     expect(res.resolvedUrl ?? null).toBeNull();
+  });
+});
+
+/**
+ * The reader's dead end on the user's phone (#60).
+ *
+ * Their log: `reader` failed at exactly 20,010ms three times and the screen showed
+ * «مش قادرين نفتح الخبر ده» — the dead end from #54, where an unresolvable Google link
+ * leaves no URL to open. The cost was here: resolving a Google link fetched Google's
+ * page with the shared 20s page timeout, so a slow Google consumed the reader's whole
+ * budget before the publisher was even contacted.
+ */
+describe('resolving a Google-News link is bounded and cached (#60)', () => {
+  const gnews =
+    'https://news.google.com/rss/articles/CBMiS0FVX3lxTE41M3ExY3A3UFJOS05hcXl2ejBQdEsybG5vUHZHTjlfWXVWS3Z5QzVpaVlrVTVPSHlmTnlZQ01PMHZuN1VKNGR1Mk9Gcw?oc=5';
+
+  it('gives up quickly when Google never answers, instead of eating the reader budget', async () => {
+    _resetResolvedCache();
+    // A fetch that only settles when its signal is aborted — the worst case.
+    const hanging = ((_url: string, init: { signal?: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      })) as unknown as typeof fetch;
+
+    const started = Date.now();
+    const out = await resolveGoogleNewsUrl(gnews, hanging);
+    const elapsed = Date.now() - started;
+
+    expect(out).toBeNull();
+    // Bounded by its own short timeout, far under the reader's 20s allowance.
+    expect(elapsed).toBeLessThan(7_000);
+  });
+
+  it('remembers a resolved link, so a reopen costs no network at all', async () => {
+    _resetResolvedCache();
+    let calls = 0;
+    const page =
+      '<html><body data-n-a-sg="sig" data-n-a-ts="123" data-n-a-id="id"></body></html>';
+    // The real flow makes TWO calls: the article page (which carries the signature)
+    // and Google's batchexecute RPC (which answers with the publisher URL).
+    const fake = (async (url: string) => {
+      calls += 1;
+      if (String(url).includes('batchexecute')) {
+        return new Response(')]}\'"\n[["wrb.fr","Fbv4je","[\\"garturlres\\",\\"https://www.alarabiya.net/story/1\\"]"]]', {
+          status: 200,
+        });
+      }
+      return new Response(page, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const first = await resolveGoogleNewsUrl(gnews, fake);
+    expect(first).toBe('https://www.alarabiya.net/story/1');
+    const afterFirst = calls;
+
+    // Second call is served from memory: the mapping is permanent.
+    const second = await resolveGoogleNewsUrl(gnews, fake);
+    expect(second).toBe(first);
+    expect(calls).toBe(afterFirst);
+  });
+
+  it('passes a non-Google url straight through, without a request', async () => {
+    _resetResolvedCache();
+    let calls = 0;
+    const fake = (async () => {
+      calls += 1;
+      return new Response('', { status: 200 });
+    }) as unknown as typeof fetch;
+    const out = await resolveGoogleNewsUrl('https://www.masrawy.com/news/1', fake);
+    expect(out).toBe('https://www.masrawy.com/news/1');
+    expect(calls).toBe(0);
   });
 });

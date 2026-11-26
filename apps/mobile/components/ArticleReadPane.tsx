@@ -76,6 +76,12 @@ export function ArticleReadPane({
     | { phase: 'reader'; article: ReaderArticle }
     | { phase: 'web'; cleaned: boolean; reason?: string; target?: string }
   >({ phase: 'loading' });
+  // Bumped by the "جرّب تاني" button so the effect runs again (#60).
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setState({ phase: 'loading' });
+    setAttempt((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,7 +109,7 @@ export function ArticleReadPane({
     return () => {
       cancelled = true;
     };
-  }, [articleId, url]);
+  }, [articleId, url, attempt]);
 
   const target = state.phase === 'web' ? state.target ?? publisherUrl(null, url) : url;
 
@@ -151,8 +157,33 @@ export function ArticleReadPane({
         </View>
         <View style={styles.center}>
           <Text style={[styles.unavailable, { color: t.textSecondary }]}>
-            مش قادرين نفتح الخبر ده دلوقتي. جرّب تاني بعد شوية.
+            مش قادرين نجهّز نسخة من الخبر دلوقتي. تقدر تفتحه زي ما هو، أو تجرب تاني بعد شوية.
           </Text>
+          {/* A wall is not an answer (#60, and the dead end from #54): the original
+              link still opens the story in the browser, even when we could not
+              resolve it to a publisher page or extract it. */}
+          <View style={styles.recoverRow}>
+            <TouchableOpacity
+              onPress={() => Linking.openURL(url).catch(() => {})}
+              style={[styles.recoverBtn, { borderColor: t.accent }]}
+              accessibilityRole="button"
+              accessibilityLabel="افتح الخبر زي ما هو"
+              testID="recover-open-source"
+            >
+              <Ionicons name="open-outline" size={15} color={t.accent} />
+              <Text style={[styles.recoverText, { color: t.accent }]}>افتح الخبر زي ما هو</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={retry}
+              style={[styles.recoverBtn, { borderColor: t.borderLight }]}
+              accessibilityRole="button"
+              accessibilityLabel="جرّب تاني"
+              testID="recover-retry"
+            >
+              <Ionicons name="refresh-outline" size={15} color={t.textSecondary} />
+              <Text style={[styles.recoverText, { color: t.textSecondary }]}>جرّب تاني</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -325,6 +356,17 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   sourceLinkText: { fontFamily: 'Cairo_600SemiBold', fontSize: 13 },
+  recoverRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  recoverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  recoverText: { fontFamily: 'Cairo_600SemiBold', fontSize: 12 },
   unavailable: {
     fontFamily: 'Cairo_400Regular',
     fontSize: 14,

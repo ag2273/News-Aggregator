@@ -10,23 +10,8 @@
  *     transport is part of the module.
  */
 
-import { describe, it, expect } from 'vitest';
-import {
-  arabicLength,
-  extractArticleText,
-  fetchArticleText,
-  isGoogleNewsUrl,
-  resolveGoogleNewsUrl,
-  MIN_BODY_ARABIC,
-  MAX_BODY_CHARS,
-  BROWSER_HEADERS,
-  HTTP1_ONLY_HOSTS,
-  prefersHttp1,
-  fetchPage,
-  repeatedPeriod,
-  h2Agent,
-  H2_ENABLED,
-} from '../articleText.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { BROWSER_HEADERS, H2_ENABLED, HTTP1_ONLY_HOSTS, MAX_BODY_CHARS, MIN_BODY_ARABIC, _resetResolvedCache, arabicLength, extractArticleText, fetchArticleText, fetchPage, h2Agent, isGoogleNewsUrl, prefersHttp1, repeatedPeriod, resolveGoogleNewsUrl } from '../articleText.js';
 
 const BODY = 'أعلنت إيران أنها لا تزال تعقد آمالا على الدبلوماسية لإنهاء الصراع مع الولايات المتحدة، سعيا إلى اتفاق يضمن عدم نشوب حرب أخرى في المستقبل.';
 const LONG_BODY = BODY.repeat(12);
@@ -65,6 +50,8 @@ describe('articleText: helpers', () => {
 });
 
 describe('articleText: Google News resolution', () => {
+  // The resolver caches a resolved link for the day (#60); a test must start clean.
+  beforeEach(() => _resetResolvedCache());
   const GN = 'https://news.google.com/rss/articles/CBMiTOKENVALUE?oc=5';
   const PAGE_WITH_SIG = `<html><body><c-wiz data-n-a-sg="SIGNATUREVALUE" data-n-a-ts="1700000000" data-n-a-id="CBMiTOKENVALUE"></c-wiz></body></html>`;
 
