@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { relatedNews } from '../matchNews.js';
+import { mentionsTeam, relatedNews, stripPublisher } from '../matchNews.js';
+import { clusterArticles, clusterArticlesAsync } from '../cluster.js';
 import { remember } from '../boundedCache.js';
 
 // Guards for the performance fixes: the faster paths must give the same answers.
@@ -53,5 +54,35 @@ describe('remember (bounded cache)', () => {
     remember(map, 'stale2', { at: 2 }, 3, (e) => e.at < 5);
     remember(map, 'new', { at: 11 }, 3, (e) => e.at < 5);
     expect([...map.keys()]).toEqual(['fresh', 'new']);
+  });
+});
+
+describe('word index', () => {
+  it('finds exactly what the plain rules find', () => {
+    for (const [home, away] of [['الأهلي', 'الزمالك'], ['وادي دجلة', 'الاتحاد السكندري'], ['إنتر ميلان', 'إنتر ميامي']]) {
+      // Twice: the first call indexes the rows, the second goes through the index.
+      relatedNews(home!, away!, { articles: corpus, limit: 1000 });
+      const fast = relatedNews(home!, away!, { articles: corpus, limit: 1000 });
+      const reference = corpus
+        .filter((a) => {
+          const text = `${a.title} ${a.summary ?? ''}`;
+          return mentionsTeam(text, home!) || mentionsTeam(text, away!);
+        })
+        .map((a) => a.id);
+      expect(fast.map((h) => h.id).sort()).toEqual(reference.sort());
+      expect(fast.every((h) => h.title === stripPublisher(corpus.find((a) => a.id === h.id)!.title, 'مصدر'))).toBe(true);
+    }
+  });
+});
+
+describe('clusterArticlesAsync', () => {
+  it('gives the same clusters as the synchronous build', async () => {
+    const titles = ['الأهلي يفوز على الزمالك في القمة', 'الزمالك يخسر أمام الأهلي في القمة', 'سعر الدولار اليوم في البنوك', 'سعر الدولار اليوم في البنوك المصرية'];
+    const articles = Array.from({ length: 200 }, (_, i) => ({
+      id: `c${i}`, title: `${titles[i % 4]} ${Math.floor(i / 8)}`, summary: null, imageUrl: null,
+      url: `https://x.test/${i}`, sourceId: `s${i % 5}`, sourceName: `s${i % 5}`, category: 'misc',
+      country: 'eg', publishedAt: 1_000_000_000 - i * 60_000, isBreaking: false,
+    }));
+    expect(await clusterArticlesAsync(articles as never, 7)).toEqual(clusterArticles(articles as never));
   });
 });

@@ -50,8 +50,8 @@ import {
   unsaveArticle,
 } from './saved.js';
 import { searchArticles, warmSearch } from './search.js';
-import { warmRelatedNews } from './matchNews.js';
-import { groupedFeedPageCached } from './groupedFeed.js';
+import { resetRelatedNewsIndex, warmRelatedNews } from './matchNews.js';
+import { groupedFeedPageCached, rebuildGroupedIndex } from './groupedFeed.js';
 import {
   ADMIN_USERNAME,
   aggregateReactions,
@@ -288,9 +288,12 @@ async function maintainStoreAfterRefresh(): Promise<void> {
       const keep = allSavedArticleIds();
       for (const id of Object.keys(getAllReactions())) keep.add(id);
       const removed = pruneArticles(Date.now() - RETENTION_DAYS * 86_400_000, keep);
-      if (removed) console.log(`[db] retention: dropped ${removed} row(s) older than ${RETENTION_DAYS} days`);
+      if (removed) {
+        console.log(`[db] retention: dropped ${removed} row(s) older than ${RETENTION_DAYS} days`);
+        resetRelatedNewsIndex();
+      }
     }
-    groupedFeedPageCached(getStoreVersion(), getFeedArticles, 0, 1);
+    await rebuildGroupedIndex(getStoreVersion(), getFeedArticles);
     const rows = getAllArticlesReadonly();
     await warmSearch(rows);
     await warmRelatedNews(rows);
@@ -923,7 +926,9 @@ app.get('/api/feed', async (c) => {
     // or a same-story cluster. The default shape is untouched for compatibility.
     // Clustering the whole store is the expensive part, so it is built once per
     // store version and shared by every reader until the next refresh lands.
-    const page = groupedFeedPageCached(getStoreVersion(), getFeedArticles, offset, limit, maxPerSource);
+    const page = groupedFeedPageCached(getStoreVersion(), getFeedArticles, offset, limit, maxPerSource, {
+      serveStale: true,
+    });
     return c.json({
       data: page.rows.map((row) =>
         row.kind === 'article'

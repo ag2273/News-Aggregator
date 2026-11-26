@@ -541,10 +541,22 @@ export function relatedNews(
   // rejects almost the whole corpus before the full rules run.
   const needles = [...new Set([...homeWords, ...awayWords].map(stripPrefixes).filter(Boolean))];
 
+  // Rows the word index already covers are candidates only when one of their tokens
+  // matches a needle exactly; a row the index has not seen yet falls back to the
+  // substring test (and is indexed on the way).
+  const candidates = new Set<object>();
+  for (const n of needles) for (const row of tokenIndex.get(n) ?? []) candidates.add(row);
+
   const hits: RelatedArticle[] = [];
   for (const article of articles) {
+    if (indexedRows.has(article)) {
+      if (!candidates.has(article)) continue;
+    } else {
+      indexRow(article);
+      const haystack = normalizedArticleText(article);
+      if (!needles.some((n) => haystack.includes(n))) continue;
+    }
     const haystack = normalizedArticleText(article);
-    if (!needles.some((n) => haystack.includes(n))) continue;
     const text = `${article.title} ${article.summary ?? ''}`;
     const inHome = mentionsTeamIn(text, haystack, home, homeWords, options.country);
     const inAway = sameTeam ? inHome : mentionsTeamIn(text, haystack, away, awayWords, options.country);
@@ -582,6 +594,42 @@ function normalizedArticleText(article: ArticleLike): string {
 }
 
 /**
+ * Word index: prefix-stripped token → the rows containing it.
+ *
+ * Every accepting path in `mentionsTeam` compares `stripPrefixes(token)` with
+ * `stripPrefixes(word)` (or the raw forms, which implies it), so a row is only ever
+ * a match if one of its stripped tokens equals one of the name's stripped words.
+ * Looking those up replaces a substring scan of the whole corpus (~130ms per open
+ * for a rarely covered club on the e2-micro) with a few set lookups.
+ *
+ * Holds the rows strongly, so it must be reset when rows leave the store
+ * (`resetRelatedNewsIndex`, called after a retention prune).
+ */
+let tokenIndex = new Map<string, Set<object>>();
+let indexedRows = new WeakSet<object>();
+
+function indexRow(article: ArticleLike): void {
+  if (indexedRows.has(article)) return;
+  indexedRows.add(article);
+  for (const token of normalizedArticleText(article).split(' ')) {
+    const key = stripPrefixes(token);
+    if (!key) continue;
+    let set = tokenIndex.get(key);
+    if (!set) {
+      set = new Set();
+      tokenIndex.set(key, set);
+    }
+    set.add(article);
+  }
+}
+
+/** Forget the word index (after rows were removed from the store). */
+export function resetRelatedNewsIndex(): void {
+  tokenIndex = new Map();
+  indexedRows = new WeakSet();
+}
+
+/**
  * Fill the normalised-text cache in small slices, yielding between them, so the
  * first match opened after a boot or a refresh does not pay for the whole corpus.
  */
@@ -590,7 +638,7 @@ export function warmRelatedNews(articles: readonly ArticleLike[], chunk = 500): 
     let i = 0;
     const step = (): void => {
       const end = Math.min(articles.length, i + chunk);
-      for (; i < end; i++) normalizedArticleText(articles[i]!);
+      for (; i < end; i++) indexRow(articles[i]!);
       if (i < articles.length) setImmediate(step);
       else resolve();
     };

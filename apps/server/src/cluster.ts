@@ -90,11 +90,31 @@ export interface ClusterInput {
   publishedAt: number;
 }
 
+/**
+ * Cleaned title and shingles per raw title, reused across rebuilds.
+ *
+ * The grouped feed re-clusters the store after every refresh; normalising and
+ * shingling ~21k titles was about half of each rebuild, and only the new titles
+ * have changed. Pure function of the title, so the cache cannot change a result.
+ * Trimmed to the titles of the latest call once it holds twice that many.
+ */
+const preparedTitles = new Map<string, { title: string; shingles: Set<string> }>();
+
 export function prepare(articles: Article[]): ClusterInput[] {
-  return articles.map((article) => {
-    const title = clusterTitle(article.title);
-    return { article, title, shingles: shingles(title), publishedAt: article.publishedAt };
+  const out = articles.map((article) => {
+    let p = preparedTitles.get(article.title);
+    if (!p) {
+      const title = clusterTitle(article.title);
+      p = { title, shingles: shingles(title) };
+      preparedTitles.set(article.title, p);
+    }
+    return { article, title: p.title, shingles: p.shingles, publishedAt: article.publishedAt };
   });
+  if (preparedTitles.size > 2 * articles.length + 1000) {
+    const live = new Set(articles.map((a) => a.title));
+    for (const key of preparedTitles.keys()) if (!live.has(key)) preparedTitles.delete(key);
+  }
+  return out;
 }
 
 /**
@@ -160,6 +180,50 @@ export function clusterArticles(
   minSimilarity: number = CLUSTER_MIN_SIMILARITY,
   minShared: number = CLUSTER_MIN_SHARED_SHINGLES,
 ): Cluster[] {
+  const steps = clusterSteps(articles, minSimilarity, minShared);
+  let r = steps.next();
+  while (!r.done) r = steps.next();
+  return r.value;
+}
+
+/**
+ * The same clustering, yielding to the event loop every `chunk` articles.
+ *
+ * On the production e2-micro (0.25 vCPU sustained) a full rebuild is over a second of
+ * CPU; done in one go it froze every route for that long after each refresh.
+ */
+export function clusterArticlesAsync(
+  articles: Article[],
+  chunk = 300,
+  minSimilarity: number = CLUSTER_MIN_SIMILARITY,
+  minShared: number = CLUSTER_MIN_SHARED_SHINGLES,
+): Promise<Cluster[]> {
+  const steps = clusterSteps(articles, minSimilarity, minShared);
+  return new Promise((resolve, reject) => {
+    const run = (): void => {
+      try {
+        for (let i = 0; i < chunk; i++) {
+          const r = steps.next();
+          if (r.done) {
+            resolve(r.value);
+            return;
+          }
+        }
+        setImmediate(run);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    setImmediate(run);
+  });
+}
+
+/** The clustering loop; yields once per article so callers can pace it. */
+function* clusterSteps(
+  articles: Article[],
+  minSimilarity: number,
+  minShared: number,
+): Generator<void, Cluster[], void> {
   const prepared = prepare(articles);
   const clusters: ClusterInput[][] = [];
   // shingle → the clusters whose LEAD carries it, in creation order. `head` skips
@@ -174,6 +238,7 @@ export function clusterArticles(
   }
 
   for (const item of prepared) {
+    yield;
     let target = -1;
     // An article with fewer shingles than `minShared` can never merge (shouldMerge
     // rejects it), so it skips the search and is never indexed as a lead either.

@@ -7,7 +7,7 @@
 // first appearance.
 
 import { balancedPage } from './balance.js';
-import { clusterArticles, type Cluster } from './cluster.js';
+import { clusterArticles, clusterArticlesAsync, type Cluster } from './cluster.js';
 import type { Article } from './types.js';
 
 export type FeedRow =
@@ -124,12 +124,53 @@ export function groupedFeedPage(
 }
 
 let cachedIndex: { version: number; index: GroupedIndex } | null = null;
+let rebuilding: { version: number; promise: Promise<void> } | null = null;
+
+/** The index from already-clustered rows (shared by the sync and async builds). */
+function indexFrom(ordered: Article[], clusters: Cluster[]): GroupedIndex {
+  const rows = collapseToRows(ordered, clusters);
+  const byArticleId = new Map<string, FeedRow>();
+  for (const row of rows) {
+    if (row.kind === 'article') byArticleId.set(row.article.id, row);
+    else byArticleId.set(row.lead.id, row);
+  }
+  return { ordered, rows, byArticleId };
+}
+
+/**
+ * Rebuild the index for `version` without blocking: the clustering yields between
+ * slices. One rebuild at a time; a newer version waits for the running one.
+ */
+export function rebuildGroupedIndex(version: number, load: () => Article[]): Promise<void> {
+  if (cachedIndex?.version === version) return Promise.resolve();
+  if (rebuilding?.version === version) return rebuilding.promise;
+  const previous = rebuilding?.promise ?? Promise.resolve();
+  const ordered = load();
+  const promise = previous
+    .then(() => clusterArticlesAsync(ordered))
+    .then((clusters) => {
+      // A newer build may have landed while this one ran; never go backwards.
+      if (!cachedIndex || cachedIndex.version < version) {
+        cachedIndex = { version, index: indexFrom(ordered, clusters) };
+      }
+    })
+    .finally(() => {
+      if (rebuilding?.promise === promise) rebuilding = null;
+    });
+  rebuilding = { version, promise };
+  return promise;
+}
 
 /**
  * The grouped page, reusing the index while the store has not changed.
  *
  * `version` is the store version (`getStoreVersion`); `load` is only called when it
  * moved. The feed refreshes every few minutes, so readers in between share one build.
+ *
+ * With `serveStale`, a reader who arrives right after a refresh gets the previous
+ * index (one refresh old) while the new one is built in the background, instead of
+ * waiting for — and blocking every other route behind — a synchronous re-cluster.
+ * Only the very first build, when there is nothing to serve, is synchronous.
  */
 export function groupedFeedPageCached(
   version: number,
@@ -137,9 +178,16 @@ export function groupedFeedPageCached(
   offset: number,
   limit: number,
   maxPerSource?: number,
+  options: { serveStale?: boolean } = {},
 ): GroupedPage {
   if (!cachedIndex || cachedIndex.version !== version) {
-    cachedIndex = { version, index: buildGroupedIndex(load()) };
+    if (options.serveStale && cachedIndex) {
+      void rebuildGroupedIndex(version, load).catch((err) =>
+        console.error('[feed] grouped rebuild failed:', err),
+      );
+    } else {
+      cachedIndex = { version, index: buildGroupedIndex(load()) };
+    }
   }
   return pageFromIndex(cachedIndex.index, offset, limit, maxPerSource);
 }
