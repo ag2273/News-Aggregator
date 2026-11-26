@@ -15,9 +15,14 @@
 // there is no body worth showing it says so — the app then falls back to the
 // source page in its ad-blocked WebView instead of rendering an empty reader.
 
-import { parseHTML } from 'linkedom';
-import { Readability } from '@mozilla/readability';
-import { arabicLength, extractArticleText, MAX_BODY_CHARS, MIN_BODY_ARABIC } from './articleText.js';
+import {
+  arabicLength,
+  extractArticleText,
+  MAX_BODY_CHARS,
+  MIN_BODY_ARABIC,
+  parseArticle,
+  stripScripts,
+} from './articleText.js';
 
 /** One block of the article body, in reading order. */
 export type ReaderBlock =
@@ -89,16 +94,15 @@ function videoSource(html: string): string | null {
  * would lose exactly the structure a reader view exists to show.
  */
 export function readerFromHtml(html: string, pageTitle?: string | null): ReaderArticle {
-  const bodyText = extractArticleText(html);
+  // One parse serves both the body check and the blocks (see `parseArticle`).
+  const stripped = stripScripts(html);
+  const parsed = parseArticle(stripped);
+  const bodyText = extractArticleText(html, { stripped, parsed });
   if (arabicLength(bodyText) < MIN_BODY_ARABIC) {
     return { title: null, blocks: [], readable: false, reason: 'thin' };
   }
   const blocks: ReaderBlock[] = [];
   try {
-    const { document } = parseHTML(
-      html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' '),
-    );
-    const parsed = new Readability(document as unknown as Document, { charThreshold: 100 }).parse();
     const content = parsed?.content ?? '';
     // Walk the article container in document order, so a paragraph that follows an
     // image stays after it.

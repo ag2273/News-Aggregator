@@ -126,9 +126,10 @@ import {
   renderStatsCsv,
 } from './adminStats.js';
 import { userCounts } from './users.js';
-import { flushDb, getAllArticles, getAllArticlesReadonly, getStoreVersion, pruneArticles } from './db.js';
+import { flushDb, whenMigrated, getAllArticles, getAllArticlesReadonly, getStoreVersion, pruneArticles } from './db.js';
 import { flushAllWrites } from './coalescedWrite.js';
 import { readerArticle } from './readerService.js';
+import { startReaderWorker } from './readerPool.js';
 import { cleanPage } from './cleanPageService.js';
 import {
   competitionOf,
@@ -281,9 +282,17 @@ const RETENTION_DAYS = Number(process.env['ARTICLE_RETENTION_DAYS'] ?? 60);
  *      making the first reader after each refresh wait for it;
  *   3. pre-normalise text for search and a match's news in small slices.
  */
+let migrationSeen = false;
+
 async function maintainStoreAfterRefresh(): Promise<void> {
   if (process.env['NODE_ENV'] === 'test') return;
   try {
+    // The boot migration replaces the rows it fixes with new objects; the word
+    // index still holds the old ones, so start it over once.
+    if (!migrationSeen) {
+      migrationSeen = true;
+      if (await whenMigrated()) resetRelatedNewsIndex();
+    }
     if (RETENTION_DAYS > 0) {
       const keep = allSavedArticleIds();
       for (const id of Object.keys(getAllReactions())) keep.add(id);
@@ -340,6 +349,7 @@ if (process.env['NODE_ENV'] !== 'test') {
 // never double-builds, and a failure keeps the previous digest.
 if (process.env['NODE_ENV'] !== 'test') {
   startDigestScheduler();
+  startReaderWorker();
 }
 
 // --- Auth routes ---
@@ -1067,6 +1077,22 @@ app.get('/api/articles/:id', (c) => {
  * Deliberately not cacheable at the edge beyond the short in-process cache: a
  * publisher that refused us once must be allowed to recover.
  */
+/**
+ * Start reading an article before the reader asks for it.
+ *
+ * The app calls this when an article's sheet opens. The slow part of reader mode is
+ * the network — resolving a Google-News link, then the publisher's page — plus the
+ * parse; by the time «اقرأ الخبر كاملاً» is tapped, the extraction is already
+ * running or cached (10 min, readerService), and the reader request joins it. The
+ * response is immediate and carries nothing.
+ */
+app.post('/api/articles/:id/warm', (c) => {
+  const article = getArticleById(c.req.param('id'));
+  if (!article) return c.body(null, 404);
+  void readerArticle(article.url, { title: article.title }).catch(() => {});
+  return c.body(null, 202);
+});
+
 app.get('/api/articles/:id/reader', async (c) => {
   const article = getArticleById(c.req.param('id'));
   if (!article) return c.json({ error: 'article not found' }, 404);

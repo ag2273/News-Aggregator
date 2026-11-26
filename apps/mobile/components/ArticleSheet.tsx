@@ -25,6 +25,7 @@ import { sheetDismissOutcome } from '../lib/swipe';
 import { ArticleReader } from './ArticleReader';
 import { ArticleReadPane } from './ArticleReadPane';
 import { beaconOpen } from '../lib/analytics';
+import { warmReaderArticle } from '../lib/api';
 
 const SPRING = { damping: 20, stiffness: 200 };
 
@@ -79,6 +80,8 @@ export function ArticleSheetProvider({ children }: { children: React.ReactNode }
       ty.value = withTiming(0, { duration: 250 });
       // One aggregate count for this open; it must never delay the animation.
       beaconOpen(next.id);
+      // Start the reader extraction now; «اقرأ الخبر كاملاً» then joins it.
+      warmReaderArticle(next.id);
     },
     [sheetHeight, ty],
   );

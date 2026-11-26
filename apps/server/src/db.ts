@@ -160,54 +160,125 @@ export function _resetDbCache(): void {
   }
 }
 
-/** Lazy migration: re-classify legacy 'general' categories and decode leftover HTML entities. */
-function migrate(rows: StoredArticle[]): { rows: StoredArticle[]; changed: boolean } {
-  let changed = false;
+/**
+ * Lazy migration of one row: re-classify legacy categories, decode leftover HTML
+ * entities, re-apply the breaking rule. Returns the same object when nothing
+ * changed, a new object when something did, and null for a row that was never news.
+ */
+function migrateRow(r: StoredArticle): StoredArticle | null {
   // Purge rows that were never news: a soft-404 page served with HTTP 200, or a
   // channel front. Measured: 5 copies of الأهرام's «عفوا الصفحة…» and 34 fronts
-  // had been ingested over time. Scoped to the ingest filter's own rules, so
-  // nothing else is touched, and reported so the count is visible.
-  const before = rows.length;
-  const kept = rows.filter((r) => !isSectionPageTitle(r.title));
-  const purged = before - kept.length;
-  if (purged > 0) {
-    console.log(`[db] purged ${purged} non-article row(s): error pages and channel fronts`);
-    changed = true;
+  // had been ingested over time. Scoped to the ingest filter's own rules.
+  if (isSectionPageTitle(r.title)) return null;
+  let row = r;
+  // Re-classify when the category is missing, legacy 'general', or when the
+  // stored label is `misc` under a source that now has real vocabulary. Without
+  // the last case a classifier fix only ever reaches NEW rows: measured, the
+  // 24h tech count stayed at 4.4% after the vocabulary shipped because every
+  // stored `misc` row kept its old label.
+  const reclassify =
+    !row.category ||
+    row.category === 'general' ||
+    (row.category === 'misc' && TECH_SOURCES.has(row.sourceId));
+  if (reclassify) {
+    const next = categorize(row.title, row.summary);
+    if (next !== row.category) row = { ...row, category: next };
   }
-  const out = kept.map((r) => {
-    let row = r;
-    // Re-classify when the category is missing, legacy 'general', or when the
-    // stored label is `misc` under a source that now has real vocabulary. Without
-    // the last case a classifier fix only ever reaches NEW rows: measured, the
-    // 24h tech count stayed at 4.4% after the vocabulary shipped because every
-    // stored `misc` row kept its old label.
-    const reclassify =
-      !row.category ||
-      row.category === 'general' ||
-      (row.category === 'misc' && TECH_SOURCES.has(row.sourceId));
-    if (reclassify) {
-      const next = categorize(row.title, row.summary);
-      if (next !== row.category) {
-        row = { ...row, category: next };
-        changed = true;
+  const title = decodeHtmlEntities(row.title);
+  const summary = row.summary === null ? null : decodeHtmlEntities(row.summary) || null;
+  if (title !== row.title || summary !== row.summary) row = { ...row, title, summary };
+  // The rule re-runs on every load, so a source whose breaking is disabled has
+  // to be pinned here too — otherwise the migration would quietly re-enable it.
+  const isBreaking = BREAKING_ENABLED.has(row.sourceId) && detectBreaking(row.title);
+  if (row.isBreaking !== isBreaking) row = { ...row, isBreaking };
+  return row;
+}
+
+/**
+ * Migrate in the background after boot (#perf, e2-micro).
+ *
+ * The migration re-checked every stored row on every start — most of the ~1.5s a
+ * boot spent before the server could answer, although nearly every row had been
+ * migrated on an earlier start. The store is now served as loaded, and the rows are
+ * checked in slices that yield to requests. For the few seconds this takes, a row
+ * that still needs a fix is shown as stored.
+ *
+ * Synchronous in tests (and with DB_SYNC_MIGRATE=1), where a reset store must be
+ * fully migrated before the next assertion.
+ */
+const SYNC_MIGRATE = process.env['NODE_ENV'] === 'test' || process.env['DB_SYNC_MIGRATE'] === '1';
+let migrated: Promise<boolean> = Promise.resolve(false);
+/** Bumped on every load from disk, so a background run of an older load stops. */
+let loadGeneration = 0;
+
+/** Resolves when the boot migration has finished; true when it changed rows. */
+export function whenMigrated(): Promise<boolean> {
+  return migrated;
+}
+
+/**
+ * Apply the migration's result to whatever the store holds NOW: rows inserted
+ * while it ran are kept as they are, rows pruned meanwhile stay gone.
+ */
+function applyMigration(replaced: Map<StoredArticle, StoredArticle | null>): boolean {
+  if (!replaced.size || !cache) return false;
+  const next: StoredArticle[] = [];
+  const upserts: StoredArticle[] = [];
+  const purged: string[] = [];
+  for (const r of cache) {
+    if (!replaced.has(r)) {
+      next.push(r);
+      continue;
+    }
+    const m = replaced.get(r)!;
+    if (m === null) {
+      purged.push(r.url);
+    } else {
+      next.push(m);
+      upserts.push(m);
+    }
+  }
+  if (purged.length) console.log(`[db] purged ${purged.length} non-article row(s): error pages and channel fronts`);
+  cache = next;
+  storeVersion++;
+  if (openSqlite()) sqlWrite(upserts, purged);
+  else save();
+  return true;
+}
+
+function startMigration(rows: StoredArticle[]): void {
+  const replaced = new Map<StoredArticle, StoredArticle | null>();
+  const collect = (from: number, to: number): void => {
+    for (let i = from; i < to; i++) {
+      const r = rows[i]!;
+      const m = migrateRow(r);
+      if (m !== r) replaced.set(r, m);
+    }
+  };
+  if (SYNC_MIGRATE) {
+    collect(0, rows.length);
+    migrated = Promise.resolve(applyMigration(replaced));
+    return;
+  }
+  const generation = loadGeneration;
+  // Copy: inserts append to the live array while this runs.
+  const snapshot = rows.slice();
+  rows = snapshot;
+  migrated = new Promise((resolve) => {
+    let i = 0;
+    const step = (): void => {
+      if (cache === null || generation !== loadGeneration) {
+        resolve(false);
+        return;
       }
-    }
-    const title = decodeHtmlEntities(row.title);
-    const summary = row.summary === null ? null : decodeHtmlEntities(row.summary) || null;
-    if (title !== row.title || summary !== row.summary) {
-      row = { ...row, title, summary };
-      changed = true;
-    }
-    // The rule re-runs on every load, so a source whose breaking is disabled has
-    // to be pinned here too — otherwise the migration would quietly re-enable it.
-    const isBreaking = BREAKING_ENABLED.has(row.sourceId) && detectBreaking(row.title);
-    if (row.isBreaking !== isBreaking) {
-      row = { ...row, isBreaking };
-      changed = true;
-    }
-    return row;
+      const end = Math.min(snapshot.length, i + 300);
+      collect(i, end);
+      i = end;
+      if (i < snapshot.length) setImmediate(step);
+      else resolve(applyMigration(replaced));
+    };
+    setImmediate(step);
   });
-  return { rows: out, changed };
 }
 
 function load(): StoredArticle[] {
@@ -224,21 +295,9 @@ function load(): StoredArticle[] {
       cache = [];
     }
   }
-  const before = cache;
-  const { rows, changed } = migrate(before);
   storeVersion++;
-  if (changed) {
-    cache = rows;
-    if (s) {
-      // Only what the migration touched: rewritten rows (a new object) and purged ones.
-      const keptUrls = new Set(rows.map((r) => r.url));
-      const original = new Set(before);
-      const purged = before.filter((r) => !keptUrls.has(r.url)).map((r) => r.url);
-      sqlWrite(rows.filter((r) => !original.has(r)), purged);
-    } else {
-      save();
-    }
-  }
+  loadGeneration++;
+  startMigration(cache);
   return cache;
 }
 

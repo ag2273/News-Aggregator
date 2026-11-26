@@ -244,6 +244,16 @@ export async function fetchReaderArticle(
   return json.data;
 }
 
+/**
+ * Ask the server to start the reader extraction for an article now (fire and forget).
+ *
+ * Called when an article's sheet opens, so the reader view is ready, or nearly, when
+ * the reader taps through. Nothing is stored on the device; failures are ignored.
+ */
+export function warmReaderArticle(id: string): void {
+  apiFetch(`${API_BASE}/api/articles/${encodeURIComponent(id)}/warm`, { method: 'POST' }).catch(() => {});
+}
+
 /** Raised when the server refuses a resend because of the cooldown/daily cap. */
 export class ResendRateLimited extends Error {
   retryAfterSeconds: number;
