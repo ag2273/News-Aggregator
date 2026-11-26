@@ -144,10 +144,15 @@ export default function MatchesScreen() {
   // favourites strip; printing it twice on one screen is the duplication the user
   // photographed on the old cards.
   const liveNow = useMemo(
-    () => visible.filter((m) => m.status === 'live' && !pinned.includes(m)),
-    [visible, pinned],
+    () => visible.filter((m) => m.status === 'live' && !isFavourite(m)),
+    [visible, isFavourite],
   );
-  const rest = visible.filter((m) => !pinned.includes(m) && !liveNow.includes(m));
+  // Everything not pinned and not live-now. Memoised so the groups below are not
+  // rebuilt on every render (a collapse used to regroup the whole day).
+  const rest = useMemo(
+    () => visible.filter((m) => !isFavourite(m) && m.status !== 'live'),
+    [visible, isFavourite],
+  );
 
   /** Competitions with no fixture today, so their heading never disappears. */
   const emptyGroups = useMemo<FootballCompetition[]>(() => {
@@ -160,12 +165,15 @@ export default function MatchesScreen() {
     const map = new Map<string, FootballMatch[]>();
     for (const m of rest) {
       const key = m.competitionName || 'بطولات أخرى';
-      map.set(key, [...(map.get(key) ?? []), m]);
+      const rows = map.get(key);
+      if (rows) rows.push(m);
+      else map.set(key, [m]);
     }
+    const byName = new Map((day?.competitions ?? []).map((c) => [c.nameAr, c] as const));
     // «other» is Yallakora's bucket for a competition we do not follow, so each of
     // its names is still its own group — never merged into one «بطولات أخرى» pile.
     const present: Group[] = [...map.entries()].map(([name, rows]) => {
-      const comp = day?.competitions?.find((c) => c.nameAr === name);
+      const comp = byName.get(name);
       return {
         key: comp?.id ?? name,
         name,
@@ -222,56 +230,83 @@ export default function MatchesScreen() {
     [date],
   );
 
-  const card = (m: FootballMatch) => (
-    <MatchCard
-      key={m.id}
-      t={t}
-      m={m}
-      favourite={isFavourite(m)}
-      onOpenMatch={openMatch}
-      onPressTeam={openTeam}
-    />
+  const toggleCollapse = useCallback(
+    (name: string) => setCollapsed((c) => ({ ...c, [name]: !c[name] })),
+    [],
   );
 
+  /**
+   * One list row per card (#perf). Each competition used to be ONE row that
+   * mounted all of its cards together, so opening a busy day still built most of
+   * the screen up front. Now a league's heading, each of its cards and its empty
+   * note are separate rows, and the list only mounts what is near the viewport.
+   *
+   * `gapAfter` keeps the old spacing: 8dp between top-level blocks, nothing
+   * between a league heading and the cards stacked under it.
+   */
   type ListItem =
-    | { key: string; kind: 'heading'; text: string; color: string }
-    | { key: string; kind: 'card'; m: FootballMatch }
-    | { key: string; kind: 'group'; g: Group }
-    | { key: string; kind: 'footnote' };
+    | { key: string; kind: 'heading'; text: string; color: string; gapAfter?: boolean }
+    | { key: string; kind: 'card'; m: FootballMatch; gapAfter?: boolean }
+    | { key: string; kind: 'group'; g: Group; gapAfter?: boolean }
+    | { key: string; kind: 'groupEmpty'; gapAfter?: boolean }
+    | { key: string; kind: 'footnote'; gapAfter?: boolean };
 
   const listItems = useMemo((): ListItem[] => {
-    const items: ListItem[] = [];
+    // `joined` rows sit flush under the row before them (inside one league block).
+    const rows: Array<{ item: ListItem; joined: boolean }> = [];
     if (pinned.length) {
       // «فرقك» whether one club or five: the strip is the reader's followed
       // fixtures, and the count is already on the filter.
-      items.push({ key: 'h:pinned', kind: 'heading', text: '⭐ مباريات فرقك المتابعة', color: t.accent });
-      for (const m of pinned) items.push({ key: `p:${m.id}`, kind: 'card', m });
+      rows.push({ item: { key: 'h:pinned', kind: 'heading', text: '⭐ مباريات فرقك المتابعة', color: t.accent }, joined: false });
+      for (const m of pinned) rows.push({ item: { key: `p:${m.id}`, kind: 'card', m }, joined: false });
     }
     if (liveNow.length) {
-      items.push({ key: 'h:live', kind: 'heading', text: 'مباشر الآن', color: t.liveRed });
-      for (const m of liveNow) items.push({ key: `l:${m.id}`, kind: 'card', m });
+      rows.push({ item: { key: 'h:live', kind: 'heading', text: 'مباشر الآن', color: t.liveRed }, joined: false });
+      for (const m of liveNow) rows.push({ item: { key: `l:${m.id}`, kind: 'card', m }, joined: false });
     }
-    for (const g of groups) items.push({ key: `g:${g.key}`, kind: 'group', g });
-    if (visible.length) items.push({ key: 'footnote', kind: 'footnote' });
-    return items;
-  }, [pinned, liveNow, groups, visible.length, t]);
+    for (const g of groups) {
+      rows.push({ item: { key: `g:${g.key}`, kind: 'group', g }, joined: false });
+      if (collapsed[g.name]) continue;
+      if (g.rows.length === 0) {
+        rows.push({ item: { key: `ge:${g.key}`, kind: 'groupEmpty' }, joined: true });
+      } else {
+        for (const m of g.rows) rows.push({ item: { key: `c:${g.key}:${m.id}`, kind: 'card', m }, joined: true });
+      }
+    }
+    if (visible.length) rows.push({ item: { key: 'footnote', kind: 'footnote' }, joined: false });
+    return rows.map((r, i) => ({ ...r.item, gapAfter: Boolean(rows[i + 1] && !rows[i + 1]!.joined) }));
+  }, [pinned, liveNow, groups, collapsed, visible.length, t]);
 
-  const renderListItem = ({ item }: { item: ListItem }) => {
-    switch (item.kind) {
-      case 'heading':
-        return <Text style={[styles.section, { color: item.color }]}>{item.text}</Text>;
-      case 'card':
-        return card(item.m);
-      case 'footnote':
-        return (
-          <Text style={[styles.footnote, { color: t.textDim }]}>
-            {`${matchCountLabel(visible.length)} — النتائج كما يعلنها المصدر، بلا دقائق غير منشورة.`}
-          </Text>
-        );
-      case 'group': {
-        const g = item.g;
-        return (
-          <View>
+  const renderListItem = useCallback(
+    ({ item }: { item: ListItem }) => {
+      switch (item.kind) {
+        case 'heading':
+          return <Text style={[styles.section, { color: item.color }]}>{item.text}</Text>;
+        case 'card':
+          return (
+            <MatchCard
+              t={t}
+              m={item.m}
+              favourite={isFavourite(item.m)}
+              onOpenMatch={openMatch}
+              onPressTeam={openTeam}
+            />
+          );
+        case 'footnote':
+          return (
+            <Text style={[styles.footnote, { color: t.textDim }]}>
+              {`${matchCountLabel(visible.length)} — النتائج كما يعلنها المصدر، بلا دقائق غير منشورة.`}
+            </Text>
+          );
+        case 'groupEmpty':
+          return (
+            <Text style={[styles.groupEmpty, { color: t.textMuted }]}>
+              لا توجد مباريات لهذا الدوري اليوم
+            </Text>
+          );
+        case 'group': {
+          const g = item.g;
+          return (
             <LeagueStrip
               t={t}
               name={g.name}
@@ -279,7 +314,7 @@ export default function MatchesScreen() {
               rows={g.rows}
               followed={Boolean(g.competitionId && followedLeagues.has(g.competitionId))}
               collapsed={Boolean(collapsed[g.name])}
-              onToggleCollapse={() => setCollapsed((c) => ({ ...c, [g.name]: !c[g.name] }))}
+              onToggleCollapse={() => toggleCollapse(g.name)}
               onToggleFollow={() => toggleLeague(g.competitionId)}
               onOpen={
                 g.competitionId && g.competitionId !== 'other'
@@ -291,18 +326,12 @@ export default function MatchesScreen() {
                   : undefined
               }
             />
-            {collapsed[g.name] ? null : g.rows.length === 0 ? (
-              <Text style={[styles.groupEmpty, { color: t.textMuted }]}>
-                لا توجد مباريات لهذا الدوري اليوم
-              </Text>
-            ) : (
-              g.rows.map(card)
-            )}
-          </View>
-        );
+          );
+        }
       }
-    }
-  };
+    },
+    [t, isFavourite, openMatch, openTeam, visible.length, followedLeagues, collapsed, toggleCollapse, toggleLeague],
+  );
 
   const liveCount = matches.filter((m) => m.status === 'live').length;
   const followedCount = matches.filter(isFavourite).length;
@@ -504,10 +533,13 @@ export default function MatchesScreen() {
             data={listItems}
             keyExtractor={(item) => item.key}
             renderItem={renderListItem}
-            // Items read these from the screen's state, so a change must re-render them.
-            extraData={[collapsed, followedLeagues, followed]}
+            ItemSeparatorComponent={ListGap}
+            // renderListItem already changes whenever what the rows read changes.
+            extraData={renderListItem}
             contentContainerStyle={styles.list}
-            initialNumToRender={12}
+            // About one screen of cards on first paint; the rest mount as you scroll.
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
             windowSize={7}
             removeClippedSubviews
           />
@@ -518,7 +550,13 @@ export default function MatchesScreen() {
   );
 }
 
+/** The 8dp between top-level blocks; nothing inside a league block. */
+function ListGap({ leadingItem }: { leadingItem?: { gapAfter?: boolean } }) {
+  return leadingItem?.gapAfter ? <View style={styles.gap} /> : null;
+}
+
 const styles = StyleSheet.create({
+  gap: { height: 8 },
   root: { flex: 1 },
   safe: { flex: 1 },
   header: {
@@ -560,7 +598,7 @@ const styles = StyleSheet.create({
   filters: { paddingHorizontal: 12, gap: 6, paddingBottom: 8 },
   filterPill: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
   filterText: { fontFamily: 'Cairo_600SemiBold', fontSize: 12 },
-  list: { padding: 12, gap: 8, paddingBottom: 40 },
+  list: { padding: 12, paddingBottom: 40 },
   section: { fontFamily: 'Cairo_700Bold', fontSize: 12, marginTop: 4 },
   groupEmpty: { fontFamily: 'Cairo_400Regular', fontSize: 12, paddingVertical: 10, paddingHorizontal: 6 },
   footnote: { fontFamily: 'Cairo_400Regular', fontSize: 10, lineHeight: 16, textAlign: 'center', marginTop: 14 },
