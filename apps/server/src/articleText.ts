@@ -86,13 +86,22 @@ export async function followTagPage(
   // not ask for. An honest failure is better than the wrong article.
   if (!/\/tag\//i.test(parsed.pathname)) return null;
 
-  const page = await fetchPageWithTimeout(url, fetchImpl === fetch ? undefined : fetchImpl, RESOLVE_TIMEOUT_MS);
-  if (!page.ok || !page.text) return null;
-  // The listing's own story links: a path segment that is an id, not a tag.
-  // Matched relative OR absolute: measured on المصري اليوم, the listing links its story
-  // as `/news/details/4420774`, but other templates emit the absolute form.
-  const match =
-    page.text.match(/href=["'](?:https?:\/\/[^"']+)?(\/(?:news\/details|editor\/details|story|article)[^"']*\d[^"']*)["']/i);
+  // Two attempts, because the same listing renders differently between responses:
+  // measured on production, one fetch returned the story link and another the same
+  // page without it, which left the reader on the listing url. The retry is cheap (a
+  // cached copy is seconds old at worst) and bounded by the same deadline.
+  const STORY_LINK =
+    /href=["'](?:https?:\/\/[^"']+)?(\/(?:news\/details|editor\/details|story|article)[^"']*\d[^"']*)["']/i;
+  let match: RegExpMatchArray | null = null;
+  for (let attempt = 0; attempt < 2 && !match; attempt += 1) {
+    const page = await fetchPageWithTimeout(
+      url,
+      fetchImpl === fetch ? undefined : fetchImpl,
+      RESOLVE_TIMEOUT_MS,
+    );
+    if (!page.ok || !page.text) continue;
+    match = page.text.match(STORY_LINK);
+  }
   if (!match?.[1]) return null;
   try {
     return new URL(match[1], parsed.origin).toString();
@@ -259,7 +268,12 @@ export function arabicLength(text: string): number {
  *      permanent, so once resolved it never needs asking again — which also turns a
  *      repeat open into zero network calls.
  */
-const RESOLVE_TIMEOUT_MS = 5000;
+// Measured on a real المصري اليوم link: a successful resolve took 3,701ms from a fast
+// connection, so 5s was cutting off working resolves on a phone link and turning a
+// perfectly good story into "unreachable" (reason: unreachable, resolvedUrl: null —
+// which also left "open as-is" with nothing to open). 8s is still well inside the
+// reader's own wait and the client's 20s deadline.
+const RESOLVE_TIMEOUT_MS = 8000;
 const RESOLVE_TTL_MS = 24 * 60 * 60 * 1000;
 /**
  * A tag listing is not a good answer, so it is not kept like one.
@@ -270,7 +284,7 @@ const RESOLVE_TTL_MS = 24 * 60 * 60 * 1000;
  * enough that a bad answer cannot outlive the code that produced it.
  */
 const LISTING_TTL_MS = 2 * 60 * 1000;
-const resolvedCache = new Map<string, { url: string; at: number; ttl?: number }>();
+const resolvedCache = new Map<string, { url: string; at: number; ttl: number }>();
 
 /** Test seam. */
 export function _resetResolvedCache(): void {
@@ -287,7 +301,7 @@ export async function resolveGoogleNewsUrl(
   if (!token) return null;
 
   const cached = resolvedCache.get(articleUrl);
-  if (cached && Date.now() - cached.at < (cached.ttl ?? RESOLVE_TTL_MS)) return cached.url;
+  if (cached && Date.now() - cached.at < cached.ttl) return cached.url;
 
   let html: string;
   try {

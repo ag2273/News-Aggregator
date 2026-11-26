@@ -253,8 +253,10 @@ describe('resolving a Google-News link is bounded and cached (#60)', () => {
     const elapsed = Date.now() - started;
 
     expect(out).toBeNull();
-    // Bounded by its own short timeout, far under the reader's 20s allowance.
-    expect(elapsed).toBeLessThan(7_000);
+    // Bounded by its own timeout, still well under the reader's 20s allowance. The
+    // bound is 8s because a real successful resolve measured 3.7s; 5s was cutting off
+    // working stories on a phone link.
+    expect(elapsed).toBeLessThan(10_000);
   });
 
   it('remembers a resolved link, so a reopen costs no network at all', async () => {

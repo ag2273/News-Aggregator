@@ -95,7 +95,47 @@ export function fromFilGoal(rows: FilGoalMatch[]): MatchRow[] {
  * Yallakora produced nothing at all — a blocked or broken day, not a quiet one.
  * That keeps a normal day to one HTTP request instead of nine.
  */
+/**
+ * One in-flight load per day (#61).
+ *
+ * MEASURED, and this is the recurring freeze: ten concurrent readers of the same day
+ * made 100 upstream calls and took 27 seconds. `loadDay` had no single-flight, so every
+ * poll tick and every request started its own fetch at the publishers — the moment one
+ * of them was slow, requests multiplied the load that was already failing, and the
+ * whole process stalled. On the user's phone that is every route dying at the 20s
+ * deadline at once, at 01:12 and again at 09:29.
+ *
+ * Only a load that actually runs is shared; a cache hit still returns immediately.
+ * `fetchImpl` callers (tests) bypass it, so an injected transport is never shared.
+ */
+const dayInFlight = new Map<string, Promise<DayCache>>();
+
+/** Test seam. */
+export function _resetDayInFlight(): void {
+  dayInFlight.clear();
+}
+
 export async function loadDay(
+  date: string,
+  options: { fetchImpl?: typeof fetch; now?: number } = {},
+): Promise<DayCache> {
+  const cached = getCachedDay(date, options.now ?? Date.now());
+  if (cached) return cached;
+
+  // A test or one-shot script injecting its own transport gets its own run.
+  if (options.fetchImpl) return loadDayUncached(date, options);
+
+  const running = dayInFlight.get(date);
+  if (running) return running;
+  const job = loadDayUncached(date, options).finally(() => {
+    dayInFlight.delete(date);
+  });
+  dayInFlight.set(date, job);
+  return job;
+}
+
+/** The actual load. Split out so the single-flight above stays readable. */
+async function loadDayUncached(
   date: string,
   options: { fetchImpl?: typeof fetch; now?: number } = {},
 ): Promise<DayCache> {
