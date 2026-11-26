@@ -91,12 +91,10 @@ export interface ClusterInput {
 }
 
 export function prepare(articles: Article[]): ClusterInput[] {
-  return articles.map((article) => ({
-    article,
-    title: clusterTitle(article.title),
-    shingles: shingles(clusterTitle(article.title)),
-    publishedAt: article.publishedAt,
-  }));
+  return articles.map((article) => {
+    const title = clusterTitle(article.title);
+    return { article, title, shingles: shingles(title), publishedAt: article.publishedAt };
+  });
 }
 
 /**
@@ -132,12 +130,30 @@ export interface Cluster {
  * Group articles into clusters.
  *
  * `articles` must be newest-first (the store guarantees it). Each article joins
- * the first cluster whose lead it matches and which has room, otherwise it
+ * the first cluster (in creation order) whose lead it matches, otherwise it
  * starts a new cluster — that keeps a cluster anchored to its newest member and
  * stops long chains from welding unrelated stories together.
  *
  * Order of the result follows the input order of each cluster's lead, so a
  * newest-first input yields newest-first clusters.
+ *
+ * WHY THIS IS NOT A PLAIN DOUBLE LOOP (the recurring freeze, again)
+ * ---------------------------------------------------------------
+ * It used to compare every article with every cluster made so far. `/api/feed?grouped=1`
+ * clusters the whole store, so with ~21,000 stored rows that is ~230 million
+ * comparisons — measured 7.5s on a fast laptop, far longer on the 2-vCPU box — and it
+ * is synchronous, so EVERY route (matches, live status, saved, reader) queued behind
+ * it until the app's 20s timeout fired. It also grew with the store, which is why the
+ * app got slower "after a while".
+ *
+ * The result is unchanged; only the search is narrower:
+ *  - a cluster can only accept an article whose lead shares at least `minShared`
+ *    shingles with it, so candidates come from an inverted index shingle → clusters;
+ *  - with newest-first input, a lead more than `CLUSTER_WINDOW_MS` newer than the
+ *    current article is out of the window for every later article too, so it is
+ *    dropped from the index lists for good.
+ * Candidates are still tried in creation order with the same `shouldMerge`, so the
+ * first matching cluster wins exactly as before.
  */
 export function clusterArticles(
   articles: Article[],
@@ -145,24 +161,72 @@ export function clusterArticles(
   minShared: number = CLUSTER_MIN_SHARED_SHINGLES,
 ): Cluster[] {
   const prepared = prepare(articles);
-  const clusters: Array<{ members: ClusterInput[] }> = [];
-
-  for (const item of prepared) {
-    let placed = false;
-    for (const cluster of clusters) {
-      const lead = cluster.members[0];
-      if (!lead) continue;
-      if (shouldMerge(lead, item, minSimilarity, minShared)) {
-        cluster.members.push(item);
-        placed = true;
-        break;
-      }
+  const clusters: ClusterInput[][] = [];
+  // shingle → the clusters whose LEAD carries it, in creation order. `head` skips
+  // leads that fell out of the time window (only safe when input is newest-first).
+  const index = new Map<string, { ids: number[]; head: number }>();
+  let newestFirst = true;
+  for (let i = 1; i < prepared.length; i++) {
+    if (prepared[i]!.publishedAt > prepared[i - 1]!.publishedAt) {
+      newestFirst = false;
+      break;
     }
-    if (!placed) clusters.push({ members: [item] });
   }
 
-  return clusters.map((c) => ({
-    lead: c.members[0]!.article,
-    members: c.members.map((m) => m.article),
+  for (const item of prepared) {
+    let target = -1;
+    // An article with fewer shingles than `minShared` can never merge (shouldMerge
+    // rejects it), so it skips the search and is never indexed as a lead either.
+    if (item.shingles.size >= minShared) {
+      const shared = new Map<number, number>();
+      for (const s of item.shingles) {
+        const posting = index.get(s);
+        if (!posting) continue;
+        const { ids } = posting;
+        if (newestFirst) {
+          while (
+            posting.head < ids.length &&
+            clusters[ids[posting.head]!]![0]!.publishedAt - item.publishedAt > CLUSTER_WINDOW_MS
+          ) {
+            posting.head++;
+          }
+        }
+        for (let k = posting.head; k < ids.length; k++) {
+          const id = ids[k]!;
+          shared.set(id, (shared.get(id) ?? 0) + 1);
+        }
+      }
+      const candidates: number[] = [];
+      for (const [id, n] of shared) if (n >= minShared) candidates.push(id);
+      candidates.sort((a, b) => a - b);
+      for (const id of candidates) {
+        if (shouldMerge(clusters[id]![0]!, item, minSimilarity, minShared)) {
+          target = id;
+          break;
+        }
+      }
+    }
+
+    if (target >= 0) {
+      clusters[target]!.push(item);
+      continue;
+    }
+    const id = clusters.length;
+    clusters.push([item]);
+    if (item.shingles.size >= minShared) {
+      for (const s of item.shingles) {
+        let posting = index.get(s);
+        if (!posting) {
+          posting = { ids: [], head: 0 };
+          index.set(s, posting);
+        }
+        posting.ids.push(id);
+      }
+    }
+  }
+
+  return clusters.map((members) => ({
+    lead: members[0]!.article,
+    members: members.map((m) => m.article),
   }));
 }

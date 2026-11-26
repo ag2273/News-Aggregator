@@ -37,9 +37,22 @@ export interface StoredArticle extends Article {
 
 let cache: StoredArticle[] | null = null;
 
+/**
+ * Bumped whenever the stored rows change, so work derived from the whole store
+ * (the grouped feed's clusters) can be reused until the next change instead of
+ * being recomputed on every request.
+ */
+let storeVersion = 0;
+
+/** The current store version; changes whenever rows are added, loaded or migrated. */
+export function getStoreVersion(): number {
+  return storeVersion;
+}
+
 /** Reset cache (for test suites) */
 export function _resetDbCache(): void {
   cache = null;
+  storeVersion++;
 }
 
 /** Lazy migration: re-classify legacy 'general' categories and decode leftover HTML entities. */
@@ -102,6 +115,7 @@ function load(): StoredArticle[] {
     cache = [];
   }
   const { rows, changed } = migrate(cache);
+  storeVersion++;
   if (changed) {
     cache = rows;
     save();
@@ -199,6 +213,7 @@ export function insertArticlesDetailed(articles: Article[]): StoredArticle[] {
     inserted.push(row);
   }
   cache = rows;
+  if (inserted.length) storeVersion++;
   save();
   return inserted;
 }

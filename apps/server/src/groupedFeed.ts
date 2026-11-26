@@ -53,37 +53,41 @@ export interface GroupedPage {
 }
 
 /**
- * One page of the grouped feed.
+ * Everything about the grouped feed that depends on the whole store but not on the
+ * page asked for: the clusters, the rows, and which row owns each article.
  *
- * `ordered` is newest-first; balancing is applied at article level first so the
- * page still spreads across sources, then clusters are collapsed and the page is
- * cut at row boundaries.
+ * Built once per store version and reused for every page and every reader (see
+ * `groupedFeedPageCached`), so a request costs a balanced slice, not a re-cluster
+ * of ~21,000 titles.
  */
-export function groupedFeedPage(
-  ordered: Article[],
-  offset: number,
-  limit: number,
-  maxPerSource?: number,
-): GroupedPage {
+export interface GroupedIndex {
+  ordered: Article[];
+  rows: FeedRow[];
+  byArticleId: Map<string, FeedRow>;
+}
+
+export function buildGroupedIndex(ordered: Article[]): GroupedIndex {
   const clusters = clusterArticles(ordered);
   const rows = collapseToRows(ordered, clusters);
-
-  // Balance over rows: a row counts as one page slot, so a cluster of three
-  // costs the same as a single article.
-  const orderedForBalance = ordered;
-  const balancedArticles = balancedPage(
-    orderedForBalance,
-    offset,
-    limit,
-    maxPerSource,
-  );
-
-  // Which rows those articles belong to, de-duplicated in order.
+  // Which row each article heads: a single article, or a cluster by its lead.
   const byArticleId = new Map<string, FeedRow>();
   for (const row of rows) {
     if (row.kind === 'article') byArticleId.set(row.article.id, row);
     else byArticleId.set(row.lead.id, row);
   }
+  return { ordered, rows, byArticleId };
+}
+
+/** One page cut from a prebuilt index. Same result as `groupedFeedPage`. */
+export function pageFromIndex(
+  index: GroupedIndex,
+  offset: number,
+  limit: number,
+  maxPerSource?: number,
+): GroupedPage {
+  const { ordered, rows, byArticleId } = index;
+  // Balance over articles first, so the page still spreads across sources.
+  const balancedArticles = balancedPage(ordered, offset, limit, maxPerSource);
 
   const seen = new Set<string>();
   const pageRows: FeedRow[] = [];
@@ -101,4 +105,41 @@ export function groupedFeedPage(
     totalRows: rows.length,
     totalArticles: ordered.length,
   };
+}
+
+/**
+ * One page of the grouped feed.
+ *
+ * `ordered` is newest-first; balancing is applied at article level first so the
+ * page still spreads across sources, then clusters are collapsed and the page is
+ * cut at row boundaries.
+ */
+export function groupedFeedPage(
+  ordered: Article[],
+  offset: number,
+  limit: number,
+  maxPerSource?: number,
+): GroupedPage {
+  return pageFromIndex(buildGroupedIndex(ordered), offset, limit, maxPerSource);
+}
+
+let cachedIndex: { version: number; index: GroupedIndex } | null = null;
+
+/**
+ * The grouped page, reusing the index while the store has not changed.
+ *
+ * `version` is the store version (`getStoreVersion`); `load` is only called when it
+ * moved. The feed refreshes every few minutes, so readers in between share one build.
+ */
+export function groupedFeedPageCached(
+  version: number,
+  load: () => Article[],
+  offset: number,
+  limit: number,
+  maxPerSource?: number,
+): GroupedPage {
+  if (!cachedIndex || cachedIndex.version !== version) {
+    cachedIndex = { version, index: buildGroupedIndex(load()) };
+  }
+  return pageFromIndex(cachedIndex.index, offset, limit, maxPerSource);
 }
