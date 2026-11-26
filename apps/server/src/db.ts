@@ -480,3 +480,30 @@ export function pruneArticles(cutoffMs: number, keep: ReadonlySet<string>): numb
   return removed;
 }
 
+
+/**
+ * Give stored rows the image found on the publisher's page (#57).
+ *
+ * The rows are updated in place, not replaced: the sorted view, the id index and
+ * the word indexes all hold these same objects, so every reader sees the image at
+ * once and nothing has to be rebuilt. The store version is NOT bumped for the same
+ * reason — an image is not a change any derived index depends on, and a bump would
+ * re-cluster the whole grouped feed for a picture. Only the changed rows are
+ * written. Returns how many rows changed.
+ */
+export function setArticleImages(images: ReadonlyMap<string, string | null>): number {
+  if (!images.size) return 0;
+  const changed: StoredArticle[] = [];
+  for (const r of load()) {
+    if (!images.has(r.url)) continue;
+    const next = images.get(r.url) ?? null;
+    if (r.imageUrl === next) continue;
+    r.imageUrl = next;
+    changed.push(r);
+  }
+  if (changed.length) {
+    if (openSqlite()) sqlWrite(changed, []);
+    else save();
+  }
+  return changed.length;
+}

@@ -79,4 +79,16 @@ describe('sqlite article store', () => {
     db._resetDbCache();
     expect(db.findArticleById('id6')?.title).toBe('الأهلي & الزمالك');
   });
+
+  it('stores a found picture in place, without a store version bump, and keeps it across a restart', () => {
+    db.insertArticles([row(7)]);
+    const before = db.getStoreVersion();
+    const live = db.findArticleById('id7');
+    expect(db.setArticleImages(new Map([['https://example.test/7', 'https://img.test/7.jpg']]))).toBe(1);
+    expect(db.getStoreVersion()).toBe(before);
+    expect(live?.imageUrl).toBe('https://img.test/7.jpg');
+    expect(db.setArticleImages(new Map([['https://example.test/7', 'https://img.test/7.jpg']]))).toBe(0);
+    db._resetDbCache();
+    expect(db.findArticleById('id7')?.imageUrl).toBe('https://img.test/7.jpg');
+  });
 });

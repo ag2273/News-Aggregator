@@ -214,6 +214,9 @@ export function getSourceMeta(sourceId: string): { id: string; name: string } | 
 export function withReactions(article: Article, userId: string | null): Article {
   return {
     ...article,
+    // A picture found on the publisher's page after this copy was made (#57): the
+    // grouped feed's index holds copies built before the background image pass.
+    imageUrl: article.imageUrl ?? findArticleById(article.id)?.imageUrl ?? null,
     reactions: countsFor(article.id),
     myReaction: myReaction(article.id, userId),
   };
