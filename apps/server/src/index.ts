@@ -136,7 +136,7 @@ import {
   relatedNews,
   todayCairo,
 } from './footballService.js';
-import { COMPETITIONS, hasLiveForReader } from './football.js';
+import { COMPETITIONS, OTHER_COMPETITION_PREFIX, hasLiveForReader } from './football.js';
 import {
   clearCompetitionOrder,
   followLeague,
@@ -1554,7 +1554,11 @@ app.get('/api/football/matches', async (c) => {
       // the user could not find الدوري المصري at all.
       // Same resolver as the competitions endpoint, so the day's groups and the
       // standings strip cannot disagree about the order (#26).
-      competitions: competitionOrderFor(userId).map((x) => ({
+      competitions: competitionOrderFor(userId)
+        // A competition added only so its page opens is listed on the days it
+        // plays, not as an empty strip every day.
+        .filter((x) => x.listWhenEmpty !== false || matches.some((m) => m.competitionId === x.id))
+        .map((x) => ({
         id: x.id,
         nameAr: x.nameAr,
         // The group header's flag badge is chosen from the country, so it is
@@ -1651,10 +1655,11 @@ app.get('/api/football/teams/:name', async (c) => {
  */
 app.get('/api/football/competitions/:id', async (c) => {
   const id = c.req.param('id');
-  if (!competitionOf(id)) return c.json({ error: 'unknown competition' }, 404);
+  const other = id.startsWith(OTHER_COMPETITION_PREFIX);
+  if (!other && !competitionOf(id)) return c.json({ error: 'unknown competition' }, 404);
   // Load the table and the surrounding days, so the page is complete on first open.
   await Promise.all([
-    loadStandings(id).catch(() => null),
+    other ? null : loadStandings(id).catch(() => null),
     ...[0, 1, 2].map((offset) => loadDay(todayCairo(Date.now() + offset * 86_400_000)).catch(() => null)),
   ]);
   const page = buildCompetitionPage(id);

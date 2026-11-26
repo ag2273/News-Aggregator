@@ -16,8 +16,16 @@ export const COMPETITION_LABELS: Record<string, string> = {
   'ger-bundesliga': 'الدوري الألماني',
   'fra-ligue-1': 'الدوري الفرنسي',
   'saudi-pro-league': 'الدوري السعودي',
+  'egyptian-women': 'الدوري المصري للسيدات',
+  'uefa-europa': 'الدوري الأوروبي',
+  'uefa-conference': 'دوري المؤتمر الأوروبي',
+  'fifa-u17-world-cup': 'كأس العالم تحت 17',
+  'tur-super-lig': 'الدوري التركي',
+  'eng-championship': 'الدوري الإنجليزي - الدرجة الأولى',
 };
 
 export function competitionName(id: string): string {
+  // A competition we do not cover carries its own name in its id («other:…»).
+  if (id.startsWith('other:')) return id.slice('other:'.length);
   return COMPETITION_LABELS[id] ?? id;
 }

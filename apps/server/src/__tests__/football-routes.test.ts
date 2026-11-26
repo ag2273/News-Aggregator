@@ -29,8 +29,9 @@ describe('football API', () => {
     const res = await app.request('/api/football/competitions');
     const { data } = (await res.json()) as { data: Array<{ id: string; nameAr: string }> };
     // 12: the women's league is now its own competition instead of being filed
-    // under the men's (see the «سيدات» mapping test).
-    expect(data.length).toBe(12);
+    // under the men's (see the «سيدات» mapping test). 17: five competitions the
+    // feeds publish weekly were added so their strip opens a page.
+    expect(data.length).toBe(17);
     expect(data.map((x) => x.id)).toContain('egyptian-premier');
     expect(data.find((x) => x.id === 'egyptian-premier')?.nameAr).toBe('الدوري المصري');
     expect(data.find((x) => x.id === 'egyptian-women')?.nameAr).toBe('الدوري المصري للسيدات');

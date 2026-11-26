@@ -13,6 +13,7 @@
 
 import {
   canonicalCompetition,
+  settleCompetition,
   clubFrame,
   COMPETITIONS,
   cairoDate,
@@ -208,6 +209,9 @@ export async function loadStandings(
   // A cup has no league table by definition. Saying so is the honest answer, and
   // the app renders it as a cup explanation, not as a failure.
   if (competition.isCup) return storeStandings(competitionId, [], true);
+  // No verified table id: asking Yallakora for `/tour-standing/` would read some
+  // other page, and a table parsed from it would be a table we invented.
+  if (!competition.yallakoraTourId) return storeStandings(competitionId, [], true);
 
   const attempts = [
     `${YALLAKORA_BASE}/tour-standing/${competition.yallakoraTourId}`,
@@ -732,6 +736,8 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
     row.home = canonicalClub(row.home);
     row.away = canonicalClub(row.away);
   }
+  // One id and one name per competition, so every strip opens its page.
+  for (const [k, row] of seen) seen.set(k, settleCompetition(row));
 
   // The competition's own priority decides the order (Egypt first), so the app
   // renders what it is served and every screen agrees. Unknown competitions sort
