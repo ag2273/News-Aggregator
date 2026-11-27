@@ -146,3 +146,17 @@ describe('handleInitialNotification: a cold start from a push', () => {
     await expect(handleInitialNotification()).resolves.toBeNull();
   });
 });
+
+describe('a followed match event', () => {
+  it('opens the match centre for that match and day', () => {
+    // Exactly what push.ts buildWatchMessage sends.
+    const data = { football: '1', kind: 'goal', matchId: 'fg-379728', date: '2026-11-27' };
+    expect(notificationTarget(data)).toEqual({ kind: 'match', matchId: 'fg-379728', date: '2026-11-27' });
+    openNotificationArticle(data);
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/matches/[id]', params: { id: 'fg-379728', date: '2026-11-27' } });
+  });
+
+  it('leaves a team-follow push (no matchId) without a destination, as before', () => {
+    expect(notificationTarget({ football: '1', kind: 'final' })).toBeNull();
+  });
+});

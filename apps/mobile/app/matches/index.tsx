@@ -16,6 +16,7 @@ import { router } from 'expo-router';
 import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
+import { useWatchedMatches, watchOutcomeText } from '../../lib/matchWatchStore';
 import { AccountGateSheet, useAccountGate } from '../../components/AccountGate';
 import {
   fetchMatches,
@@ -203,6 +204,7 @@ export default function MatchesScreen() {
     async (competitionId: string | undefined) => {
       if (!competitionId) return;
       if (!token) {
+        setGateFor('league');
         gate.open();
         return;
       }
@@ -225,6 +227,30 @@ export default function MatchesScreen() {
 
   // One stable handler for every card, so the memoised cards skip re-rendering when
   // the screen's own state (a collapsed league, a follow) changes.
+  // The bell on each card: follow that match for live alerts.
+  const { watched, toggle: toggleWatchRaw } = useWatchedMatches(token);
+  const [watchNotice, setWatchNotice] = useState<string | null>(null);
+  /** Which follow opened the account sheet, so its sentence names the right thing. */
+  const [gateFor, setGateFor] = useState<'match' | 'league'>('league');
+  useEffect(() => {
+    if (!watchNotice) return;
+    const timer = setTimeout(() => setWatchNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [watchNotice]);
+  const gateAllowed = gate.allowed;
+  const openGate = gate.open;
+  const toggleWatch = useCallback(
+    async (m: FootballMatch) => {
+      if (!gateAllowed) {
+        setGateFor('match');
+        openGate();
+        return;
+      }
+      setWatchNotice(watchOutcomeText(await toggleWatchRaw(m.id, date)));
+    },
+    [gateAllowed, openGate, toggleWatchRaw, date],
+  );
+
   const openMatch = useCallback(
     (m: FootballMatch) => router.push({ pathname: '/matches/[id]', params: { id: m.id, date } }),
     [date],
@@ -288,6 +314,8 @@ export default function MatchesScreen() {
               t={t}
               m={item.m}
               favourite={isFavourite(item.m)}
+              watched={watched.has(item.m.id)}
+              onToggleWatch={toggleWatch}
               onOpenMatch={openMatch}
               onPressTeam={openTeam}
             />
@@ -330,7 +358,7 @@ export default function MatchesScreen() {
         }
       }
     },
-    [t, isFavourite, openMatch, openTeam, visible.length, followedLeagues, collapsed, toggleCollapse, toggleLeague],
+    [t, isFavourite, openMatch, openTeam, visible.length, followedLeagues, collapsed, toggleCollapse, toggleLeague, watched, toggleWatch],
   );
 
   const liveCount = matches.filter((m) => m.status === 'live').length;
@@ -544,7 +572,12 @@ export default function MatchesScreen() {
             removeClippedSubviews
           />
         )}
-        <AccountGateSheet t={t} gate={gate} message="عشان تتابع البطولة" />
+        {watchNotice ? (
+          <View style={[styles.watchToast, { backgroundColor: t.textPrimary }]} accessibilityLiveRegion="polite">
+            <Text style={[styles.watchToastText, { color: t.bgGradientMid }]}>{watchNotice}</Text>
+          </View>
+        ) : null}
+        <AccountGateSheet t={t} gate={gate} message={gateFor === 'match' ? 'عشان تتابع المباراة' : 'عشان تتابع البطولة'} />
       </SafeAreaView>
     </LinearGradient>
   );
@@ -556,6 +589,16 @@ function ListGap({ leadingItem }: { leadingItem?: { gapAfter?: boolean } }) {
 }
 
 const styles = StyleSheet.create({
+  watchToast: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 96,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  watchToastText: { fontFamily: 'Cairo_600SemiBold', fontSize: 13, lineHeight: 20 },
   gap: { height: 8 },
   root: { flex: 1 },
   safe: { flex: 1 },

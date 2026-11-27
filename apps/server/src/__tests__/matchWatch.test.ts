@@ -157,6 +157,16 @@ describe('match follow: what gets announced', () => {
     expect(out.flat()).toEqual([]);
   });
 
+  it('takes the score a match shows when it leaves «unknown» as where it is, not as goals', () => {
+    const out = run([
+      [m({ status: 'unknown', statusText: '' }), null],
+      [live(1, 1), tl({})],
+      [live(1, 1), tl({})],
+      [live(1, 1), tl({})],
+    ]);
+    expect(out.flat()).toEqual([]);
+  });
+
   it('records a back-fill of many rows without announcing them', () => {
     const many = Array.from({ length: 8 }, (_, i) => ({ ...card, minute: String(10 + i), player: `لاعب ${i}` }));
     const out = run([

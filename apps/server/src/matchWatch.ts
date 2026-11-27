@@ -487,6 +487,13 @@ export function stepMatch(
     }
   }
 
+  // A score first seen after an «unknown» state is where the match already is, not
+  // goals scored now (measured: a Bahraini fixture went unknown → live at 1-1).
+  if (s.status === 'unknown' && match.status !== 'unknown') {
+    s.home = homeNow;
+    s.away = awayNow;
+  }
+
   // Goals: the score is the trigger.
   for (const side of ['home', 'away'] as const) {
     const now = side === 'home' ? homeNow : awayNow;
