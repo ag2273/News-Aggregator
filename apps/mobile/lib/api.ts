@@ -1002,6 +1002,47 @@ export async function followFootballTeam(
   return ((await res.json()) as { data: { teams: TeamFollow[] } }).data.teams;
 }
 
+/** One match the reader follows for live alerts (server: matchWatch.ts). */
+export interface MatchWatch {
+  matchId: string;
+  date: string;
+  home: string;
+  away: string;
+  competitionId: string;
+  addedAt: number;
+}
+
+export async function fetchMatchWatches(token: string): Promise<MatchWatch[]> {
+  const res = await apiFetch(`${API_BASE}/api/football/match-watches`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { matches: MatchWatch[] } }).data.matches;
+}
+
+/**
+ * Follow one match: a notification for every event in it.
+ *
+ * Throws an `ApiError` with code `finished` (409) for a match that is over and
+ * `limit` (429) when the reader already follows the most the server allows.
+ */
+export async function watchFootballMatch(token: string, matchId: string, date: string): Promise<MatchWatch[]> {
+  const res = await apiFetch(`${API_BASE}/api/football/match-watches`, {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify({ matchId, date }),
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { matches: MatchWatch[] } }).data.matches;
+}
+
+export async function unwatchFootballMatch(token: string, matchId: string): Promise<MatchWatch[]> {
+  const res = await apiFetch(`${API_BASE}/api/football/match-watches/${encodeURIComponent(matchId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw await apiError(res);
+  return ((await res.json()) as { data: { matches: MatchWatch[] } }).data.matches;
+}
+
 export async function unfollowFootballTeam(token: string, team: string): Promise<TeamFollow[]> {
   const res = await apiFetch(`${API_BASE}/api/football/follows/${encodeURIComponent(team)}`, {
     method: 'DELETE',

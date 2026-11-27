@@ -323,6 +323,27 @@ describe('match centre news, per the approved design', () => {
   });
 });
 
+describe('«تابع المباراة» on the match centre (approved preview, 2026-11-27)', () => {
+  it('offers the follow button with its one-line promise on a match not yet over', async () => {
+    mockMatch.mockResolvedValue({ match: match(), detail: null, news: [], unavailable: false });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('تابع المباراة')).toBeTruthy());
+    expect(screen.getByText(/الأهداف، الكروت، التبديلات/)).toBeTruthy();
+  });
+
+  it('does not offer it once the match is over', async () => {
+    mockMatch.mockResolvedValue({
+      match: match({ status: 'finished', statusText: 'انتهت', homeScore: 2, awayScore: 1 }),
+      detail: null,
+      news: [],
+      unavailable: false,
+    });
+    render(<MatchCenterScreen />);
+    await waitFor(() => expect(screen.getByText('انتهت')).toBeTruthy());
+    expect(screen.queryByText('تابع المباراة')).toBeNull();
+  });
+});
+
 describe('standings legend, per the approved design', () => {
   it('names only the zones the table can actually have', async () => {
     mockStandings.mockResolvedValue({

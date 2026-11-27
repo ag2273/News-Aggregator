@@ -159,6 +159,7 @@ import {
   unfollowTeam,
 } from './footballStore.js';
 import { pollFootball } from './footballPush.js';
+import { getMatchWatches, pollMatchWatches, unwatchMatch, watchMatch } from './matchWatch.js';
 import { crestCacheStats, getCrest, registerLogoSource } from './crests.js';
 import { getSourceIcon } from './sourceIcons.js';
 import { buildTeamPage } from './teamPage.js';
@@ -344,12 +345,18 @@ if (process.env['NODE_ENV'] !== 'test') {
   // cache could put a goal on screen up to ten minutes late, which would make that
   // measurement meaningless. One minute, with a cache TTL that follows it, keeps the
   // worst case close to the source's own delay.
-  pollFootball().catch((err) => console.error('[football] first poll failed:', err));
+  // The match follow runs right after the day poll, so it reads the day the poll
+  // just loaded instead of fetching it again.
+  const footballTick = async (): Promise<void> => {
+    await pollFootball().catch((err) => console.error('[football] poll failed:', err));
+    await pollMatchWatches().catch((err) => console.error('[watch] poll failed:', err));
+  };
+  footballTick().catch((err) => console.error('[football] first poll failed:', err));
   // One poll at a time: a slow source or a slow notification round must not let the
   // next tick start a second poll on top of it.
   const pollState: { running: Promise<unknown> | null } = { running: null };
   setInterval(() => {
-    singleFlight(() => pollFootball(), pollState).promise.catch((err) =>
+    singleFlight(() => footballTick(), pollState).promise.catch((err) =>
       console.error('[football] poll failed:', err),
     );
   }, 60 * 1000);
@@ -2003,6 +2010,58 @@ app.put('/api/football/league-follows/:competitionId/notify', async (c) => {
   });
   if (!updated) return c.json({ error: 'not followed' }, 404);
   return c.json({ data: { league: updated } });
+});
+
+/**
+ * The matches the caller follows: one notification for every event in each (goals,
+ * cards, substitutions, kick-off, half-time, full time). See matchWatch.ts.
+ */
+app.get('/api/football/match-watches', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ data: { matches: getMatchWatches(userId) } });
+});
+
+/** Follow one match. Verified accounts only, like every follow. */
+app.put('/api/football/match-watches', async (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const gate = requireVerified(c);
+  if (gate) return gate;
+  let body: { matchId?: unknown; date?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (typeof body.matchId !== 'string' || !body.matchId.trim()) {
+    return c.json({ error: 'matchId is required' }, 400);
+  }
+  const matchId = body.matchId.trim();
+  const requested = typeof body.date === 'string' ? body.date.trim() : '';
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(requested) ? requested : todayCairo();
+  // The match must exist on that day: the follow stores the names the push uses.
+  const day = getDayForMatchDetail(date) ?? (await loadDay(date));
+  const match = day.matches.find((m) => m.id === matchId);
+  if (!match) return c.json({ error: 'match not found' }, 404);
+  const result = watchMatch(userId, match, date);
+  if (!result.ok) {
+    return c.json(
+      {
+        error: result.reason === 'finished' ? 'match is over' : 'too many followed matches',
+        code: result.reason,
+      },
+      result.reason === 'finished' ? 409 : 429,
+    );
+  }
+  return c.json({ data: { matches: result.watches } });
+});
+
+/** Stop following a match. */
+app.delete('/api/football/match-watches/:matchId', (c) => {
+  const userId = extractUserId(c.req.header('Authorization'));
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ data: { matches: unwatchMatch(userId, c.req.param('matchId')) } });
 });
 
 /** The caller's followed teams. */

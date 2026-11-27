@@ -660,6 +660,12 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
     // a cup on different days, and merging those would lose one tournament.
     return `${canonicalCompetition(m.competitionName)}|${pair.join('|')}`;
   };
+  // The merged row keeps the other feed's match page, for its events tab.
+  const keepYallakoraPage = (kept: MatchRow, row: MatchRow): void => {
+    if (row.dataSource === 'yallakora' && row.url && kept.dataSource !== 'yallakora' && !kept.yallakoraUrl) {
+      kept.yallakoraUrl = row.url;
+    }
+  };
   const seen = new Map<string, MatchRow>();
   // Every kept row by its consonant-frame pair, WITHIN one competition, so a fixture
   // the two feeds spell differently is recognised before the fallback row is added
@@ -717,6 +723,7 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
     // not, so it fills a gap rather than replacing a published value.
     if (!kept.channel && row.channel) kept.channel = row.channel;
     absorbed.add(kept);
+    keepYallakoraPage(kept, row);
     return true;
   };
 
@@ -771,6 +778,7 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
     const exact = seen.get(k);
     if (exact) {
       absorbed.add(exact);
+      keepYallakoraPage(exact, row);
       continue;
     }
     // Exact key first. If that misses, the two sources may still be naming the
@@ -780,6 +788,7 @@ export function mergeDay(preferred: MatchRow[], fallback: MatchRow[]): MatchRow[
     const near = [...seen.entries()].find(([existingKey]) => sameFixture(existingKey, k));
     if (near) {
       absorbed.add(near[1]);
+      keepYallakoraPage(near[1], row);
       continue;
     }
     // Then the consonant frame, for the spellings the key above cannot fold

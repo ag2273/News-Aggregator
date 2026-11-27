@@ -149,6 +149,8 @@ export const MatchCard = React.memo(function MatchCard({
   onPressTeam,
   showCompetition = false,
   channelFallback,
+  watched = false,
+  onToggleWatch,
 }: {
   t: Theme;
   m: FootballMatch;
@@ -179,6 +181,13 @@ export const MatchCard = React.memo(function MatchCard({
    * The day list omits it, because there the channel is a bonus, not the subject.
    */
   channelFallback?: string;
+  /** The reader follows this match for live alerts (the bell is filled). */
+  watched?: boolean;
+  /**
+   * A list-wide handler for the bell. No handler, no bell; and no bell on a
+   * finished match, which has no events left to send.
+   */
+  onToggleWatch?: (m: FootballMatch) => void;
 }) {
   const isLive = m.status === 'live';
   const hasScore = m.homeScore !== null && m.awayScore !== null;
@@ -244,6 +253,22 @@ export const MatchCard = React.memo(function MatchCard({
           </Text>
         ) : null}
         {favourite ? <Ionicons name="star" size={12} color={t.accent} /> : null}
+        {onToggleWatch && m.status !== 'finished' ? (
+          <TouchableOpacity
+            onPress={() => onToggleWatch(m)}
+            style={styles.bellBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: watched }}
+            accessibilityLabel={watched ? `إيقاف متابعة ${m.home} ضد ${m.away}` : `تابع ${m.home} ضد ${m.away}`}
+          >
+            <Ionicons
+              name={watched ? 'notifications' : 'notifications-outline'}
+              size={16}
+              color={watched ? t.accent : t.textDim}
+            />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <View style={styles.scoreRow}>
@@ -316,6 +341,7 @@ const styles = StyleSheet.create({
   liveRail: { position: 'absolute', top: 0, right: 0, left: 0, height: 1 },
   metaBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   metaText: { fontFamily: 'Cairo_600SemiBold', fontSize: 10, flexShrink: 1 },
+  bellBtn: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   livePill: {
     flexDirection: 'row',
     alignItems: 'center',

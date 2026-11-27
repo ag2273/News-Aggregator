@@ -754,3 +754,64 @@ export async function sendMatchNotifications(
   }
   return sent;
 }
+
+/** One event of a followed match, ready to send (see matchWatch.ts). */
+export interface WatchPush {
+  title: string;
+  body: string;
+  /** The event kind, for the app's own routing and analytics. */
+  kind: string;
+  matchId: string;
+  date: string;
+  /** Goals, red cards, kick-off and the final whistle wake the phone. */
+  urgent: boolean;
+}
+
+/** The FCM payload for one event of a match the reader follows. */
+export function buildWatchMessage(token: string, push: WatchPush): FcmMessage {
+  return {
+    token,
+    notification: { title: push.title, body: push.body },
+    // `matchId` + `date` let a tap open the match centre directly.
+    data: { football: '1', kind: push.kind, matchId: push.matchId, date: push.date },
+    android: {
+      priority: push.urgent ? 'high' : 'normal',
+      notification: { channel_id: 'football', color: '#34D399' },
+    },
+  };
+}
+
+/**
+ * Send one match event to the readers who follow that match.
+ *
+ * One access token for the whole round, and dead tokens are dropped, exactly like
+ * the team notifications. Returns how many devices accepted.
+ */
+export async function sendWatchNotifications(
+  userIds: string[],
+  pushes: WatchPush[],
+  fetcher: typeof fetch = fetch,
+): Promise<number> {
+  if (!userIds.length || !pushes.length) return 0;
+  const wanted = new Set(userIds);
+  const records = getAllPushRecords().filter((r) => r.provider === 'fcm' && r.enabled && wanted.has(r.userId));
+  if (!records.length) return 0;
+  const account = loadServiceAccount();
+  if (!account) return 0;
+  let accessToken: string;
+  try {
+    accessToken = await getAccessToken(account, fetcher);
+  } catch (err) {
+    console.error('[push] match watch: could not get an access token:', err);
+    return 0;
+  }
+  let sent = 0;
+  for (const push of pushes) {
+    for (const record of records) {
+      const outcome = await sendFcmMessage(account.project_id, accessToken, buildWatchMessage(record.token, push), fetcher);
+      if (outcome === 'ok') sent += 1;
+      if (outcome === 'dead') unregisterPushToken(record.userId, record.token);
+    }
+  }
+  return sent;
+}

@@ -15,6 +15,8 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { palette } from '../../constants/colors';
 import type { Theme } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
+import { useWatchedMatches, watchOutcomeText } from '../../lib/matchWatchStore';
+import { AccountGateSheet, useAccountGate } from '../../components/AccountGate';
 import { useArticleSheet } from '../../components/ArticleSheet';
 import { TeamCrest } from '../../components/TeamCrest';
 import { MatchNewsCard } from '../../components/MatchNewsCard';
@@ -83,6 +85,15 @@ export default function MatchCenterScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [following, setFollowing] = useState(false);
+  // «تابع المباراة»: every event of THIS match, not the club (the star above).
+  const gate = useAccountGate();
+  const { watched, toggle: toggleWatchRaw } = useWatchedMatches(token);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -120,6 +131,16 @@ export default function MatchCenterScreen() {
     load();
   }, [load]);
 
+  const watching = match ? watched.has(match.id) : false;
+  const toggleWatch = async () => {
+    if (!match) return;
+    if (!gate.allowed) {
+      gate.open();
+      return;
+    }
+    setNotice(watchOutcomeText(await toggleWatchRaw(match.id, date ?? '')));
+  };
+
   const toggleFollow = async () => {
     if (!token || !match) return;
     try {
@@ -141,7 +162,7 @@ export default function MatchCenterScreen() {
           <Text style={[styles.title, { color: t.textPrimary }]} numberOfLines={1}>
             مركز المباراة
           </Text>
-          <TouchableOpacity onPress={toggleFollow} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="متابعة المباراة">
+          <TouchableOpacity onPress={toggleFollow} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="متابعة الفريق">
             <Ionicons name={following ? 'star' : 'star-outline'} size={20} color={following ? t.accent : t.textPrimary} />
           </TouchableOpacity>
         </View>
@@ -252,6 +273,38 @@ export default function MatchCenterScreen() {
                     </Text>
                   ) : null}
                 </View>
+              ) : null}
+
+              {/* Follow the match: one alert per event. Not offered once it is over. */}
+              {match.status !== 'finished' ? (
+                <>
+                  <TouchableOpacity
+                    onPress={toggleWatch}
+                    style={[
+                      styles.watchBtn,
+                      watching
+                        ? { backgroundColor: t.accentSoft, borderColor: t.accent }
+                        : { backgroundColor: t.textPrimary, borderColor: t.textPrimary },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: watching }}
+                    accessibilityLabel={watching ? 'بتتابع المباراة، اضغط للإيقاف' : 'تابع المباراة'}
+                  >
+                    <Ionicons
+                      name={watching ? 'notifications' : 'notifications-outline'}
+                      size={18}
+                      color={t.accent}
+                    />
+                    <Text style={[styles.watchText, { color: watching ? t.accent : t.bgGradientMid }]}>
+                      {watching ? 'بتتابع المباراة • اضغط للإيقاف' : 'تابع المباراة'}
+                    </Text>
+                  </TouchableOpacity>
+                  {!watching ? (
+                    <Text style={[styles.watchHint, { color: t.textSecondary }]}>
+                      هيوصلك تنبيه بكل حاجة بتحصل: الأهداف، الكروت، التبديلات، والاستراحة والنهاية.
+                    </Text>
+                  ) : null}
+                </>
               ) : null}
             </View>
 
@@ -475,6 +528,12 @@ export default function MatchCenterScreen() {
             ) : null}
           </ScrollView>
         )}
+        {notice ? (
+          <View style={[styles.toast, { backgroundColor: t.textPrimary }]} accessibilityLiveRegion="polite">
+            <Text style={[styles.toastText, { color: t.bgGradientMid }]}>{notice}</Text>
+          </View>
+        ) : null}
+        <AccountGateSheet t={t} gate={gate} message="عشان تتابع المباراة" />
       </SafeAreaView>
     </LinearGradient>
   );
@@ -514,6 +573,28 @@ const styles = StyleSheet.create({
   liveText: { fontFamily: 'Cairo_700Bold', fontSize: 10 },
   heroFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
   heroFact: { fontFamily: 'Cairo_400Regular', fontSize: 11 },
+  watchBtn: {
+    minHeight: 48,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  watchText: { fontFamily: 'Cairo_700Bold', fontSize: 15 },
+  watchHint: { fontFamily: 'Cairo_400Regular', fontSize: 12, textAlign: 'center', marginTop: -6 },
+  toast: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 28,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  toastText: { fontFamily: 'Cairo_600SemiBold', fontSize: 13, lineHeight: 20 },
   sectionHeadline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   sectionTitle: { fontFamily: 'Cairo_700Bold', fontSize: 13, flexShrink: 1 },
   counter: {

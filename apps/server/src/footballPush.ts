@@ -9,6 +9,7 @@ import { loadDay, todayCairo } from './footballService.js';
 import { followersOf, leagueFollowersOf } from './footballStore.js';
 import { sendMatchNotifications } from './push.js';
 import type { MatchRow } from './football.js';
+import { watchersOf } from './matchWatch.js';
 
 /** Score and state of every match we have already seen, by match id. */
 export interface SeenMatch {
@@ -107,7 +108,9 @@ export async function pollFootball(options: {
       },
     }));
     // One person can follow both the club and its league; they get one notification.
-    const seenUsers = new Set<string>();
+    // A reader who follows THIS match hears about it from the match follow, which
+    // already sends the kick-off and the final whistle; one event is one notification.
+    const seenUsers = watchersOf(t.match.id);
     const followers = [...teamFollowers, ...leagueFollowers].filter((f) => {
       if (seenUsers.has(f.userId)) return false;
       seenUsers.add(f.userId);

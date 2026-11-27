@@ -300,6 +300,7 @@ export type NotificationTarget =
   | { kind: 'digest' }
   | { kind: 'article'; articleId: string }
   | { kind: 'webview'; url: string }
+  | { kind: 'match'; matchId: string; date: string }
   | null;
 
 /**
@@ -321,6 +322,12 @@ export function notificationTarget(data: Record<string, unknown> | undefined): N
   // carry both, and the digest is the more specific destination.
   if (data['digest'] === '1' || data['digest'] === 1 || data['digest'] === true) {
     return { kind: 'digest' };
+  }
+  // A followed match's event: { football: '1', matchId, date } -> the match centre.
+  const matchId = data['matchId'];
+  if (typeof matchId === 'string' && matchId.length > 0) {
+    const date = typeof data['date'] === 'string' ? data['date'] : '';
+    return { kind: 'match', matchId, date };
   }
   const articleId = data['articleId'];
   if (typeof articleId === 'string' && articleId.length > 0) {
@@ -344,6 +351,8 @@ export function openNotificationArticle(data: Record<string, unknown> | undefine
   if (!target) return null;
   if (target.kind === 'digest') {
     router.push('/digest');
+  } else if (target.kind === 'match') {
+    router.push({ pathname: '/matches/[id]', params: { id: target.matchId, date: target.date } });
   } else if (target.kind === 'article') {
     router.push({ pathname: '/article', params: { id: target.articleId } });
   } else {
