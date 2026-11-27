@@ -429,15 +429,15 @@ describe('push: end-to-end sending', () => {
     expect(getAllPushRecords()).toHaveLength(0);
   });
 
-  it('ignores articles older than the 15-minute window', async () => {
+  it('ignores articles older than the push window', async () => {
     registerPushToken('user-1', 'dev-1', 'android');
-    const old = { ...article(true, 'old'), publishedAt: Date.now() - 60 * 60 * 1000 };
+    const old = { ...article(true, 'old'), publishedAt: Date.now() - 2 * 60 * 60 * 1000 };
     const { fetchImpl, calls } = stubFetch([{ status: 200, body: {} }]);
     expect(await sendPushNotifications([old], fetchImpl)).toEqual([]);
     expect(calls).toHaveLength(0);
   });
 
-  it('never pushes a re-flagged OLD article (the 15-minute window guards backfills)', async () => {
+  it('never pushes a re-flagged OLD article (the push window guards backfills)', async () => {
     registerPushToken('user-1', 'dev-1', 'android');
     // An article that a backfill re-classified as breaking, published hours ago,
     // must not produce a notification: the rule is on publishedAt, not on when
@@ -513,6 +513,95 @@ describe('push: end-to-end sending', () => {
     await sendPushNotifications([article(true, 'dup')], fetchImpl);
     await sendPushNotifications([article(true, 'dup')], fetchImpl);
     expect(calls).toHaveLength(2); // one token exchange + one send, not two sends
+  });
+
+  it('pushes a breaking article that a feed surfaced 40 minutes late (#76)', async () => {
+    registerPushToken('user-1', 'dev-urgent', 'android');
+    // Google News lists items 20-135+ minutes after publication; the old
+    // 15-minute gate dropped every one of them.
+    const late = { ...article(true, 'late-breaking'), publishedAt: Date.now() - 40 * 60 * 1000 };
+    const { fetchImpl } = stubFetch([
+      { status: 200, body: { access_token: 'ya29.test', expires_in: 3600 } },
+      { status: 200, body: { name: 'ok' } },
+    ]);
+    expect(await sendPushNotifications([late], fetchImpl)).toEqual(['late-breaking']);
+  });
+
+  it('an AI veto demotes a breaking candidate to ordinary news', async () => {
+    registerPushToken('user-1', 'dev-urgent', 'android');
+    registerPushToken('user-2', 'dev-all', 'android');
+    updatePushPrefs('user-2', 'dev-all', { mode: 'all' });
+    const { fetchImpl, calls } = stubFetch([
+      { status: 200, body: { access_token: 'ya29.test', expires_in: 3600 } },
+      { status: 200, body: { name: 'ok' } },
+    ]);
+    const asked: string[] = [];
+    await sendPushNotifications([article(true, 'veto-1')], fetchImpl, {
+      confirmBreaking: async (a) => {
+        asked.push(a.id);
+        return false;
+      },
+    });
+    expect(asked).toEqual(['veto-1']);
+    // Only the 'all' device gets it, and on the normal channel.
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.body.message.token).not.toBe(undefined);
+    expect(calls[1]!.body.message.android.notification.channel_id).toBe(CHANNEL_NEWS);
+    expect(calls[1]!.body.message.notification.title).not.toBe('خبر عاجل');
+  });
+
+  it('keeps the rule when the AI cannot answer', async () => {
+    registerPushToken('user-1', 'dev-urgent', 'android');
+    const { fetchImpl, calls } = stubFetch([
+      { status: 200, body: { access_token: 'ya29.test', expires_in: 3600 } },
+      { status: 200, body: { name: 'ok' } },
+    ]);
+    await sendPushNotifications([article(true, 'ai-down')], fetchImpl, {
+      confirmBreaking: async () => null,
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.body.message.android.notification.channel_id).toBe(CHANNEL_BREAKING);
+  });
+
+  it('only asks the AI about breaking candidates', async () => {
+    registerPushToken('user-1', 'dev-all', 'android');
+    updatePushPrefs('user-1', 'dev-all', { mode: 'all' });
+    const { fetchImpl } = stubFetch([
+      { status: 200, body: { access_token: 'ya29.test', expires_in: 3600 } },
+      { status: 200, body: { name: 'ok' } },
+    ]);
+    const asked: string[] = [];
+    await sendPushNotifications([article(false, 'plain-1')], fetchImpl, {
+      confirmBreaking: async (a) => {
+        asked.push(a.id);
+        return true;
+      },
+    });
+    expect(asked).toEqual([]);
+  });
+
+  it('does not buzz again when another outlet reports the same event in a later refresh', async () => {
+    registerPushToken('user-1', 'dev-urgent', 'android');
+    const first = {
+      ...article(true, 'x-aljazeera'),
+      sourceId: 'aljazeera',
+      sourceName: 'الجزيرة',
+      title: 'مقتل 13 جنديا في هجوم مسلحين على قاعدة عسكرية غرب النيجر',
+    };
+    const second = {
+      ...article(true, 'x-rt'),
+      sourceId: 'rt-arabic',
+      sourceName: 'RT',
+      title: 'النيجر: مقتل 13 جنديا في هجوم مسلحين على قاعدة عسكرية غرب البلاد',
+    };
+    const { fetchImpl, calls } = stubFetch([
+      { status: 200, body: { access_token: 'ya29.test', expires_in: 3600 } },
+      { status: 200, body: { name: 'ok' } },
+      { status: 200, body: { name: 'ok' } },
+    ]);
+    await sendPushNotifications([first], fetchImpl);
+    await sendPushNotifications([second], fetchImpl);
+    expect(calls).toHaveLength(2); // token + ONE message across both runs
   });
 
   it('does not attempt delivery when authentication fails', async () => {

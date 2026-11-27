@@ -85,7 +85,7 @@ export const SOURCES: Source[] = [
     url: 'https://www.bbc.com/arabic',
     rssUrl: 'https://feeds.bbci.co.uk/arabic/rss.xml',
     country: 'GB',
-    intervalMinutes: 30,
+    intervalMinutes: 10, // breaking source: polled every tick so an alert is not 30 min late (#76)
     breaking: true,
     type: 'direct',
   },
@@ -96,7 +96,7 @@ export const SOURCES: Source[] = [
     url: 'https://arabic.cnn.com',
     rssUrl: 'https://arabic.cnn.com/rss',
     country: 'AE',
-    intervalMinutes: 30,
+    intervalMinutes: 10, // breaking source: polled every tick so an alert is not 30 min late (#76)
     breaking: true,
     type: 'direct',
   },
@@ -107,7 +107,7 @@ export const SOURCES: Source[] = [
     url: 'https://www.skynewsarabia.com',
     rssUrl: 'https://www.skynewsarabia.com/rss',
     country: 'AE',
-    intervalMinutes: 30,
+    intervalMinutes: 10, // breaking source: polled every tick so an alert is not 30 min late (#76)
     breaking: true,
     type: 'direct',
   },
@@ -118,7 +118,7 @@ export const SOURCES: Source[] = [
     url: 'https://arabic.rt.com',
     rssUrl: 'https://www.rtarabic.com/rss',
     country: 'RU',
-    intervalMinutes: 30,
+    intervalMinutes: 10, // breaking source: polled every tick so an alert is not 30 min late (#76)
     breaking: true,
     type: 'direct',
   },
@@ -143,7 +143,7 @@ export const SOURCES: Source[] = [
     rssUrl:
       'https://news.google.com/rss/search?q=site:ahram.org.eg+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
-    intervalMinutes: 30,
+    intervalMinutes: 10, // breaking source: polled every tick so an alert is not 30 min late (#76)
     breaking: true,
     type: 'google-news',
   },
@@ -167,7 +167,7 @@ export const SOURCES: Source[] = [
     rssUrl:
       'https://news.google.com/rss/search?q=site:masrawy.com+when:2d&hl=ar&gl=EG&ceid=EG:ar',
     country: 'EG',
-    intervalMinutes: 30,
+    intervalMinutes: 10, // breaking source: polled every tick so an alert is not 30 min late (#76)
     breaking: true,
     type: 'google-news',
   },
