@@ -22,7 +22,7 @@
 //     MAX_TRIES times; that memory is a bounded map;
 //   - only the <head> of a page is searched, never the whole document.
 
-import { resolveGoogleNewsUrl, fetchPageWithTimeout } from './articleText.js';
+import { resolveGoogleNewsUrl, fetchPageWithTimeout, isChallengePage } from './articleText.js';
 import { remember } from './boundedCache.js';
 import type { StoredArticle } from './db.js';
 
@@ -150,7 +150,7 @@ async function imageFor(
     const page = await deps.fetchHtml(target);
     if (!page.ok || !page.text) return { miss: 'fetch-failed' };
     const head = page.text.length > HEAD_LIMIT ? page.text.slice(0, HEAD_LIMIT) : page.text;
-    if (/Just a moment|cf-browser-verification|security verification/i.test(head.slice(0, 4000))) return { miss: 'blocked' };
+    if (isChallengePage(page.text)) return { miss: 'blocked' };
     const img = extractOgImage(head, target);
     return img ? { page: target, img } : { miss: 'no-image' };
   } catch {

@@ -120,7 +120,7 @@ export async function followTagPage(
           );
     if (!viaFetch.ok || !viaFetch.text) continue;
     // A challenge page is not the listing; never parse it for links.
-    if (/Just a moment|cf-browser-verification|security verification/i.test(viaFetch.text)) continue;
+    if (isChallengePage(viaFetch.text)) continue;
     match = viaFetch.text.match(STORY_LINK);
   }
   if (!match?.[1]) return null;
@@ -251,6 +251,34 @@ export interface ArticleText {
   resolvedUrl: string | null;
   /** Why the full text was not available, for the digest log (never user-facing). */
   reason?: string;
+}
+
+/**
+ * A bot-check page served in place of the story.
+ *
+ * Measured on the user's phone (apk-90, 2026-11-27): a الشرق بلومبرغ story fell back
+ * to the cleaned page, and our server had been handed a bot check whose whole body
+ * was "Max challenge attempts exceeded. Please refresh the page to try again!" with
+ * HTTP 200. We cleaned it and served it as the article. A real browser passes these
+ * checks, so the right answer is "not reachable from the server": the app then opens
+ * the publisher's live page instead.
+ *
+ * The strong signatures are product markers that never appear in an article. The
+ * weak phrases only count on a small page, so a story that quotes them is not lost.
+ */
+export function isChallengePage(html: string): boolean {
+  const head = html.slice(0, 6000);
+  if (
+    /cf-browser-verification|challenge-platform|cf_chl_|Max challenge attempts|_Incapsula_Resource|Request unsuccessful\. Incapsula|sgcaptcha|Pardon Our Interruption|Attention Required! \| Cloudflare|DDoS protection by|ddos-guard/i.test(
+      head,
+    )
+  ) {
+    return true;
+  }
+  if (html.length > 30_000) return false;
+  return /Just a moment|Checking your browser|security verification|Please enable (?:JavaScript|cookies)|Enable JavaScript and cookies to continue|verify you are (?:a )?human|are you a robot|captcha/i.test(
+    head,
+  );
 }
 
 export function isGoogleNewsUrl(url: string): boolean {

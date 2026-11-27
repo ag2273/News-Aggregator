@@ -6,7 +6,7 @@
 // failure the answer is "not readable", never a partly-made-up article.
 
 import { remember } from './boundedCache.js';
-import { fetchPage, isGoogleNewsUrl, resolveGoogleNewsUrl } from './articleText.js';
+import { fetchPage, isChallengePage, isGoogleNewsUrl, resolveGoogleNewsUrl } from './articleText.js';
 import { type ReaderArticle, finishImages } from './reader.js';
 import { readerFromHtmlOffThread } from './readerPool.js';
 import { noteImageFromPage } from './imageEnrich.js';
@@ -92,7 +92,7 @@ export async function readerArticle(
       // it would otherwise be reported as `thin` ("we read it, there was no body")
       // rather than what it is: the publisher refused this request (#61). Measured on
       // المصري اليوم over HTTP/1.1: 403 with "Just a moment…".
-      if (/Just a moment|cf-browser-verification|security verification/i.test(page.text.slice(0, 4000))) {
+      if (isChallengePage(page.text)) {
         return { title: null, blocks: [], readable: false, reason: 'blocked', resolvedUrl: target };
       }
       // The page is in hand: give the story's card its picture too (#57).
