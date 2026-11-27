@@ -97,8 +97,11 @@ describe('the listen button', () => {
     expect(spoken[0]!.text).toBe('عنوان الخبر');
     expect(spoken.length).toBeGreaterThan(1);
     expect(spoken.map((s) => s.text).join(' ')).toContain('رقم 1');
-    // Arabic, at a deliberately slower rate than the platform default.
-    expect(spoken[0]!.options.language).toBe('ar-EG');
+    // Arabic, at a deliberately slower rate than the platform default. The engine gets
+    // the bare `ar`: on Android `ar-EG` is rejected and the phone's own language is used
+    // instead, which is how the article went silent on an English-language phone.
+    expect(spoken[0]!.options.language).toBe('ar');
+    expect(spoken[0]!.options.voice).toBe('ar-eg-local');
     expect(spoken[0]!.options.rate).toBeCloseTo(0.95);
   });
 
@@ -164,5 +167,57 @@ describe('the listen button', () => {
     await press();
     await waitFor(() => expect(spoken.length).toBeGreaterThan(0));
     expect(spoken[0]!.text).toBe('عنوان الخبر');
+  });
+
+  it('names the Egyptian voice even when other Arabic voices come first', async () => {
+    engine.voices = [
+      { language: 'en-US', identifier: 'en-us-local' },
+      { language: 'ar-SA', identifier: 'ar-sa-network' },
+      { language: 'ar-EG', identifier: 'ar-eg-x-egn-local' },
+    ];
+    render(<Harness />);
+    await press();
+    await waitFor(() => expect(spoken.length).toBeGreaterThan(0));
+    expect(spoken.every((s) => s.options.voice === 'ar-eg-x-egn-local')).toBe(true);
+  });
+
+  it('tells the reader when the engine takes the article but never starts talking', async () => {
+    // The reported failure: the icon turned to "stop" and nothing was heard, forever.
+    jest.useFakeTimers();
+    try {
+      render(<Harness />);
+      await press();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByTestId('phase')).toHaveTextContent('speaking');
+      await act(async () => {
+        jest.advanceTimersByTime(8000);
+      });
+      expect(screen.getByTestId('phase')).toHaveTextContent('idle');
+      expect(screen.getByText(/الصوت ما اشتغلش/)).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps reading once the engine has started', async () => {
+    jest.useFakeTimers();
+    try {
+      render(<Harness />);
+      await press();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      // The engine says the first utterance has started.
+      await act(async () => {
+        (spoken[0]!.options.onStart as () => void)();
+        jest.advanceTimersByTime(20000);
+      });
+      expect(screen.getByTestId('phase')).toHaveTextContent('speaking');
+      expect(screen.queryByText(/الصوت ما اشتغلش/)).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

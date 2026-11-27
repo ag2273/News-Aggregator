@@ -15,11 +15,26 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Speech from 'expo-speech';
-import { MISSING_VOICE_MESSAGE, articleToSpeech, hasArabicVoice } from './speech';
+import {
+  ENGINE_LANGUAGE,
+  MISSING_VOICE_MESSAGE,
+  SILENT_ENGINE_MESSAGE,
+  articleToSpeech,
+  pickArabicVoice,
+} from './speech';
 import type { SpeechSegment, SpeakableBlock } from './speech';
 
-/** Arabic (Egypt), the language the app's readers expect and the voices are named for. */
+/**
+ * Arabic (Egypt), the voice the app's readers expect. It picks the VOICE; the engine
+ * itself is always given the bare `ar` (see ENGINE_LANGUAGE for why `ar-EG` went silent).
+ */
 export const SPEECH_LANGUAGE = 'ar-EG';
+
+/**
+ * How long the engine may hold the article without saying a word before the reader is
+ * told. A healthy engine starts in well under a second; past this it is not coming.
+ */
+export const START_TIMEOUT_MS = 8000;
 
 export type SpeechPhase = 'idle' | 'starting' | 'speaking' | 'unsupported';
 
@@ -55,11 +70,19 @@ export function useArticleSpeech({
   // One run at a time: a second tap must not queue a second article over the first.
   const runRef = useRef(0);
   const mounted = useRef(true);
+  const watchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearWatchdog = () => {
+    if (watchdog.current) {
+      clearTimeout(watchdog.current);
+      watchdog.current = null;
+    }
+  };
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      clearWatchdog();
       // Leaving the screen must not leave the phone talking (#56).
       Speech.stop().catch(() => {});
     };
@@ -68,6 +91,7 @@ export function useArticleSpeech({
   const stop = useCallback(() => {
     // Bumping the run invalidates any queued continuation from the old call.
     runRef.current += 1;
+    clearWatchdog();
     Speech.stop().catch(() => {});
     setPhase('idle');
   }, []);
@@ -93,7 +117,8 @@ export function useArticleSpeech({
         if (run !== runRef.current || !mounted.current) return;
         // No Arabic voice means the engine would read the article in the phone's
         // default language, which is worse than saying so plainly.
-        if (!hasArabicVoice(voices)) {
+        const voice = pickArabicVoice(voices, language);
+        if (!voice) {
           setPhase('unsupported');
           setNotice(MISSING_VOICE_MESSAGE);
           return;
@@ -102,15 +127,36 @@ export function useArticleSpeech({
         await Speech.stop();
         if (run !== runRef.current || !mounted.current) return;
         setPhase('speaking');
+        // A silent engine used to leave the stop icon up forever with no sound, which
+        // reads as "the button does nothing". If it has not started in time, say so.
+        clearWatchdog();
+        watchdog.current = setTimeout(() => {
+          watchdog.current = null;
+          if (run !== runRef.current || !mounted.current) return;
+          runRef.current += 1;
+          Speech.stop().catch(() => {});
+          setPhase('idle');
+          setNotice(SILENT_ENGINE_MESSAGE);
+        }, START_TIMEOUT_MS);
         speakAll(segments, run, () => runRef.current, {
-          language,
+          language: ENGINE_LANGUAGE,
+          voice: voice.identifier,
+          onStart: () => {
+            if (run === runRef.current) clearWatchdog();
+          },
           onDone: () => {
-            if (run === runRef.current && mounted.current) setPhase('idle');
+            if (run === runRef.current && mounted.current) {
+              clearWatchdog();
+              setPhase('idle');
+            }
           },
           onError: () => {
             if (run === runRef.current && mounted.current) {
+              clearWatchdog();
+              runRef.current += 1;
+              Speech.stop().catch(() => {});
               setPhase('idle');
-              setNotice(MISSING_VOICE_MESSAGE);
+              setNotice(SILENT_ENGINE_MESSAGE);
             }
           },
         });
@@ -139,6 +185,8 @@ export function speakAll(
   currentRun: () => number,
   options: {
     language: string;
+    voice?: string;
+    onStart?: () => void;
     onDone?: () => void;
     onError?: () => void;
   },
@@ -147,10 +195,12 @@ export function speakAll(
     if (currentRun() !== run) return;
     Speech.speak(segment.text, {
       language: options.language,
+      ...(options.voice ? { voice: options.voice } : {}),
       // Slightly slower than default: Arabic news read at 1.0 is hard to follow, and
       // the same value the platform's own accessibility defaults use.
       rate: 0.95,
       pitch: 1.0,
+      onStart: index === 0 ? options.onStart : undefined,
       onDone: index === segments.length - 1 ? options.onDone : undefined,
       onError: options.onError,
     });

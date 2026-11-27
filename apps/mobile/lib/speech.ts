@@ -154,6 +154,50 @@ export function articleToSpeech(
   return parts.flatMap((part) => splitForUtterance(part)).map((text) => ({ text }));
 }
 
+/**
+ * The language tag handed to the engine: the bare language, never `ar-EG`.
+ *
+ * expo-speech on Android builds the locale with `Locale.Builder().setLanguage(tag)`,
+ * which only accepts a language subtag. `ar-EG` throws there, the module swallows the
+ * error and falls back to the PHONE's default language, so on a phone set to English the
+ * Arabic article went to an English voice and came out as silence or noise. The region
+ * is chosen through the voice instead (`pickArabicVoice`).
+ */
+export const ENGINE_LANGUAGE = 'ar';
+
+/** One entry of the engine's voice list, as expo-speech reports it. */
+export interface VoiceLike {
+  identifier?: string;
+  language?: string | null;
+  quality?: string | null;
+}
+
+/**
+ * The Arabic voice to speak with: Egyptian when the phone has it, then any Arabic.
+ *
+ * Naming the voice is what makes the engine read Arabic regardless of the phone's own
+ * language. Among equals an installed ("local") voice beats a network one, because a
+ * network voice is silent on a weak connection.
+ */
+export function pickArabicVoice(
+  voices: VoiceLike[] | null | undefined,
+  preferred: string = 'ar-EG',
+): VoiceLike | null {
+  const arabic = (voices ?? []).filter((v) => /^ar\b/i.test((v.language ?? '').trim()) && v.identifier);
+  if (arabic.length === 0) return null;
+  const score = (v: VoiceLike) => {
+    const lang = (v.language ?? '').trim().toLowerCase().replace('_', '-');
+    const id = (v.identifier ?? '').toLowerCase();
+    let s = 0;
+    if (lang === preferred.toLowerCase()) s += 4;
+    if (/network/.test(id)) s -= 2;
+    if (/local/.test(id)) s += 1;
+    if ((v.quality ?? '').toLowerCase() === 'enhanced') s += 1;
+    return s;
+  };
+  return [...arabic].sort((a, b) => score(b) - score(a))[0] ?? null;
+}
+
 /** Is a voice for Arabic actually installed on this device? */
 export function hasArabicVoice(
   voices: { language?: string | null; identifier?: string }[] | null | undefined,
@@ -163,5 +207,9 @@ export function hasArabicVoice(
 }
 
 /** The Arabic message a reader gets when the voice is missing. Never an error page. */
+/** The engine took the article but never started talking. */
+export const SILENT_ENGINE_MESSAGE =
+  'الصوت ما اشتغلش. اضغط استماع تاني، ولو فضل ساكت اقفل التطبيق وافتحه.';
+
 export const MISSING_VOICE_MESSAGE =
   'مفيش صوت عربي منزّل على الجهاز. نزّله من إعدادات النطق في الجهاز، وبعدها اضغط استماع تاني.';
