@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Article } from './types.js';
 import { clusterArticles } from './cluster.js';
+import { confirmBreakingWithAi, type ConfirmBreaking } from './breakingAi.js';
 import {
   getPreferences,
   matchingFollowedKeywords,
@@ -199,7 +200,28 @@ export function _resetPushCache(): void {
   cache = null;
 }
 
-export const PUSH_MAX_AGE_MS = 15 * 60 * 1000;
+/**
+ * How old (by `publishedAt`) a newly ingested article may be and still push.
+ *
+ * Was 15 minutes, and that silently dropped most breaking alerts: measured on
+ * 2026-11-27 (#76), Google News surfaces items 20-135+ minutes after
+ * publication, and 6 of the 11 breaking sources come through it; a source
+ * polled every 30 minutes also loses about half its items to a 15-minute gate.
+ * Only الجزيرة reliably got through.
+ *
+ * Freshness is already guaranteed by the caller: only rows this run INSERTED
+ * (first seen now) are passed in, and never on the backfill run after boot. This
+ * ceiling only stops an old article that a feed re-surfaces for the first time.
+ */
+export const PUSH_MAX_AGE_MS = 90 * 60 * 1000;
+
+/**
+ * How long a sent story blocks another outlet's copy of the same event. The
+ * in-run cluster dedupe only saw one refresh; a second outlet reporting the same
+ * event 20 minutes later buzzed the phone again.
+ */
+export const RECENT_PUSH_WINDOW_MS = 3 * 60 * 60 * 1000;
+const RECENT_PUSH_MAX = 200;
 
 /**
  * Pure matching rule: should this article go to this device?
@@ -215,14 +237,29 @@ export function shouldPushTo(record: PushRecord, article: Article): boolean {
 const keywordPushedIds = new Set<string>();
 
 /**
- * Cluster identity already notified this process.
+ * Stories already notified recently, with the users they reached.
  *
  * Several outlets covering one event must produce ONE notification, not one per
- * outlet. Articles are grouped with the same clustering the feed uses, so the
- * dedupe key is the cluster's lead article id — and when an article is not in a
- * cluster, the key is its own id, so behaviour is unchanged.
+ * outlet, also across refreshes. Each run clusters its new articles together
+ * with these, so a new copy of an already-sent event lands in the same cluster
+ * and is dropped for the users who already have it.
  */
-const pushedClusterKeys = new Set<string>();
+const recentPushes: Array<{ article: Article; users: Set<string>; at: number }> = [];
+
+function rememberPush(article: Article, userId: string, now: number): void {
+  let entry = recentPushes.find((e) => e.article.id === article.id);
+  if (!entry) {
+    entry = { article, users: new Set(), at: now };
+    recentPushes.push(entry);
+  }
+  entry.users.add(userId);
+}
+
+function pruneRecentPushes(now: number): void {
+  while (recentPushes.length && (now - recentPushes[0]!.at > RECENT_PUSH_WINDOW_MS || recentPushes.length > RECENT_PUSH_MAX)) {
+    recentPushes.shift();
+  }
+}
 
 /** Build a map from article id to a stable cluster key (lead id, or own id). */
 export function clusterKeysFor(articles: Article[]): Map<string, string> {
@@ -462,7 +499,9 @@ export const FCM_CONCURRENCY = 10;
  * Deliver newly ingested articles to matching devices.
  *
  * Deliberately conservative:
- * - only articles published within the last 15 minutes (no backfill bursts),
+ * - only articles this run inserted, published within PUSH_MAX_AGE_MS (no backfill bursts),
+ * - breaking candidates get an AI veto (breakingAi.ts); no answer keeps the rule,
+ * - one notification per story per device, also across refreshes (RECENT_PUSH_WINDOW_MS),
  * - never on the first refresh after process start (the caller decides that),
  * - one push per article per process,
  * - one FCM request per token, at most 10 in flight,
@@ -473,6 +512,7 @@ export const FCM_CONCURRENCY = 10;
 export async function sendPushNotifications(
   newArticles: Article[],
   fetcher: typeof fetch = fetch,
+  options: { confirmBreaking?: ConfirmBreaking | null } = {},
 ): Promise<string[]> {
   if (!newArticles.length) return [];
 
@@ -482,17 +522,50 @@ export async function sendPushNotifications(
   const account = loadServiceAccount();
   if (!account) return [];
 
-  const cutoff = Date.now() - PUSH_MAX_AGE_MS;
-  const pushable = newArticles.filter(
+  const now = Date.now();
+  const cutoff = now - PUSH_MAX_AGE_MS;
+  const fresh = newArticles.filter(
     (a) => a.publishedAt >= cutoff && !pushedArticleIds.has(a.id),
   );
-  if (!pushable.length) return [];
+  if (!fresh.length) return [];
+
+  // AI veto on breaking candidates: a «no» demotes the article to ordinary news
+  // (it still reaches 'all' devices on the normal channel); no answer keeps the
+  // rule's decision. Off in tests unless a confirmer is passed in.
+  const confirm =
+    options.confirmBreaking !== undefined
+      ? options.confirmBreaking
+      : process.env['NODE_ENV'] === 'test' || process.env['BREAKING_AI'] === '0'
+        ? null
+        : confirmBreakingWithAi;
+  const aiNote = new Map<string, string>();
+  const pushable: Article[] = [...fresh];
+  if (confirm) {
+    const flagged = pushable.map((a, i) => [a, i] as const).filter(([a]) => a.isBreaking);
+    await runWithConcurrency(flagged, 4, async ([article, i]) => {
+      let verdict: boolean | null = null;
+      try {
+        verdict = await confirm(article);
+      } catch {
+        verdict = null;
+      }
+      aiNote.set(article.id, verdict === null ? 'ai-unavailable' : verdict ? 'ai-confirmed' : 'ai-rejected');
+      if (verdict === false) pushable[i] = { ...article, isBreaking: false };
+    });
+  }
 
   const jobs: Array<{ article: Article; record: PushRecord }> = [];
   const delivered: string[] = [];
-  const clusterKeys = clusterKeysFor(pushable);
-  /** Cluster keys already claimed in this run, per device. */
+  pruneRecentPushes(now);
+  // Cluster this run's articles together with what was sent recently, so a new
+  // outlet's copy of an event already on the phone is recognised.
+  const clusterKeys = clusterKeysFor([...recentPushes.map((e) => e.article), ...pushable]);
+  /** Cluster keys already claimed, per device: seeded with recent sends. */
   const claimed = new Set<string>();
+  for (const entry of recentPushes) {
+    const key = clusterKeys.get(entry.article.id) ?? entry.article.id;
+    for (const userId of entry.users) claimed.add(`${userId}:${key}`);
+  }
 
   for (const article of pushable) {
     const targets = records.filter((r) => shouldPushTo(r, article));
@@ -509,6 +582,13 @@ export async function sendPushNotifications(
     pushedArticleIds.add(article.id);
     delivered.push(article.id);
   }
+  // Breaking candidates the AI turned down are logged even when nobody is in
+  // 'all' mode, so a wrong veto is visible in the server log.
+  for (const original of fresh) {
+    if (original.isBreaking && aiNote.get(original.id) === 'ai-rejected') {
+      console.log(`[push] breaking vetoed by AI (${original.sourceId}): ${original.title.slice(0, 120)}`);
+    }
+  }
   if (!jobs.length) return delivered;
 
   let accessToken: string;
@@ -521,6 +601,7 @@ export async function sendPushNotifications(
     return [];
   }
 
+  const sentOk = new Map<string, number>();
   await runWithConcurrency(jobs, FCM_CONCURRENCY, async ({ article, record }) => {
     const result = await sendFcmMessage(
       account.project_id,
@@ -529,7 +610,21 @@ export async function sendPushNotifications(
       fetcher,
     );
     if (result === 'dead') removeDeadToken(record.token);
+    if (result === 'ok') sentOk.set(article.id, (sentOk.get(article.id) ?? 0) + 1);
   });
+  for (const { article, record } of jobs) rememberPush(article, record.userId, now);
+  // One line per breaking alert, so production can answer "did it go out?".
+  const seen = new Set<string>();
+  for (const { article } of jobs) {
+    if (!article.isBreaking || seen.has(article.id)) continue;
+    seen.add(article.id);
+    const devices = jobs.filter((j) => j.article.id === article.id).length;
+    console.log(
+      `[push] breaking sent to ${sentOk.get(article.id) ?? 0}/${devices} devices ` +
+        `(${article.sourceId}, ${Math.round((now - article.publishedAt) / 60000)}min old, ` +
+        `${aiNote.get(article.id) ?? 'ai-off'}): ${article.title.slice(0, 120)}`,
+    );
+  }
 
   // Second pass: keyword pushes. An article already sent to a device as a
   // breaking/all push is not sent again for a keyword, and each user has a daily
@@ -616,7 +711,7 @@ function trimDedupe(set: Set<string>): void {
 export function _resetPushedIds(): void {
   pushedArticleIds.clear();
   keywordPushedIds.clear();
-  pushedClusterKeys.clear();
+  recentPushes.length = 0;
 }
 
 /** The digest channel Android shows for a twice-daily summary. */
