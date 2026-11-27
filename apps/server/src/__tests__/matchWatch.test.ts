@@ -167,6 +167,37 @@ describe('match follow: what gets announced', () => {
     expect(out.flat()).toEqual([]);
   });
 
+  it('does not call «بعد قليل» (unknown) a kick-off; the kick-off is when it goes live', () => {
+    const out = run([
+      [m({}), null],
+      [m({ status: 'unknown', statusText: 'بعد قليل' }), null],
+      [live(0, 0), tl({})],
+    ]);
+    expect(out).toEqual([[], [], ['🟢 بدأت المباراة']]);
+  });
+
+  it('drops a pending goal the score takes back, without a correction', () => {
+    const out = run([
+      [live(1, 0), tl({})],
+      [live(3, 0), tl({})],
+      [live(2, 0), tl({})],
+      [live(2, 0), tl({})],
+      [live(2, 0), tl({})],
+    ]);
+    expect(out.flat()).toEqual(['⚽ جوووول للأهلي!']);
+  });
+
+  it('sends a last-minute goal before the final whistle, and nothing after it', () => {
+    const fin = (h: number, a: number) => m({ status: 'finished', statusText: 'انتهت', homeScore: h, awayScore: a });
+    const out = run([
+      [live(3, 0), tl({})],
+      [live(3, 1), tl({ phases: ['final'] })],
+      [fin(3, 1), tl({ phases: ['final'] })],
+    ]);
+    expect(out[1]).toEqual(['⚽ جوووول للزمالك!', '🏁 انتهت المباراة']);
+    expect(out[2]).toEqual([]);
+  });
+
   it('records a back-fill of many rows without announcing them', () => {
     const many = Array.from({ length: 8 }, (_, i) => ({ ...card, minute: String(10 + i), player: `لاعب ${i}` }));
     const out = run([
