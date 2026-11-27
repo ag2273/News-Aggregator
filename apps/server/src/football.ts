@@ -171,6 +171,11 @@ export interface MatchRow {
   stadium?: string | null;
   /** The provider's own match id, when it has one (FilGoal does). */
   providerMatchId?: string | null;
+  /**
+   * Yallakora's page for the same fixture, kept when a FilGoal row absorbed the
+   * Yallakora one: that page has the «أحداث المباراة» tab the match follow reads.
+   */
+  yallakoraUrl?: string | null;
   /** The provider's team id for each side, stable across matches. */
   homeTeamId?: string | null;
   awayTeamId?: string | null;
