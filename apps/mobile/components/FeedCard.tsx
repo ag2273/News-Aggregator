@@ -12,6 +12,7 @@ import { relativeTime } from '../lib/api';
 import type { Article } from '../lib/api';
 import type { Theme } from '../constants/colors';
 import { PublisherAvatar, PublisherMeta } from './Publisher';
+import { SourceArtwork } from './SourceArtwork';
 import { ReactionsCapsule, ReactionPicker } from './Reactions';
 import { shareArticle } from '../lib/share';
 import { useAuth } from '../lib/auth';
@@ -87,9 +88,12 @@ export function FeedCard({
       {article.imageUrl ? (
         <Image source={{ uri: article.imageUrl }} style={styles.image} resizeMode="cover" />
       ) : (
-        <View style={[styles.image, styles.imagePlaceholder, { backgroundColor: t.pillInactiveBg }]}>
-          <Ionicons name="newspaper-outline" size={30} color={t.textMuted} />
-        </View>
+        <SourceArtwork
+          sourceId={article.sourceId}
+          sourceName={article.sourceName}
+          color={article.sourceColor}
+          style={styles.image}
+        />
       )}
 
       <View style={[styles.footer, { borderColor: t.borderLight }]}>
@@ -263,7 +267,6 @@ const styles = StyleSheet.create({
   },
   title: { fontFamily: 'Cairo_700Bold', fontSize: 16, lineHeight: 25, marginBottom: 12 },
   image: { width: '100%', height: 180, borderRadius: 20 },
-  imagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',

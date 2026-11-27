@@ -18,6 +18,7 @@ import type { Article } from '../lib/api';
 import { shareArticle } from '../lib/share';
 import type { Theme } from '../constants/colors';
 import { PublisherAvatar, PublisherMeta } from './Publisher';
+import { SourceArtwork } from './SourceArtwork';
 import { ReactionsCapsule, ReactionPicker } from './Reactions';
 import { useAccountGate, AccountGateSheet } from './AccountGate';
 
@@ -127,17 +128,7 @@ function HeroCard({
         {article.title} 🔥
       </Text>
 
-      <View
-        style={[
-          styles.imageContainer,
-          // With no image the block is not a dead grey panel: it carries the
-          // source's initial and its name, so the space reads as "this outlet's
-          // story" instead of a failed load (#32).
-          coverSource
-            ? { backgroundColor: t.pillInactiveBg }
-            : { backgroundColor: t.accentSoft, borderWidth: 1, borderColor: t.accentBorder },
-        ]}
-      >
+      <View style={[styles.imageContainer, { backgroundColor: t.pillInactiveBg }]}>
         {coverSource ? (
           <Image
             source={coverSource}
@@ -145,15 +136,14 @@ function HeroCard({
             resizeMode="cover"
           />
         ) : (
-          <View style={styles.noImage}>
-            <PublisherAvatar name={article.sourceName} size={44} t={t} />
-            <Text
-              style={[styles.noImageName, { color: t.textSecondary }]}
-              numberOfLines={1}
-            >
-              {article.sourceName}
-            </Text>
-          </View>
+          // No picture: the outlet's colour and icon (#57, option A), the same slot
+          // the feed cards use.
+          <SourceArtwork
+            sourceId={article.sourceId}
+            sourceName={article.sourceName}
+            color={article.sourceColor}
+            style={StyleSheet.absoluteFill}
+          />
         )}
       </View>
 
@@ -641,8 +631,6 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   image: { width: '100%', height: '100%', borderRadius: 20 },
-  noImage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16 },
-  noImageName: { fontFamily: 'Cairo_600SemiBold', fontSize: 13, textAlign: 'center' },
   shareHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   metricsBar: {
     flexDirection: 'row',

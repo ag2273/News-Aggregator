@@ -170,6 +170,8 @@ export interface Article {
   country: string;
   publishedAt: number;
   isBreaking: boolean;
+  /** The outlet's colour, for the image slot of a story with no picture. */
+  sourceColor?: string | null;
   reactions?: ReactionCounts;
   myReaction?: ReactionType | null;
 }

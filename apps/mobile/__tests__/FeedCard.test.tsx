@@ -62,10 +62,11 @@ describe('FeedCard', () => {
     expect(images[0].props.source).toEqual({ uri: 'https://img.test/cover.jpg' });
   });
 
-  it('shows a placeholder instead of an image when there is none', () => {
+  it('shows a placeholder instead of a cover image when there is none', () => {
     render(<FeedCard article={article({ imageUrl: null })} t={t} onPress={noop} />);
     const images = screen.UNSAFE_queryAllByType(require('react-native').Image);
-    expect(images.length).toBe(0);
+    // Only the outlet's icon on the placeholder tile, never a cover.
+    expect(images.map((i) => i.props.source.uri)).toEqual([expect.stringMatching(/\/api\/sources\/youm7\/icon$/)]);
   });
 
   it('shows the breaking badge for breaking news', () => {
@@ -83,5 +84,12 @@ describe('FeedCard', () => {
     render(<FeedCard article={article()} t={t} onPress={onPress} />);
     const card = screen.getByLabelText('الأهلي يفوز على الزمالك في القمة');
     expect(card).toBeTruthy();
+  });
+
+  it("shows the outlet's colour and icon from our server when the story has no picture", () => {
+    render(<FeedCard article={article({ imageUrl: null, sourceColor: '#C4161C' })} t={t} onPress={noop} />);
+    expect(screen.getByTestId('source-artwork')).toBeTruthy();
+    const icon = screen.getByTestId('source-artwork-icon');
+    expect(icon.props.source.uri).toMatch(/\/api\/sources\/youm7\/icon$/);
   });
 });

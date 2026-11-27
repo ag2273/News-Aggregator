@@ -13,6 +13,7 @@ import { sendPushNotifications } from './push.js';
 import { balancedPage } from './balance.js';
 import { rankTrending } from './trending.js';
 import { countsFor, myReaction, reactionWeight } from './reactions.js';
+import { sourceColor } from './sourceIcons.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 let lastFetchTime = 0;
@@ -217,6 +218,8 @@ export function withReactions(article: Article, userId: string | null): Article 
     // A picture found on the publisher's page after this copy was made (#57): the
     // grouped feed's index holds copies built before the background image pass.
     imageUrl: article.imageUrl ?? findArticleById(article.id)?.imageUrl ?? null,
+    // The outlet's colour, for the card's image slot when there is no picture.
+    sourceColor: sourceColor(article.sourceId),
     reactions: countsFor(article.id),
     myReaction: myReaction(article.id, userId),
   };

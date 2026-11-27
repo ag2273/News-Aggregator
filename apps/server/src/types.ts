@@ -10,6 +10,8 @@ export interface Article {
   country: string;
   publishedAt: number; // unix ms
   isBreaking: boolean;
+  /** The outlet's brand colour (#RRGGBB) on API responses, for a card with no picture. */
+  sourceColor?: string | null;
   /** Reaction tally; always present on API responses, absent on stored rows. */
   reactions?: {
     like: number;

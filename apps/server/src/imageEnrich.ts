@@ -16,7 +16,7 @@
 // shows the logo until its picture is found, and the photo from then on.
 //
 // BOUNDS (the server is an e2-micro: 1 GB RAM, a quarter of a CPU sustained)
-//   - at most PER_RUN stories per refresh, two pages in flight at a time;
+//   - at most PER_RUN stories per refresh, three pages in flight at a time;
 //   - only stories from the last WINDOW_MS, newest first;
 //   - a story that yielded nothing is not retried for RETRY_MS, and never more than
 //     MAX_TRIES times; that memory is a bounded map;
@@ -26,9 +26,14 @@ import { resolveGoogleNewsUrl, fetchPageWithTimeout } from './articleText.js';
 import { remember } from './boundedCache.js';
 import type { StoredArticle } from './db.js';
 
-const PER_RUN = Number(process.env['IMAGE_ENRICH_PER_RUN'] ?? 40);
-const CONCURRENCY = 2;
-const WINDOW_MS = 36 * 60 * 60 * 1000;
+// Measured after the first deploy: 40 a run was below the inflow. 23 of the 29
+// feeds are Google News, the polls bring in well over 100 imageless stories an hour,
+// and 40 every 10 minutes left most of them waiting until they fell out of the
+// window. The work per story is network wait plus one regex over a <head>, so the
+// cap goes up and one more page is allowed in flight; CPU stays negligible.
+const PER_RUN = Number(process.env['IMAGE_ENRICH_PER_RUN'] ?? 120);
+const CONCURRENCY = 3;
+const WINDOW_MS = 48 * 60 * 60 * 1000;
 const RETRY_MS = 6 * 60 * 60 * 1000;
 const MAX_TRIES = 2;
 const PAGE_TIMEOUT_MS = 8000;
@@ -40,9 +45,12 @@ const HEAD_LIMIT = 200_000;
  *
  * Several outlets put the same `og:image` (their logo or a branded card) on every
  * page that has no photo. Showing that would be the logo again, only bigger. The
- * same image URL on two different stories is treated as that default.
+ * same image URL on several different publisher pages is treated as that default.
  */
-const GENERIC_AFTER = 2;
+// Four, not two: an outlet often runs several stories on one event with the same
+// photo (a match, a minister's portrait), and two was enough to strip a real picture
+// off all of them. A default share image reaches four pages within one pass.
+const GENERIC_AFTER = 4;
 
 /** `og:image` (or its fallbacks) from a page, absolute, or null. */
 export function extractOgImage(html: string, pageUrl: string): string | null {
@@ -129,17 +137,73 @@ export function pickCandidates(rows: readonly StoredArticle[], now: number, limi
   return out;
 }
 
-/** Fetch one story's page and return its image, or null. Never throws. */
-async function imageFor(row: StoredArticle, deps: EnrichDeps): Promise<{ page: string; img: string } | null> {
+type Outcome = 'found' | 'unresolved' | 'fetch-failed' | 'blocked' | 'no-image' | 'default-image';
+
+/** Fetch one story's page and return its image, or why there is none. Never throws. */
+async function imageFor(
+  row: StoredArticle,
+  deps: EnrichDeps,
+): Promise<{ page: string; img: string } | { miss: Exclude<Outcome, 'found' | 'default-image'> }> {
   try {
     const target = await deps.resolve(row.url);
-    if (!target) return null;
+    if (!target || /^https?:\/\/news\.google\.com\//i.test(target)) return { miss: 'unresolved' };
     const page = await deps.fetchHtml(target);
-    if (!page.ok || !page.text) return null;
-    const img = extractOgImage(page.text.length > HEAD_LIMIT ? page.text.slice(0, HEAD_LIMIT) : page.text, target);
-    return img ? { page: target, img } : null;
+    if (!page.ok || !page.text) return { miss: 'fetch-failed' };
+    const head = page.text.length > HEAD_LIMIT ? page.text.slice(0, HEAD_LIMIT) : page.text;
+    if (/Just a moment|cf-browser-verification|security verification/i.test(head.slice(0, 4000))) return { miss: 'blocked' };
+    const img = extractOgImage(head, target);
+    return img ? { page: target, img } : { miss: 'no-image' };
   } catch {
-    return null;
+    return { miss: 'fetch-failed' };
+  }
+}
+
+/**
+ * Accept `img` for the stored row `rowUrl` (read from `page`), writing the result
+ * into `found`. Returns false when it is an outlet's default image instead.
+ */
+function accept(found: Map<string, string | null>, rowUrl: string, page: string, img: string): boolean {
+  if (generic.has(img)) return false;
+  let seen = seenImages.get(img);
+  if (!seen) {
+    seen = { pages: new Set(), rows: new Set() };
+    remember(seenImages, img, seen, 3000, () => false);
+  }
+  seen.pages.add(page);
+  seen.rows.add(rowUrl);
+  if (seen.pages.size >= GENERIC_AFTER) {
+    // The outlet's default image: take it back off every story that got it.
+    generic.add(img);
+    for (const u of seen.rows) found.set(u, null);
+    seenImages.delete(img);
+    return false;
+  }
+  found.set(rowUrl, img);
+  return true;
+}
+
+let saver: (images: ReadonlyMap<string, string | null>) => number = () => 0;
+
+/** Where pictures found outside a pass (the reader) are stored. Set once at boot. */
+export function setImageSaver(save: (images: ReadonlyMap<string, string | null>) => number): void {
+  saver = save;
+}
+
+/**
+ * A publisher page someone opened in the reader (#57 follow-up). The reader has
+ * just fetched it anyway, so its picture costs one regex over the <head>, and the
+ * card gets it even when the story is older than the pass's window or the pass has
+ * not reached it yet. Never throws.
+ */
+export function noteImageFromPage(rowUrl: string, html: string, pageUrl: string): void {
+  try {
+    const img = extractOgImage(html.length > HEAD_LIMIT ? html.slice(0, HEAD_LIMIT) : html, pageUrl);
+    if (!img) return;
+    const found = new Map<string, string | null>();
+    accept(found, rowUrl, pageUrl, img);
+    if (found.size) saver(found);
+  } catch {
+    /* a picture is a nicety */
   }
 }
 
@@ -153,35 +217,30 @@ let running: Promise<number> | null = null;
  */
 export function enrichImages(rows: readonly StoredArticle[], deps: Partial<EnrichDeps> = {}): Promise<number> {
   if (running) return running;
-  const d = { ...defaultDeps, ...deps };
+  const d = { ...defaultDeps, save: saver, ...deps };
   running = (async () => {
     const queue = pickCandidates(rows, d.now());
     if (!queue.length) return 0;
     const found = new Map<string, string | null>();
+    // Why the rest had no picture, overall and per source, so the log says where
+    // the gap is (the resolver, a publisher that refuses us, or pages with no
+    // og:image) instead of only a total.
+    const outcomes: Record<Outcome, number> = {
+      found: 0, unresolved: 0, 'fetch-failed': 0, blocked: 0, 'no-image': 0, 'default-image': 0,
+    };
+    const missBySource = new Map<string, number>();
     let next = 0;
     const worker = async (): Promise<void> => {
       while (next < queue.length) {
         const row = queue[next++]!;
         const prev = attempts.get(row.url);
-        remember(attempts, row.url, { at: d.now(), tries: (prev?.tries ?? 0) + 1 }, 5000, (e) => d.now() - e.at > WINDOW_MS);
+        remember(attempts, row.url, { at: d.now(), tries: (prev?.tries ?? 0) + 1 }, 8000, (e) => d.now() - e.at > WINDOW_MS);
         const hit = await imageFor(row, d);
-        if (!hit || generic.has(hit.img)) continue;
-        const { img } = hit;
-        let seen = seenImages.get(img);
-        if (!seen) {
-          seen = { pages: new Set(), rows: new Set() };
-          remember(seenImages, img, seen, 3000, () => false);
-        }
-        seen.pages.add(hit.page);
-        seen.rows.add(row.url);
-        if (seen.pages.size >= GENERIC_AFTER) {
-          // The outlet's default image: take it back off every story that got it.
-          generic.add(img);
-          for (const u of seen.rows) found.set(u, null);
-          seenImages.delete(img);
-          continue;
-        }
-        found.set(row.url, img);
+        let outcome: Outcome;
+        if ('miss' in hit) outcome = hit.miss;
+        else outcome = accept(found, row.url, hit.page, hit.img) ? 'found' : 'default-image';
+        outcomes[outcome]++;
+        if (outcome !== 'found') missBySource.set(row.sourceId, (missBySource.get(row.sourceId) ?? 0) + 1);
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
@@ -190,7 +249,16 @@ export function enrichImages(rows: readonly StoredArticle[], deps: Partial<Enric
     const changed = d.save(found);
     let got = 0;
     for (const v of found.values()) if (v) got++;
-    console.log(`[images] ${queue.length} checked, ${got} picture(s) found, ${changed} row(s) updated`);
+    const reasons = (Object.keys(outcomes) as Outcome[])
+      .filter((k) => k !== 'found' && outcomes[k])
+      .map((k) => `${k} ${outcomes[k]}`)
+      .join(', ');
+    const worst = [...missBySource].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([s, n]) => `${s} ${n}`).join(', ');
+    console.log(
+      `[images] ${queue.length} checked, ${got} picture(s) found, ${changed} row(s) updated` +
+        (reasons ? `; missed: ${reasons}` : '') +
+        (worst ? `; most missed: ${worst}` : ''),
+    );
     return got;
   })().finally(() => {
     running = null;
