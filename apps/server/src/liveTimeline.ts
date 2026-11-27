@@ -55,7 +55,11 @@ export interface LiveTimeline {
 
 /** A stable identity for an event, so one row is announced once. */
 export function eventKey(e: LiveEvent): string {
-  return [e.kind, e.minute ?? '', e.player ?? '', e.side ?? ''].join('|');
+  // A player is booked once and comes on once, so a card or a substitution is
+  // keyed without its minute: measured, ESPN re-timed one yellow (21' → 16') and
+  // the same card went out twice. A player can score twice, so goals keep it.
+  const goal = e.kind === 'goal' || e.kind === 'penaltyGoal' || e.kind === 'ownGoal' || e.kind === 'missedPenalty';
+  return [e.kind, goal ? (e.minute ?? '') : '', e.player ?? '', e.side ?? ''].join('|');
 }
 
 function textOf(fragment: string): string {

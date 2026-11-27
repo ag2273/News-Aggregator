@@ -198,6 +198,16 @@ describe('match follow: what gets announced', () => {
     expect(out[2]).toEqual([]);
   });
 
+  it('does not send a card twice when the source re-times it', () => {
+    const out = run([
+      [live(0, 0), tl({ source: 'espn' })],
+      [live(0, 0), tl({ source: 'espn', events: [{ ...card, minute: '21' }] })],
+      [live(0, 0), tl({ source: 'espn', events: [{ ...card, minute: '16' }] })],
+    ]);
+    expect(out[1]).toEqual(['🟨 إنذار — الزمالك']);
+    expect(out[2]).toEqual([]);
+  });
+
   it('records a back-fill of many rows without announcing them', () => {
     const many = Array.from({ length: 8 }, (_, i) => ({ ...card, minute: String(10 + i), player: `لاعب ${i}` }));
     const out = run([
