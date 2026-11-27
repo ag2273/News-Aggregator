@@ -16,6 +16,8 @@ import {
   speakableText,
   splitForUtterance,
   hasArabicVoice,
+  pickArabicVoice,
+  ENGINE_LANGUAGE,
   MISSING_VOICE_MESSAGE,
   UTTERANCE_TARGET_CHARS,
   MAX_UTTERANCE_CHARS,
@@ -127,6 +129,25 @@ describe('the Arabic voice on the device', () => {
     expect(hasArabicVoice(null)).toBe(false);
     // A language tag that merely contains "ar" is not Arabic.
     expect(hasArabicVoice([{ language: 'en-GB' }, { language: 'hu-HU' }])).toBe(false);
+  });
+
+  it('picks the Egyptian voice, an installed one before a network one', () => {
+    const voices = [
+      { language: 'ar-SA', identifier: 'ar-sa-x-arz-local' },
+      { language: 'ar-EG', identifier: 'ar-eg-x-egn-network' },
+      { language: 'ar-EG', identifier: 'ar-eg-x-egn-local' },
+    ];
+    expect(pickArabicVoice(voices)?.identifier).toBe('ar-eg-x-egn-local');
+    // No Egyptian voice: any Arabic voice still beats the phone's default language.
+    expect(pickArabicVoice([{ language: 'en-US', identifier: 'en' }, { language: 'ar', identifier: 'ar-x' }])?.identifier).toBe('ar-x');
+    expect(pickArabicVoice([{ language: 'en-US', identifier: 'en' }])).toBeNull();
+    expect(pickArabicVoice(null)).toBeNull();
+  });
+
+  it('hands the engine a bare language subtag, which Android can build a locale from', () => {
+    // `Locale.Builder().setLanguage()` rejects `ar-EG`; the module then silently uses
+    // the phone's default language.
+    expect(ENGINE_LANGUAGE).toMatch(/^[a-z]{2,8}$/);
   });
 
   it('says so in Arabic, and points at the setting that fixes it', () => {
