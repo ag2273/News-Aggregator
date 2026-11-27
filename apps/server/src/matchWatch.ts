@@ -460,9 +460,12 @@ export function stepMatch(
   }
   const s = state;
 
-  // Kick-off: the status moved, or the source's own «الشوط الأول» row appeared.
+  // Kick-off: the match is LIVE now (FilGoal's «بعد قليل» is «unknown», which is
+  // not a kick-off: measured, it went out ~45 minutes early), or the source's own
+  // «الشوط الأول» row appeared. A match first seen live at 1-1 did not just start.
   const kickedOff =
-    (s.status === 'upcoming' && match.status !== 'upcoming') || (timeline?.phases.includes('firstHalf') ?? false);
+    (match.status === 'live' && s.status !== 'live' && (s.status === 'upcoming' || homeNow + awayNow === 0)) ||
+    (timeline?.phases.includes('firstHalf') ?? false);
   if (kickedOff && !s.phases.has('firstHalf')) {
     s.phases.add('firstHalf');
     pushes.push(phasePush(match, date, 'kickoff', { home: homeNow, away: awayNow }));
@@ -494,10 +497,29 @@ export function stepMatch(
     s.away = awayNow;
   }
 
-  // Goals: the score is the trigger.
+  // Full time, known before the goals so a late goal goes out BEFORE the whistle.
+  const over = match.status === 'finished' || (timeline?.phases.includes('final') ?? false);
+
+  // A goal not yet announced that the score takes back is dropped quietly
+  // (measured: لوسيل 1→3→2 sent two goals and a correction in one minute).
+  for (const side of ['home', 'away'] as const) {
+    const now = side === 'home' ? homeNow : awayNow;
+    while (now < s[side] && s.pendingGoals.some((g) => g.side === side)) {
+      const i = s.pendingGoals.map((g) => g.side).lastIndexOf(side);
+      s.pendingGoals.splice(i, 1);
+      s[side] -= 1;
+    }
+  }
+
+  // Goals: the score is the trigger. After the final whistle has been sent, the
+  // final notification already carried the score.
   for (const side of ['home', 'away'] as const) {
     const now = side === 'home' ? homeNow : awayNow;
     const before = s[side];
+    if (s.finalSent) {
+      if (now > before) s[side] = now;
+      continue;
+    }
     for (let i = before; i < now; i += 1) s.pendingGoals.push({ side, polls: 0 });
     if (now > before) s[side] = now;
   }
@@ -519,7 +541,7 @@ export function stepMatch(
       pushes.push(eventPush(match, date, { ...event, side: event.kind === 'ownGoal' ? goal.side : event.side }, { home: s.home, away: s.away }, s.timelineSource ?? 'filgoal'));
       continue;
     }
-    if (goal.polls >= GOAL_WAIT_POLLS || match.status !== 'live') {
+    if (goal.polls >= GOAL_WAIT_POLLS || match.status !== 'live' || over) {
       s.goalsWithoutRow[goal.side] += 1;
       pushes.push(bareGoalPush(match, date, goal.side, { home: s.home, away: s.away }));
       continue;
@@ -552,7 +574,6 @@ export function stepMatch(
   }
 
   // Full time: the status, or FilGoal's «انتهت».
-  const over = match.status === 'finished' || (timeline?.phases.includes('final') ?? false);
   if (over && !s.finalSent && s.status !== 'upcoming') {
     s.finalSent = true;
     pushes.push(phasePush(match, date, 'final', { home: homeNow, away: awayNow }));
