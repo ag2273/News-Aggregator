@@ -19,7 +19,7 @@
 // images and fonts are kept — a "clean" page that lost its CSS is not readable.
 
 import { remember } from './boundedCache.js';
-import { fetchPage, isGoogleNewsUrl, resolveGoogleNewsUrl } from './articleText.js';
+import { fetchPage, isChallengePage, isGoogleNewsUrl, resolveGoogleNewsUrl } from './articleText.js';
 import { stripAdMarkup } from './cleanPage.js';
 
 /** How long a cleaned page is reused per URL. */
@@ -71,6 +71,11 @@ export async function cleanPage(
       if (!target || isGoogleNewsUrl(target)) return null;
       const page = await fetchPage(target, deps.fetchImpl);
       if (!page.ok || !page.text) return null;
+      // A bot check answered with 200 is not the article: cleaning and serving it
+      // showed the reader "Max challenge attempts exceeded" (apk-90). Null makes the
+      // route answer 502, and the app opens the publisher's live page, where a real
+      // browser passes the check.
+      if (isChallengePage(page.text)) return null;
       const html = stripAdMarkup(page.text, target);
       // A page that still has no body after cleaning is not worth showing.
       return html || null;
